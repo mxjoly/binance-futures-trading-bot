@@ -105,54 +105,42 @@ function tradeWithSpot(
   realtimePrice: number
 ) {
   binanceClient
-    .accountInfo()
-    .then(({ balances }) => {
-      // Balance free crypto
-      const asset = Number(
-        balances.find((balance) => balance.asset === tradeConfig.asset).free
-      );
-      const base = Number(
-        balances.find((balance) => balance.asset === tradeConfig.base).free
-      );
+    .myTrades({ symbol: tradeConfig.asset + tradeConfig.base })
+    .then((trades) => {
+      if (trades.length === 0 && isBuySignal(tradeConfig, candles)) {
+        const purchasePrice = realtimePrice * 1.01;
+        // Buy limit order
+        binanceClient.order({
+          side: 'BUY',
+          type: 'LIMIT',
+          symbol: tradeConfig.asset + tradeConfig.base,
+          price: String(purchasePrice),
+          quantity: String(100 * tradeConfig.allocation),
+        });
 
-      binanceClient
-        .myTrades({ symbol: tradeConfig.asset + tradeConfig.base })
-        .then((trades) => {
-          if (trades.length === 0 && isBuySignal(tradeConfig, candles)) {
-            // Buy limit order
-            binanceClient.order({
-              side: 'BUY',
-              type: 'LIMIT',
-              symbol: tradeConfig.asset + tradeConfig.base,
-              price: String(realtimePrice * 0.01),
-              quantity: String((base * tradeConfig.allocation) / realtimePrice),
-            });
-
-            if (tradeConfig.profitTarget) {
-              // Sell oco order
-              binanceClient.orderOco({
-                side: 'SELL',
-                symbol: tradeConfig.asset + tradeConfig.base,
-                price: String(realtimePrice * tradeConfig.profitTarget),
-                stopPrice: String(realtimePrice * tradeConfig.lossTolerance),
-                stopLimitPrice: String(
-                  realtimePrice * tradeConfig.lossTolerance
-                ),
-                quantity: String(asset),
-              });
-            } else {
-              // Sell limit order
-              binanceClient.order({
-                side: 'SELL',
-                type: 'LIMIT',
-                symbol: tradeConfig.asset + tradeConfig.base,
-                price: String(realtimePrice * tradeConfig.lossTolerance),
-                quantity: String(asset),
-              });
-            }
-          }
-        })
-        .catch(logger.warning);
+        if (tradeConfig.profitTarget) {
+          // Sell oco order
+          binanceClient.orderOco({
+            side: 'SELL',
+            symbol: tradeConfig.asset + tradeConfig.base,
+            price: String(purchasePrice * (1 + tradeConfig.profitTarget)),
+            stopPrice: String(purchasePrice * (1 - tradeConfig.lossTolerance)),
+            stopLimitPrice: String(
+              purchasePrice * (1 - tradeConfig.lossTolerance)
+            ),
+            quantity: '100',
+          });
+        } else {
+          // Sell limit order
+          binanceClient.order({
+            side: 'SELL',
+            type: 'LIMIT',
+            symbol: tradeConfig.asset + tradeConfig.base,
+            price: String(purchasePrice * (1 - tradeConfig.lossTolerance)),
+            quantity: '100',
+          });
+        }
+      }
     })
     .catch(logger.warning);
 }
@@ -163,36 +151,70 @@ function tradeWithFutures(
   realtimePrice: number
 ) {
   binanceClient
-    .futuresAccountBalance()
-    .then((balances) => {
-      // Balance free crypto
-      const base = Number(
-        balances.find((balance) => balance.asset === tradeConfig.base)
-          .availableBalance
-      );
-
-      binanceClient
-        .futuresTrades({
+    .futuresTrades({
+      symbol: tradeConfig.asset + tradeConfig.base,
+    })
+    .then((trades) => {
+      if (trades.length > 0) {
+      } else if (isBuySignal(tradeConfig, candles)) {
+        const purchasePrice = realtimePrice * 1.01;
+        // Buy limit order
+        binanceClient.futuresOrder({
+          side: 'BUY',
+          type: 'LIMIT',
           symbol: tradeConfig.asset + tradeConfig.base,
-        })
-        .then((trades) => {
-          if (trades.length > 0) {
-          } else if (isBuySignalRSI(tradeConfig, candles)) {
-            binanceClient.futuresOrder({
-              side: 'BUY',
-              type: 'LIMIT',
-              symbol: tradeConfig.asset + tradeConfig.base,
-              isIsolated: true,
-            });
-            binanceClient.futuresOrder({
-              side: 'SELL',
-              type: 'TAKE_PROFIT_MARKET',
-              symbol: tradeConfig.asset + tradeConfig.base,
-            });
-          } else if (isSellSignalRSI(tradeConfig, candles)) {
-          }
-        })
-        .catch(logger.warning);
+          isIsolated: true,
+          price: String(purchasePrice),
+          quantity: String(100 * tradeConfig.allocation),
+        });
+        // Take profit order
+        binanceClient.futuresOrder({
+          side: 'SELL',
+          type: 'TAKE_PROFIT_MARKET',
+          symbol: tradeConfig.asset + tradeConfig.base,
+          isIsolated: true,
+          price: String(purchasePrice * (1 + tradeConfig.profitTarget)),
+          quantity: '100',
+        });
+        // Stop loss order
+        binanceClient.futuresOrder({
+          side: 'SELL',
+          type: 'STOP_MARKET',
+          symbol: tradeConfig.asset + tradeConfig.base,
+          isIsolated: true,
+          stopPrice: String(purchasePrice * (1 - tradeConfig.lossTolerance)),
+          quantity: '100',
+        });
+      } else if (isSellSignal(tradeConfig, candles)) {
+        const purchasePrice = realtimePrice * 0.99;
+        // Sell limit order
+        binanceClient.futuresOrder({
+          side: 'SELL',
+          type: 'LIMIT',
+          symbol: tradeConfig.asset + tradeConfig.base,
+          isIsolated: true,
+          price: String(purchasePrice),
+          quantity: String(100 * tradeConfig.allocation),
+        });
+        // Take profit order
+        binanceClient.futuresOrder({
+          side: 'SELL',
+          type: 'TAKE_PROFIT_MARKET',
+          symbol: tradeConfig.asset + tradeConfig.base,
+          isIsolated: true,
+          price: String(purchasePrice * (1 - tradeConfig.profitTarget)),
+          quantity: '100',
+        });
+        // Stop loss order
+        binanceClient.futuresOrder({
+          side: 'SELL',
+          type: 'STOP_MARKET',
+          symbol: tradeConfig.asset + tradeConfig.base,
+          isIsolated: true,
+          stopPrice: String(purchasePrice * (1 + tradeConfig.lossTolerance)),
+          quantity: '100',
+        });
+      }
     })
     .catch(logger.warning);
 }
