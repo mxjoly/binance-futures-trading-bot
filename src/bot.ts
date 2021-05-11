@@ -152,16 +152,6 @@ function tradeWithSpot(
                 ), // SL
                 quantity: '100',
               });
-
-              logger.info(
-                `Spot : Bot created a buy limit order for ${
-                  tradeConfig.asset
-                }/${
-                  tradeConfig.base
-                } at the price ${purchasePrice} with TP/SL: ${
-                  purchasePrice * (1 + tradeConfig.profitTarget)
-                }/${purchasePrice * (1 - tradeConfig.lossTolerance)}`
-              );
             } else {
               // Sell limit order as SL
               binanceClient.order({
@@ -173,13 +163,13 @@ function tradeWithSpot(
               });
 
               logger.info(
-                `Spot : Bot created a buy limit order for ${
-                  tradeConfig.asset
-                }/${
+                `Futures : Bot bought ${tradeConfig.asset} with ${
                   tradeConfig.base
-                } at the price ${purchasePrice} with TP/SL: ---/${
-                  purchasePrice * (1 - tradeConfig.lossTolerance)
-                }`
+                } at the price ${purchasePrice}. TP/SL: ${
+                  tradeConfig.profitTarget
+                    ? purchasePrice * (1 + tradeConfig.profitTarget)
+                    : '----'
+                }/${purchasePrice * (1 - tradeConfig.lossTolerance)}`
               );
             }
           }
@@ -240,7 +230,7 @@ function tradeWithFutures(
           });
 
           logger.info(
-            `Futures : Bot created a buy limit order for ${tradeConfig.asset}/${
+            `Futures : Bot takes a long for ${tradeConfig.asset}/${
               tradeConfig.base
             } at the price ${purchasePrice} with TP/SL: ${
               tradeConfig.profitTarget
@@ -263,7 +253,7 @@ function tradeWithFutures(
           if (tradeConfig.profitTarget) {
             // Take profit order
             binanceClient.futuresOrder({
-              side: 'SELL',
+              side: 'BUY',
               type: 'TAKE_PROFIT_MARKET',
               symbol: tradeConfig.asset + tradeConfig.base,
               isIsolated: true,
@@ -274,7 +264,7 @@ function tradeWithFutures(
 
           // Stop loss order
           binanceClient.futuresOrder({
-            side: 'SELL',
+            side: 'BUY',
             type: 'STOP_MARKET',
             symbol: tradeConfig.asset + tradeConfig.base,
             isIsolated: true,
@@ -283,13 +273,14 @@ function tradeWithFutures(
           });
 
           logger.info(
-            `Futures : Bot created a buy limit order for ${tradeConfig.asset}/${
+            `Futures : Bot takes a short for ${tradeConfig.asset}/${
               tradeConfig.base
             } at the price ${purchasePrice} with TP/SL: ${
               tradeConfig.profitTarget
                 ? purchasePrice * (1 - tradeConfig.profitTarget)
                 : '----'
             }/${purchasePrice * (1 + tradeConfig.lossTolerance)}`
+          );
         }
       }
     })
