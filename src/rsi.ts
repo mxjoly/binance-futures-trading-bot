@@ -8,11 +8,11 @@ const RSI_PERIOD = 14;
 const RSI_OVERBOUGHT = 70;
 const RSI_OVERSOLD = 30;
 
-export const isBuySignalRSI = (tradeConfig: TradeConfig, candles: Candle[]) => {
+export const isBuySignalRSI = (candles: Candle[]) => {
   if (candles.length >= RSI_PERIOD) {
     const rsiValues = RSI.calculate({
       values: candles.map((candle) => candle.close),
-      period: tradeConfig.period,
+      period: RSI_PERIOD,
     });
 
     const last = rsiValues[rsiValues.length - 2];
@@ -23,14 +23,11 @@ export const isBuySignalRSI = (tradeConfig: TradeConfig, candles: Candle[]) => {
   }
 };
 
-export const isSellSignalRSI = (
-  tradeConfig: TradeConfig,
-  candles: Candle[]
-) => {
+export const isSellSignalRSI = (candles: Candle[]) => {
   if (candles.length >= RSI_PERIOD) {
     const rsiValues = RSI.calculate({
       values: candles.map((candle) => candle.close),
-      period: tradeConfig.period,
+      period: RSI_PERIOD,
     });
 
     const last = rsiValues[rsiValues.length - 2];
