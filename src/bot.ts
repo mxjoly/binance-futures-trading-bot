@@ -172,12 +172,11 @@ async function tradeWithSpot(
     }
   } else if (availableBalance >= MIN_FREE_BALANCE_FOR_SPOT_TRADING) {
     if (isBuySignal(candles)) {
-      const purchasePrice = calculatePrice(realtimePrice, 1.01, precision);
       const takeProfitPrice = tradeConfig.profitTarget
-        ? calculatePrice(purchasePrice, 1 + tradeConfig.profitTarget, precision)
+        ? calculatePrice(realtimePrice, 1 + tradeConfig.profitTarget, precision)
         : null;
       const stopLossPrice = calculatePrice(
-        purchasePrice,
+        realtimePrice,
         1 - tradeConfig.lossTolerance,
         precision
       );
@@ -186,9 +185,8 @@ async function tradeWithSpot(
       binanceClient
         .order({
           side: 'BUY',
-          type: 'LIMIT',
+          type: 'MARKET',
           symbol: pair,
-          price: String(purchasePrice),
           quantity: String(Math.round(100 * tradeConfig.allocation)),
         })
         .then(() => {
@@ -221,7 +219,7 @@ async function tradeWithSpot(
           log(
             `@Spot > Bot bought ${tradeConfig.asset} with ${
               tradeConfig.base
-            } at the price ${purchasePrice}. TP/SL: ${
+            } at the price ${realtimePrice}. TP/SL: ${
               takeProfitPrice ? takeProfitPrice : '----'
             }/${stopLossPrice}`
           );
@@ -304,16 +302,15 @@ async function tradeWithFutures(
     // Allow trading with a minimum of balance
     if (availableBalance >= MIN_FREE_BALANCE_FOR_FUTURE_TRADING) {
       if (isBuySignal(candles)) {
-        const purchasePrice = calculatePrice(realtimePrice, 1.01, precision);
         const takeProfitPrice = tradeConfig.profitTarget
           ? calculatePrice(
-              purchasePrice,
+              realtimePrice,
               1 + tradeConfig.profitTarget,
               precision
             )
           : null;
         const stopLossPrice = calculatePrice(
-          purchasePrice,
+          realtimePrice,
           1 - tradeConfig.lossTolerance,
           precision
         );
@@ -322,10 +319,9 @@ async function tradeWithFutures(
         binanceClient
           .futuresOrder({
             side: 'BUY',
-            type: 'LIMIT',
+            type: 'MARKET',
             symbol: pair,
             isIsolated: true,
-            price: String(purchasePrice),
             quantity: String(Math.round(100 * tradeConfig.allocation)),
           })
           .then(() => {
@@ -353,23 +349,22 @@ async function tradeWithFutures(
           })
           .then(() => {
             log(
-              `@Futures > Bot takes a long for ${pair} at the price ${purchasePrice} with TP/SL: ${
+              `@Futures > Bot takes a long for ${pair} at the price ${realtimePrice} with TP/SL: ${
                 takeProfitPrice ? takeProfitPrice : '----'
               }/${stopLossPrice}`
             );
           })
           .catch(error);
       } else if (isSellSignal(candles)) {
-        const purchasePrice = calculatePrice(realtimePrice, 0.99, precision);
         const takeProfitPrice = tradeConfig.profitTarget
           ? calculatePrice(
-              purchasePrice,
+              realtimePrice,
               1 - tradeConfig.profitTarget,
               precision
             )
           : null;
         const stopLossPrice = calculatePrice(
-          purchasePrice,
+          realtimePrice,
           1 + tradeConfig.lossTolerance,
           precision
         );
@@ -378,10 +373,9 @@ async function tradeWithFutures(
         binanceClient
           .futuresOrder({
             side: 'SELL',
-            type: 'LIMIT',
+            type: 'MARKET',
             symbol: pair,
             isIsolated: true,
-            price: String(purchasePrice),
             quantity: String(Math.round(100 * tradeConfig.allocation)),
           })
           .then(() => {
@@ -409,7 +403,7 @@ async function tradeWithFutures(
           })
           .then(() => {
             log(
-              `@Futures > Bot takes a short for ${pair} at the price ${purchasePrice} with TP/SL: ${
+              `@Futures > Bot takes a short for ${pair} at the price ${realtimePrice} with TP/SL: ${
                 takeProfitPrice ? takeProfitPrice : '----'
               }/${stopLossPrice}`
             );
