@@ -1,6 +1,6 @@
 import winston from 'winston';
 import Binance, { Candle, CandleChartInterval } from 'binance-api-node';
-import { isBuySignalRSI, isSellSignalRSI } from './rsi';
+import indicators, { RSI, SMA } from './indicators';
 
 require('dotenv').config();
 
@@ -65,7 +65,7 @@ function run() {
   // SPOT
   tradeConfigs
     .filter((tradeConfig) => tradeConfig.mode === 'spot')
-    .forEach((tradeConfig) => {
+    .forEach(async (tradeConfig) => {
       const pair = tradeConfig.asset + tradeConfig.base;
 
       log(
@@ -87,7 +87,7 @@ function run() {
   // FUTURES
   tradeConfigs
     .filter((tradeConfig) => tradeConfig.mode === 'futures')
-    .forEach((tradeConfig) => {
+    .forEach(async (tradeConfig) => {
       const pair = tradeConfig.asset + tradeConfig.base;
 
       log(
@@ -124,9 +124,10 @@ async function tradeWithSpot(
     balances.find((balance) => balance.asset === tradeConfig.base).free
   );
 
-  const info = await binanceClient.exchangeInfo();
-  const precision = info.symbols.find((symbol) => symbol.symbol === pair)
-    .baseAssetPrecision;
+  const precision =
+    String(realtimePrice).split('.').length === 2
+      ? String(realtimePrice).split('.')[1].length
+      : 0;
 
   // const currentTrades = await binanceClient.myTrades({ symbol: pair });
 
@@ -197,9 +198,10 @@ async function tradeWithFutures(
       .availableBalance
   );
 
-  const info = await binanceClient.exchangeInfo();
-  const precision = info.symbols.find((symbol) => symbol.symbol === pair)
-    .baseAssetPrecision;
+  const precision =
+    String(realtimePrice).split('.').length === 2
+      ? String(realtimePrice).split('.')[1].length
+      : 0;
 
   // const currentTrades = await binanceClient.futuresTrades({ symbol: pair });
 
@@ -311,16 +313,36 @@ function calculatePrice(price: number, percent: number, precision?: number) {
 }
 
 function isBuySignal(candles: Candle[]) {
-  return isBuySignalRSI(candles);
+  const data = {
+    open: candles.map((candle) => Number(candle.open)),
+    high: candles.map((candle) => Number(candle.high)),
+    close: candles.map((candle) => Number(candle.close)),
+    low: candles.map((candle) => Number(candle.low)),
+  };
+  return (
+    // indicators.bullish(data) ||
+    // RSI.isBuySignal(candles) ||
+    SMA.isBuySignal(candles)
+  );
 }
 
 function isSellSignal(candles: Candle[]) {
-  return isSellSignalRSI(candles);
+  const data = {
+    open: candles.map((candle) => Number(candle.open)),
+    high: candles.map((candle) => Number(candle.high)),
+    close: candles.map((candle) => Number(candle.close)),
+    low: candles.map((candle) => Number(candle.low)),
+  };
+  return (
+    // indicators.bearish(data) ||
+    // RSI.isSellSignal(candles) ||
+    SMA.isSellSignal(candles)
+  );
 }
 
 function log(message: string) {
   logger.info(message);
-  console.log(message);
+  console.log(`${new Date(Date.now())} : ${message}`);
 }
 
 prepare();
