@@ -1,20 +1,14 @@
 import winston from 'winston';
-import Binance, { Candle, CandleChartInterval } from 'binance-api-node';
-import indicators, { RSI, SMA } from './indicators';
-
+import Binance, { Candle } from 'binance-api-node';
+import technicalIndicators from 'technicalindicators';
+import { RSI, SMA } from './indicators';
+import {
+  tradeConfigs,
+  MAX_SAVED_CANDLES,
+  MIN_FREE_BALANCE_FOR_FUTURE_TRADING,
+  MIN_FREE_BALANCE_FOR_SPOT_TRADING,
+} from './config';
 require('dotenv').config();
-
-const tradeConfigs: TradeConfig[] = [
-  {
-    mode: 'futures',
-    asset: 'BTC',
-    base: 'USDT',
-    allocation: 0.005,
-    lossTolerance: 0.03,
-    profitTarget: 0.1,
-    interval: CandleChartInterval.ONE_MINUTE,
-  },
-];
 
 const logger = winston.createLogger({
   level: 'info',
@@ -30,10 +24,6 @@ const binanceClient = Binance({
 
 const closeCandles: { [key: string]: Candle[] } = {};
 
-// ============================ CONST =================================== //
-const MAX_SAVED_CANDLES = 100; // max candles for each crypto to store for analysis
-const MIN_FREE_BALANCE_FOR_SPOT_TRADING = 50;
-const MIN_FREE_BALANCE_FOR_FUTURE_TRADING = 50;
 // ====================================================================== //
 
 function prepare() {
@@ -80,6 +70,18 @@ function run() {
         // Add only the closed candle
         if (candle.isFinal) candles.push(candle);
 
+        if (
+          (candle.isFinal || candles.length === 0) &&
+          candles.length < MAX_SAVED_CANDLES
+        ) {
+          log(
+            `@Spot / Waiting to have enough candles for trade with ${pair}. Progress: ${Math.floor(
+              candles.length / MAX_SAVED_CANDLES
+            )}%`
+          );
+          return;
+        }
+
         tradeWithSpot(tradeConfig, candles, Number(candle.close));
       });
     });
@@ -105,6 +107,19 @@ function run() {
 
           // Add only the closed candle
           if (candle.isFinal) candles.push(candle);
+
+          // No trade before filling the candles array
+          if (
+            (candle.isFinal || candles.length === 0) &&
+            candles.length < MAX_SAVED_CANDLES
+          ) {
+            log(
+              `@Spot / Waiting to have enough candles for trade with ${pair}. Progress: ${Math.floor(
+                candles.length / MAX_SAVED_CANDLES
+              )}%`
+            );
+            return;
+          }
 
           tradeWithFutures(tradeConfig, candles, Number(candle.close));
         }
@@ -320,7 +335,7 @@ function isBuySignal(candles: Candle[]) {
     low: candles.map((candle) => Number(candle.low)),
   };
   return (
-    // indicators.bullish(data) ||
+    // technicalIndicators.bullish(data) ||
     // RSI.isBuySignal(candles) ||
     SMA.isBuySignal(candles)
   );
@@ -334,7 +349,7 @@ function isSellSignal(candles: Candle[]) {
     low: candles.map((candle) => Number(candle.low)),
   };
   return (
-    // indicators.bearish(data) ||
+    // technicalIndicators.bearish(data) ||
     // RSI.isSellSignal(candles) ||
     SMA.isSellSignal(candles)
   );

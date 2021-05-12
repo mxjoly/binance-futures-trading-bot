@@ -1,7 +1,5 @@
 import { Candle } from 'binance-api-node';
-import indicators from './index';
-
-const RSI = indicators.RSI;
+import { RSI } from 'technicalindicators';
 
 const RSI_PERIOD = 14;
 const RSI_OVERBOUGHT = 70;

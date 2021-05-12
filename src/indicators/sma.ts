@@ -1,7 +1,5 @@
 import { Candle } from 'binance-api-node';
-import indicators from './index';
-
-const { SMA, CrossUp, CrossDown } = indicators;
+import { SMA, CrossUp, CrossDown } from 'technicalindicators';
 
 const SMA_SMALL_PERIOD = 20;
 const SMA_LONG_PERIOD = 50;
