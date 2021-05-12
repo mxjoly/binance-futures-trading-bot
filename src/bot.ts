@@ -9,10 +9,10 @@ const tradeConfigs: TradeConfig[] = [
     mode: 'futures',
     asset: 'BTC',
     base: 'USDT',
-    allocation: 0.1,
+    allocation: 0.005,
     lossTolerance: 0.03,
     profitTarget: 0.1,
-    interval: CandleChartInterval.FIFTEEN_MINUTES,
+    interval: CandleChartInterval.ONE_MINUTE,
   },
 ];
 
@@ -56,26 +56,26 @@ function prepare() {
         .catch(logger.warning);
     });
 
-  logger.info('Bot is ready to work !');
+  log('Bot is ready to work !');
 }
 
 function run() {
-  logger.info('Bot is searching the good trades...');
+  log('Bot is searching the good trades...');
 
   // SPOT
   tradeConfigs
     .filter((tradeConfig) => tradeConfig.mode === 'spot')
     .forEach((tradeConfig) => {
-      logger.info(
-        `Spot : Bot is checking the ${tradeConfig.asset}/${tradeConfig.base}...`
-      );
-
       const pair = tradeConfig.asset + tradeConfig.base;
+
+      log(
+        `@Spot / Bot is checking the pair ${tradeConfig.asset}/${tradeConfig.base}`
+      );
 
       binanceClient.ws.candles(pair, tradeConfig.interval, (candle) => {
         const candles = closeCandles[pair];
 
-        if (candles.length > MAX_SAVED_CANDLES) candles.splice(1);
+        if (candles.length > MAX_SAVED_CANDLES) candles.slice(1);
 
         // Add only the closed candle
         if (candle.isFinal) candles.push(candle);
@@ -88,11 +88,11 @@ function run() {
   tradeConfigs
     .filter((tradeConfig) => tradeConfig.mode === 'futures')
     .forEach((tradeConfig) => {
-      logger.info(
-        `Futures : Bot is checking the ${tradeConfig.asset}/${tradeConfig.base}...`
-      );
-
       const pair = tradeConfig.asset + tradeConfig.base;
+
+      log(
+        `@Futures / Bot is checking the pair ${tradeConfig.asset}/${tradeConfig.base}`
+      );
 
       // @ts-ignore
       binanceClient.ws.futuresCandles(
@@ -101,7 +101,7 @@ function run() {
         (candle: Candle) => {
           const candles = closeCandles[pair];
 
-          if (candles.length > MAX_SAVED_CANDLES) candles.splice(1);
+          if (candles.length > MAX_SAVED_CANDLES) candles.slice(1);
 
           // Add only the closed candle
           if (candle.isFinal) candles.push(candle);
@@ -112,179 +112,202 @@ function run() {
     });
 }
 
-function tradeWithSpot(
+async function tradeWithSpot(
   tradeConfig: TradeConfig,
   candles: Candle[],
   realtimePrice: number
 ) {
-  binanceClient.accountInfo().then(({ balances }) => {
-    const base = Number(
-      balances.find((balance) => balance.asset === tradeConfig.base).free
-    );
+  const pair = `${tradeConfig.asset}${tradeConfig.base}`;
 
-    // Allow trading with a minimum of balance
-    if (base >= MIN_FREE_BALANCE_FOR_SPOT_TRADING) {
-      binanceClient
-        .myTrades({ symbol: tradeConfig.asset + tradeConfig.base })
-        .then((trades) => {
-          if (trades.length === 0 && isBuySignal(candles)) {
-            const purchasePrice = realtimePrice * 1.01;
-            // Buy limit order
-            binanceClient.order({
-              side: 'BUY',
-              type: 'LIMIT',
-              symbol: tradeConfig.asset + tradeConfig.base,
-              price: String(purchasePrice),
-              quantity: String(100 * tradeConfig.allocation),
-            });
+  const { balances } = await binanceClient.accountInfo();
+  const availableBalance = Number(
+    balances.find((balance) => balance.asset === tradeConfig.base).free
+  );
 
-            if (tradeConfig.profitTarget) {
-              // Sell oco order as TP/SL
-              binanceClient.orderOco({
-                side: 'SELL',
-                symbol: tradeConfig.asset + tradeConfig.base,
-                price: String(purchasePrice * (1 + tradeConfig.profitTarget)), // TP
-                stopPrice: String(
-                  purchasePrice * (1 - tradeConfig.lossTolerance)
-                ),
-                stopLimitPrice: String(
-                  purchasePrice * (1 - tradeConfig.lossTolerance)
-                ), // SL
-                quantity: '100',
-              });
-            } else {
-              // Sell limit order as SL
-              binanceClient.order({
-                side: 'SELL',
-                type: 'LIMIT',
-                symbol: tradeConfig.asset + tradeConfig.base,
-                price: String(purchasePrice * (1 - tradeConfig.lossTolerance)),
-                quantity: '100',
-              });
+  const info = await binanceClient.exchangeInfo();
+  const precision = info.symbols.find((symbol) => symbol.symbol === pair)
+    .baseAssetPrecision;
 
-              logger.info(
-                `Futures : Bot bought ${tradeConfig.asset} with ${
-                  tradeConfig.base
-                } at the price ${purchasePrice}. TP/SL: ${
-                  tradeConfig.profitTarget
-                    ? purchasePrice * (1 + tradeConfig.profitTarget)
-                    : '----'
-                }/${purchasePrice * (1 - tradeConfig.lossTolerance)}`
-              );
-            }
-          }
-        })
-        .catch(logger.warning);
-    }
-  });
-}
+  // const currentTrades = await binanceClient.myTrades({ symbol: pair });
 
-function tradeWithFutures(
-  tradeConfig: TradeConfig,
-  candles: Candle[],
-  realtimePrice: number
-) {
-  binanceClient
-    .futuresAccountBalance()
-    .then((balances) => {
-      // Balance free crypto
-      const base = Number(
-        balances.find((balance) => balance.asset === tradeConfig.base)
-          .availableBalance
+  // Allow trading with a minimum of balance
+  if (availableBalance >= MIN_FREE_BALANCE_FOR_SPOT_TRADING) {
+    if (isBuySignal(candles)) {
+      const purchasePrice = calculatePrice(realtimePrice, 1.01, precision);
+      const takeProfitPrice = tradeConfig.profitTarget
+        ? calculatePrice(purchasePrice, 1 + tradeConfig.profitTarget, precision)
+        : null;
+      const stopLossPrice = calculatePrice(
+        purchasePrice,
+        1 - tradeConfig.lossTolerance,
+        precision
       );
 
-      // Allow trading with a minimum of balance
-      if (base >= MIN_FREE_BALANCE_FOR_FUTURE_TRADING) {
-        if (isBuySignal(candles)) {
-          const purchasePrice = realtimePrice * 1.01;
-          // Buy limit order
-          binanceClient.futuresOrder({
-            side: 'BUY',
-            type: 'LIMIT',
-            symbol: tradeConfig.asset + tradeConfig.base,
-            isIsolated: true,
-            price: String(purchasePrice),
-            quantity: String(Math.round(100 * tradeConfig.allocation)),
-          });
+      // Buy limit order
+      binanceClient.order({
+        side: 'BUY',
+        type: 'LIMIT',
+        symbol: pair,
+        price: String(purchasePrice),
+        quantity: String(Math.round(100 * tradeConfig.allocation)),
+      });
 
-          if (tradeConfig.profitTarget) {
-            // Take profit order
-            binanceClient.futuresOrder({
-              side: 'SELL',
-              type: 'TAKE_PROFIT_MARKET',
-              symbol: tradeConfig.asset + tradeConfig.base,
-              isIsolated: true,
-              price: String(purchasePrice * (1 + tradeConfig.profitTarget)),
-              quantity: '100',
-            });
-          }
+      if (takeProfitPrice) {
+        // Sell oco order as TP/SL
+        binanceClient.orderOco({
+          side: 'SELL',
+          symbol: pair,
+          price: String(takeProfitPrice),
+          stopPrice: String(stopLossPrice),
+          stopLimitPrice: String(stopLossPrice),
+          quantity: '100',
+        });
+      } else {
+        // Sell limit order as SL
+        binanceClient.order({
+          side: 'SELL',
+          type: 'LIMIT',
+          symbol: pair,
+          price: String(stopLossPrice),
+          quantity: '100',
+        });
 
-          // Stop loss order
-          binanceClient.futuresOrder({
-            side: 'SELL',
-            type: 'STOP_MARKET',
-            symbol: tradeConfig.asset + tradeConfig.base,
-            isIsolated: true,
-            stopPrice: String(purchasePrice * (1 - tradeConfig.lossTolerance)),
-            quantity: '100',
-          });
-
-          logger.info(
-            `Futures : Bot takes a long for ${tradeConfig.asset}/${
-              tradeConfig.base
-            } at the price ${purchasePrice} with TP/SL: ${
-              tradeConfig.profitTarget
-                ? purchasePrice * (1 + tradeConfig.profitTarget)
-                : '----'
-            }/${purchasePrice * (1 - tradeConfig.lossTolerance)}`
-          );
-        } else if (isSellSignal(candles)) {
-          const purchasePrice = realtimePrice * 0.99;
-          // Sell limit order
-          binanceClient.futuresOrder({
-            side: 'SELL',
-            type: 'LIMIT',
-            symbol: tradeConfig.asset + tradeConfig.base,
-            isIsolated: true,
-            price: String(purchasePrice),
-            quantity: String(Math.round(100 * tradeConfig.allocation)),
-          });
-
-          if (tradeConfig.profitTarget) {
-            // Take profit order
-            binanceClient.futuresOrder({
-              side: 'BUY',
-              type: 'TAKE_PROFIT_MARKET',
-              symbol: tradeConfig.asset + tradeConfig.base,
-              isIsolated: true,
-              price: String(purchasePrice * (1 - tradeConfig.profitTarget)),
-              quantity: '100',
-            });
-          }
-
-          // Stop loss order
-          binanceClient.futuresOrder({
-            side: 'BUY',
-            type: 'STOP_MARKET',
-            symbol: tradeConfig.asset + tradeConfig.base,
-            isIsolated: true,
-            stopPrice: String(purchasePrice * (1 + tradeConfig.lossTolerance)),
-            quantity: '100',
-          });
-
-          logger.info(
-            `Futures : Bot takes a short for ${tradeConfig.asset}/${
-              tradeConfig.base
-            } at the price ${purchasePrice} with TP/SL: ${
-              tradeConfig.profitTarget
-                ? purchasePrice * (1 - tradeConfig.profitTarget)
-                : '----'
-            }/${purchasePrice * (1 + tradeConfig.lossTolerance)}`
-          );
-        }
+        log(
+          `@Spot / Bot bought ${tradeConfig.asset} with ${
+            tradeConfig.base
+          } at the price ${purchasePrice}. TP/SL: ${
+            takeProfitPrice ? takeProfitPrice : '----'
+          }/${stopLossPrice}`
+        );
       }
-    })
-    .catch(logger.warning);
+    }
+  }
+}
+
+async function tradeWithFutures(
+  tradeConfig: TradeConfig,
+  candles: Candle[],
+  realtimePrice: number
+) {
+  const pair = `${tradeConfig.asset}${tradeConfig.base}`;
+
+  const balances = await binanceClient.futuresAccountBalance();
+  const availableBalance = Number(
+    balances.find((balance) => balance.asset === tradeConfig.base)
+      .availableBalance
+  );
+
+  const info = await binanceClient.exchangeInfo();
+  const precision = info.symbols.find((symbol) => symbol.symbol === pair)
+    .baseAssetPrecision;
+
+  // const currentTrades = await binanceClient.futuresTrades({ symbol: pair });
+
+  // Allow trading with a minimum of balance
+  if (availableBalance >= MIN_FREE_BALANCE_FOR_FUTURE_TRADING) {
+    if (isBuySignal(candles)) {
+      const purchasePrice = calculatePrice(realtimePrice, 1.01, precision);
+      const takeProfitPrice = tradeConfig.profitTarget
+        ? calculatePrice(purchasePrice, 1 + tradeConfig.profitTarget, precision)
+        : null;
+      const stopLossPrice = calculatePrice(
+        purchasePrice,
+        1 - tradeConfig.lossTolerance,
+        precision
+      );
+
+      // Buy limit order
+      binanceClient.futuresOrder({
+        side: 'BUY',
+        type: 'LIMIT',
+        symbol: pair,
+        isIsolated: true,
+        price: String(purchasePrice),
+        quantity: String(Math.round(100 * tradeConfig.allocation)),
+      });
+
+      if (takeProfitPrice) {
+        // Take profit order
+        binanceClient.futuresOrder({
+          side: 'SELL',
+          type: 'TAKE_PROFIT_MARKET',
+          symbol: pair,
+          isIsolated: true,
+          price: String(takeProfitPrice),
+          quantity: '100',
+        });
+      }
+
+      // Stop loss order
+      binanceClient.futuresOrder({
+        side: 'SELL',
+        type: 'STOP_MARKET',
+        symbol: pair,
+        isIsolated: true,
+        stopPrice: String(stopLossPrice),
+        quantity: '100',
+      });
+
+      log(
+        `@Futures : Bot takes a long for ${pair} at the price ${purchasePrice} with TP/SL: ${
+          takeProfitPrice ? takeProfitPrice : '----'
+        }/${stopLossPrice}`
+      );
+    } else if (isSellSignal(candles)) {
+      const purchasePrice = calculatePrice(realtimePrice, 0.99, precision);
+      const takeProfitPrice = tradeConfig.profitTarget
+        ? calculatePrice(purchasePrice, 1 - tradeConfig.profitTarget, precision)
+        : null;
+      const stopLossPrice = calculatePrice(
+        purchasePrice,
+        1 + tradeConfig.lossTolerance,
+        precision
+      );
+
+      // Sell limit order
+      binanceClient.futuresOrder({
+        side: 'SELL',
+        type: 'LIMIT',
+        symbol: pair,
+        isIsolated: true,
+        price: String(purchasePrice),
+        quantity: String(Math.round(100 * tradeConfig.allocation)),
+      });
+
+      if (takeProfitPrice) {
+        // Take profit order
+        binanceClient.futuresOrder({
+          side: 'BUY',
+          type: 'TAKE_PROFIT_MARKET',
+          symbol: pair,
+          isIsolated: true,
+          price: String(takeProfitPrice),
+          quantity: '100',
+        });
+      }
+
+      // Stop loss order
+      binanceClient.futuresOrder({
+        side: 'BUY',
+        type: 'STOP_MARKET',
+        symbol: pair,
+        isIsolated: true,
+        stopPrice: String(stopLossPrice),
+        quantity: '100',
+      });
+
+      log(
+        `@Futures : Bot takes a short for ${pair} at the price ${purchasePrice} with TP/SL: ${
+          takeProfitPrice ? takeProfitPrice : '----'
+        }/${stopLossPrice}`
+      );
+    }
+  }
+}
+
+function calculatePrice(price: number, percent: number, precision?: number) {
+  const newPrice = price * percent;
+  return precision ? Number(newPrice.toFixed(precision)) : newPrice;
 }
 
 function isBuySignal(candles: Candle[]) {
@@ -293,6 +316,11 @@ function isBuySignal(candles: Candle[]) {
 
 function isSellSignal(candles: Candle[]) {
   return isSellSignalRSI(candles);
+}
+
+function log(message: string) {
+  logger.info(message);
+  console.log(message);
 }
 
 prepare();

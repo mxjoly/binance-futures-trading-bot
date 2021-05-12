@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon ./build/bot.js",
+    "start": "rimraf ./bot.log && nodemon ./build/bot.js",
     "build": "tsc"
   },
   "keywords": [],
@@ -18,6 +18,7 @@
   },
   "devDependencies": {
     "dotenv": "^9.0.1",
+    "rimraf": "^3.0.2",
     "typescript": "^4.2.4"
   }
 }
