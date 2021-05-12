@@ -50,7 +50,7 @@ function prepare() {
 }
 
 function run() {
-  log('Bot is searching the good trades...');
+  log('====================== Binance Bot Trading ======================');
 
   // SPOT
   tradeConfigs
@@ -59,7 +59,7 @@ function run() {
       const pair = tradeConfig.asset + tradeConfig.base;
 
       log(
-        `@Spot / Bot is checking the pair ${tradeConfig.asset}/${tradeConfig.base}`
+        `@Spot / Bot prepares to check the pair ${tradeConfig.asset}/${tradeConfig.base}`
       );
 
       binanceClient.ws.candles(pair, tradeConfig.interval, (candle) => {
@@ -68,18 +68,18 @@ function run() {
         if (candles.length > MAX_SAVED_CANDLES) candles.slice(1);
 
         // Add only the closed candle
-        if (candle.isFinal) candles.push(candle);
-
-        if (
-          (candle.isFinal || candles.length === 0) &&
-          candles.length < MAX_SAVED_CANDLES
-        ) {
-          log(
-            `@Spot / Waiting to have enough candles for trade with ${pair}. Progress: ${Math.floor(
-              candles.length / MAX_SAVED_CANDLES
-            )}%`
-          );
-          return;
+        if (candle.isFinal) {
+          candles.push(candle);
+          if (candles.length < MAX_SAVED_CANDLES) {
+            log(
+              `@Spot / Waiting to have enough candles for ${pair}. Progress: ${Math.floor(
+                candles.length / MAX_SAVED_CANDLES
+              )}%`
+            );
+            return;
+          } else {
+            log(`@Spot / Progress completed. The bot begins to trade !`);
+          }
         }
 
         tradeWithSpot(tradeConfig, candles, Number(candle.close));
@@ -93,7 +93,7 @@ function run() {
       const pair = tradeConfig.asset + tradeConfig.base;
 
       log(
-        `@Futures / Bot is checking the pair ${tradeConfig.asset}/${tradeConfig.base}`
+        `@Futures / Bot prepares to check the pair ${tradeConfig.asset}/${tradeConfig.base}`
       );
 
       // @ts-ignore
@@ -106,19 +106,19 @@ function run() {
           if (candles.length > MAX_SAVED_CANDLES) candles.slice(1);
 
           // Add only the closed candle
-          if (candle.isFinal) candles.push(candle);
-
-          // No trade before filling the candles array
-          if (
-            (candle.isFinal || candles.length === 0) &&
-            candles.length < MAX_SAVED_CANDLES
-          ) {
-            log(
-              `@Spot / Waiting to have enough candles for trade with ${pair}. Progress: ${Math.floor(
-                candles.length / MAX_SAVED_CANDLES
-              )}%`
-            );
-            return;
+          if (candle.isFinal) {
+            candles.push(candle);
+            // No trade before filling the candles array
+            if (candles.length < MAX_SAVED_CANDLES) {
+              log(
+                `@Futures / Waiting to have enough candles for ${pair}. Progress: ${Math.floor(
+                  candles.length / MAX_SAVED_CANDLES
+                )}%`
+              );
+              return;
+            } else {
+              log(`@Futures / Progress completed. The bot begins to trade !`);
+            }
           }
 
           tradeWithFutures(tradeConfig, candles, Number(candle.close));
