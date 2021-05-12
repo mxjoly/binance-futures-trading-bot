@@ -6,8 +6,6 @@ const SMA_LONG_PERIOD = 50;
 
 /**
  * Return true if the SMA 20 cross up the SMA 50
- * @param candles
- * @returns
  */
 export const isBuySignal = (candles: Candle[]) => {
   if (candles.length >= SMA_LONG_PERIOD) {
@@ -21,19 +19,15 @@ export const isBuySignal = (candles: Candle[]) => {
       period: SMA_LONG_PERIOD,
     });
 
-    const input = {
-      lineA: valuesForSmallPeriod,
-      lineB: valuesForLongPeriod,
-    };
+    const input = { lineA: valuesForSmallPeriod, lineB: valuesForLongPeriod };
 
     const results = CrossUp.calculate(input);
-    return results[results.length - 1];
+    return results[results.length - 1] === true;
   }
 };
 
 /**
  * Return true if the SMA 20 cross down the SMA 50
- * @param candles
  */
 export const isSellSignal = (candles: Candle[]) => {
   if (candles.length >= SMA_LONG_PERIOD) {
@@ -47,12 +41,9 @@ export const isSellSignal = (candles: Candle[]) => {
       period: SMA_LONG_PERIOD,
     });
 
-    const input = {
-      lineA: valuesForSmallPeriod,
-      lineB: valuesForLongPeriod,
-    };
+    const input = { lineA: valuesForSmallPeriod, lineB: valuesForLongPeriod };
 
     const results = CrossDown.calculate(input);
-    return results[results.length - 1];
+    return results[results.length - 1] === true;
   }
 };
