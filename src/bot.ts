@@ -13,7 +13,6 @@ require('dotenv').config();
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.simple(),
-  defaultMeta: { date: new Date(Date.now()) },
   transports: [new winston.transports.File({ filename: 'bot.log' })],
 });
 
@@ -317,7 +316,6 @@ async function tradeWithFutures(
                 type: 'TAKE_PROFIT_MARKET',
                 symbol: pair,
                 isIsolated: true,
-                price: String(takeProfitPrice),
                 quantity: String(quantity),
               });
             }
@@ -374,7 +372,6 @@ async function tradeWithFutures(
                 type: 'TAKE_PROFIT_MARKET',
                 symbol: pair,
                 isIsolated: true,
-                price: String(takeProfitPrice),
                 quantity: String(quantity),
               });
             }
