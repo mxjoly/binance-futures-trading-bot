@@ -92,9 +92,10 @@ async function run() {
             log(`@${BINANCE_MODE} > The bot is ready to trade now !`);
             loadDataComplete = true;
           }
-          return;
         }
       }
+
+      if (candles.length < MAX_SAVED_CANDLES) return;
 
       if (BINANCE_MODE === 'spot') {
         tradeWithSpot(tradeConfig, candles, Number(candle.close), exchangeInfo);
@@ -185,7 +186,7 @@ async function tradeWithSpot(
                 price: String(takeProfitPrice),
                 stopPrice: String(stopLossPrice),
                 stopLimitPrice: String(stopLossPrice),
-                quantity: String(quantity),
+                quantity: '100',
               })
               .catch(error);
           } else {
@@ -196,7 +197,7 @@ async function tradeWithSpot(
                 type: 'LIMIT',
                 symbol: pair,
                 price: String(stopLossPrice),
-                quantity: String(quantity),
+                quantity: '100',
               })
               .catch(error);
           }
@@ -240,7 +241,7 @@ async function tradeWithFutures(
             type: 'MARKET',
             symbol: pair,
             isIsolated: true,
-            quantity: '100',
+            quantity: openTrade.qty,
           })
           .then(() => {
             log(
@@ -260,7 +261,7 @@ async function tradeWithFutures(
             type: 'MARKET',
             symbol: pair,
             isIsolated: true,
-            quantity: '100',
+            quantity: openTrade.qty,
           })
           .then(() => {
             log(
