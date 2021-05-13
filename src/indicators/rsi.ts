@@ -6,7 +6,7 @@ const RSI_OVERBOUGHT = 70;
 const RSI_OVERSOLD = 30;
 
 /**
- * Return true if the RSI cross up the oversold zone line
+ * Return true if the RSI crosses up the oversold zone line
  */
 export const isBuySignal = (candles: Candle[]) => {
   if (candles.length >= RSI_PERIOD) {
@@ -24,7 +24,7 @@ export const isBuySignal = (candles: Candle[]) => {
 };
 
 /**
- * Return true if the RSI cross down the overbought zone line
+ * Return true if the RSI crosses down the overbought zone line
  */
 export const isSellSignal = (candles: Candle[]) => {
   if (candles.length >= RSI_PERIOD) {

@@ -7,7 +7,7 @@ const RSI_OVERSOLD = 30;
 const SMA_PERIOD = 20;
 
 /**
- * Return true if the RSI cross up the SMA or if the rsi cross up the oversold zone line
+ * Return true if the RSI crosses up the SMA or if the RSI crosses up the oversold zone line
  */
 export const isBuySignal = (candles: Candle[]) => {
   if (candles.length >= RSI_PERIOD) {
@@ -34,7 +34,7 @@ export const isBuySignal = (candles: Candle[]) => {
 };
 
 /**
- * Return true if the RSI cross down the SMA or if the rsi cross up the oversold zone line
+ * Return true if the RSI crosses down the SMA or if the rsi crosses up the oversold zone line
  */
 export const isSellSignal = (candles: Candle[]) => {
   if (candles.length >= RSI_PERIOD) {

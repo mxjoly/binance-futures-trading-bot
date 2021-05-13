@@ -1,7 +1,7 @@
 import winston from 'winston';
-import Binance, { Candle, TradeResult } from 'binance-api-node';
+import Binance, { Candle, ExchangeInfo, TradeResult } from 'binance-api-node';
 import technicalIndicators from 'technicalindicators';
-import { RSI, SMA, RSI_SMA } from './indicators';
+import { RSI, CROSS_SMA, SMA, RSI_SMA } from './indicators';
 import {
   tradeConfigs,
   MAX_SAVED_CANDLES,
@@ -27,6 +27,10 @@ const closeCandles: { [key: string]: Candle[] } = {};
 
 // ====================================================================== //
 
+const BINANCE_MODE: BinanceMode = 'futures';
+
+// ====================================================================== //
+
 function prepare() {
   // Initialize array of closes candles
   tradeConfigs
@@ -35,10 +39,9 @@ function prepare() {
       closeCandles[pair] = [];
     });
 
-  // Set the initial leverage for the futures
-  tradeConfigs
-    .filter((tradeConfig) => (tradeConfig.mode = 'futures'))
-    .forEach((tradeConfig) => {
+  if (BINANCE_MODE === 'futures') {
+    // Set the initial leverage for the futures
+    tradeConfigs.forEach((tradeConfig) => {
       binanceClient
         .futuresLeverage({
           symbol: tradeConfig.asset + tradeConfig.base,
@@ -46,90 +49,72 @@ function prepare() {
         })
         .catch(error);
     });
+  }
 }
 
-function run() {
+async function run() {
+  let loadDataComplete = false;
+
   log('====================== Binance Bot Trading ======================');
 
-  // SPOT
-  tradeConfigs
-    .filter((tradeConfig) => tradeConfig.mode === 'spot')
-    .forEach((tradeConfig) => {
-      const pair = tradeConfig.asset + tradeConfig.base;
+  const exchangeInfo =
+    BINANCE_MODE === 'spot'
+      ? await binanceClient.exchangeInfo()
+      : await binanceClient.futuresExchangeInfo();
 
-      log(
-        `@Spot > Bot prepares to check the pair ${tradeConfig.asset}/${tradeConfig.base}`
-      );
+  tradeConfigs.forEach((tradeConfig) => {
+    const pair = tradeConfig.asset + tradeConfig.base;
 
-      binanceClient.ws.candles(pair, tradeConfig.interval, (candle) => {
-        const candles = closeCandles[pair];
+    log(
+      `@${BINANCE_MODE} > The bot prepares to check the pair ${tradeConfig.asset}/${tradeConfig.base}`
+    );
 
-        if (candles.length > MAX_SAVED_CANDLES) candles.slice(1);
+    binanceClient.ws.candles(pair, tradeConfig.interval, (candle) => {
+      const candles = closeCandles[pair];
 
-        // Add only the closed candle
-        if (candle.isFinal) {
-          candles.push(candle);
+      if (candles.length > MAX_SAVED_CANDLES) candles.slice(1);
+
+      // Add only the closed candle
+      if (candle.isFinal) {
+        candles.push(candle);
+        // No trade before filling the candles array
+        if (!loadDataComplete) {
           if (candles.length < MAX_SAVED_CANDLES) {
             log(
-              `@Spot > Waiting to have enough candles for ${pair}. Progress: ${Math.floor(
+              `@${BINANCE_MODE} > Waiting to have enough candles to trade ${pair}. Progress: ${Math.floor(
                 (candles.length / MAX_SAVED_CANDLES) * 100
               )}%`
             );
-            return;
-          } else {
-            log(`@Spot > Progress completed. The bot begins to trade !`);
+          } else if (candles.length === MAX_SAVED_CANDLES) {
+            log(
+              `@${BINANCE_MODE} > Waiting to have enough candles to trade ${pair}. Progress: 100%`
+            );
+            log(`@${BINANCE_MODE} > The bot is ready to trade now !`);
+            loadDataComplete = true;
           }
+          return;
         }
+      }
 
-        tradeWithSpot(tradeConfig, candles, Number(candle.close));
-      });
+      if (BINANCE_MODE === 'spot') {
+        tradeWithSpot(tradeConfig, candles, Number(candle.close), exchangeInfo);
+      } else {
+        tradeWithFutures(
+          tradeConfig,
+          candles,
+          Number(candle.close),
+          exchangeInfo
+        );
+      }
     });
-
-  // FUTURES
-  tradeConfigs
-    .filter((tradeConfig) => tradeConfig.mode === 'futures')
-    .forEach((tradeConfig) => {
-      const pair = tradeConfig.asset + tradeConfig.base;
-
-      log(
-        `@Futures > Bot prepares to check the pair ${tradeConfig.asset}/${tradeConfig.base}`
-      );
-
-      // @ts-ignore
-      binanceClient.ws.futuresCandles(
-        pair,
-        tradeConfig.interval,
-        (candle: Candle) => {
-          const candles = closeCandles[pair];
-
-          if (candles.length > MAX_SAVED_CANDLES) candles.slice(1);
-
-          // Add only the closed candle
-          if (candle.isFinal) {
-            candles.push(candle);
-            // No trade before filling the candles array
-            if (candles.length < MAX_SAVED_CANDLES) {
-              log(
-                `@Futures > Waiting to have enough candles for ${pair}. Progress: ${Math.floor(
-                  (candles.length / MAX_SAVED_CANDLES) * 100
-                )}%`
-              );
-              return;
-            } else {
-              log(`@Futures > Progress completed. The bot begins to trade !`);
-            }
-          }
-
-          tradeWithFutures(tradeConfig, candles, Number(candle.close));
-        }
-      );
-    });
+  });
 }
 
 async function tradeWithSpot(
   tradeConfig: TradeConfig,
   candles: Candle[],
-  realtimePrice: number
+  realtimePrice: number,
+  exchangeInfo: ExchangeInfo
 ) {
   const pair = `${tradeConfig.asset}${tradeConfig.base}`;
 
@@ -137,12 +122,6 @@ async function tradeWithSpot(
   const availableBalance = Number(
     balances.find((balance) => balance.asset === tradeConfig.base).free
   );
-
-  // Number of decimals
-  const precision =
-    String(realtimePrice).split('.').length === 2
-      ? String(realtimePrice).split('.')[1].length
-      : 0;
 
   const currentTrades = await binanceClient.myTrades({ symbol: pair });
 
@@ -156,7 +135,7 @@ async function tradeWithSpot(
           side: 'SELL',
           type: 'MARKET',
           symbol: openTrade.symbol,
-          quantity: '100',
+          quantity: openTrade.qty,
         })
         .then(() => {
           log(
@@ -173,12 +152,19 @@ async function tradeWithSpot(
   } else if (availableBalance >= MIN_FREE_BALANCE_FOR_SPOT_TRADING) {
     if (isBuySignal(candles)) {
       const takeProfitPrice = tradeConfig.profitTarget
-        ? calculatePrice(realtimePrice, 1 + tradeConfig.profitTarget, precision)
+        ? calculatePrice(realtimePrice, 1 + tradeConfig.profitTarget)
         : null;
       const stopLossPrice = calculatePrice(
         realtimePrice,
-        1 - tradeConfig.lossTolerance,
-        precision
+        1 - tradeConfig.lossTolerance
+      );
+
+      const quantity = getQuantity(
+        pair,
+        availableBalance,
+        tradeConfig.allocation,
+        realtimePrice,
+        exchangeInfo
       );
 
       // Buy limit order
@@ -187,7 +173,7 @@ async function tradeWithSpot(
           side: 'BUY',
           type: 'MARKET',
           symbol: pair,
-          quantity: String(Math.round(100 * tradeConfig.allocation)),
+          quantity: String(quantity),
         })
         .then(() => {
           if (takeProfitPrice) {
@@ -199,7 +185,7 @@ async function tradeWithSpot(
                 price: String(takeProfitPrice),
                 stopPrice: String(stopLossPrice),
                 stopLimitPrice: String(stopLossPrice),
-                quantity: '100',
+                quantity: String(quantity),
               })
               .catch(error);
           } else {
@@ -210,7 +196,7 @@ async function tradeWithSpot(
                 type: 'LIMIT',
                 symbol: pair,
                 price: String(stopLossPrice),
-                quantity: '100',
+                quantity: String(quantity),
               })
               .catch(error);
           }
@@ -232,7 +218,8 @@ async function tradeWithSpot(
 async function tradeWithFutures(
   tradeConfig: TradeConfig,
   candles: Candle[],
-  realtimePrice: number
+  realtimePrice: number,
+  exchangeInfo: ExchangeInfo
 ) {
   const pair = `${tradeConfig.asset}${tradeConfig.base}`;
 
@@ -241,12 +228,6 @@ async function tradeWithFutures(
     balances.find((balance) => balance.asset === tradeConfig.base)
       .availableBalance
   );
-
-  // Number of decimals
-  const precision =
-    String(realtimePrice).split('.').length === 2
-      ? String(realtimePrice).split('.')[1].length
-      : 0;
 
   const currentTrades = await binanceClient.futuresTrades({ symbol: pair });
 
@@ -303,16 +284,19 @@ async function tradeWithFutures(
     if (availableBalance >= MIN_FREE_BALANCE_FOR_FUTURE_TRADING) {
       if (isBuySignal(candles)) {
         const takeProfitPrice = tradeConfig.profitTarget
-          ? calculatePrice(
-              realtimePrice,
-              1 + tradeConfig.profitTarget,
-              precision
-            )
+          ? calculatePrice(realtimePrice, 1 + tradeConfig.profitTarget)
           : null;
         const stopLossPrice = calculatePrice(
           realtimePrice,
-          1 - tradeConfig.lossTolerance,
-          precision
+          1 - tradeConfig.lossTolerance
+        );
+
+        const quantity = getQuantity(
+          pair,
+          availableBalance,
+          tradeConfig.allocation,
+          realtimePrice,
+          exchangeInfo
         );
 
         // Buy limit order
@@ -322,7 +306,7 @@ async function tradeWithFutures(
             type: 'MARKET',
             symbol: pair,
             isIsolated: true,
-            quantity: String(Math.round(100 * tradeConfig.allocation)),
+            quantity: String(quantity),
           })
           .then(() => {
             if (takeProfitPrice) {
@@ -333,7 +317,7 @@ async function tradeWithFutures(
                 symbol: pair,
                 isIsolated: true,
                 price: String(takeProfitPrice),
-                quantity: '100',
+                quantity: String(quantity),
               });
             }
 
@@ -344,7 +328,7 @@ async function tradeWithFutures(
               symbol: pair,
               isIsolated: true,
               stopPrice: String(stopLossPrice),
-              quantity: '100',
+              quantity: String(quantity),
             });
           })
           .then(() => {
@@ -357,16 +341,19 @@ async function tradeWithFutures(
           .catch(error);
       } else if (isSellSignal(candles)) {
         const takeProfitPrice = tradeConfig.profitTarget
-          ? calculatePrice(
-              realtimePrice,
-              1 - tradeConfig.profitTarget,
-              precision
-            )
+          ? calculatePrice(realtimePrice, 1 - tradeConfig.profitTarget)
           : null;
         const stopLossPrice = calculatePrice(
           realtimePrice,
-          1 + tradeConfig.lossTolerance,
-          precision
+          1 + tradeConfig.lossTolerance
+        );
+
+        const quantity = getQuantity(
+          pair,
+          availableBalance,
+          tradeConfig.allocation,
+          realtimePrice,
+          exchangeInfo
         );
 
         // Sell limit order
@@ -376,7 +363,7 @@ async function tradeWithFutures(
             type: 'MARKET',
             symbol: pair,
             isIsolated: true,
-            quantity: String(Math.round(100 * tradeConfig.allocation)),
+            quantity: String(quantity),
           })
           .then(() => {
             if (takeProfitPrice) {
@@ -387,7 +374,7 @@ async function tradeWithFutures(
                 symbol: pair,
                 isIsolated: true,
                 price: String(takeProfitPrice),
-                quantity: '100',
+                quantity: String(quantity),
               });
             }
 
@@ -398,7 +385,7 @@ async function tradeWithFutures(
               symbol: pair,
               isIsolated: true,
               stopPrice: String(stopLossPrice),
-              quantity: '100',
+              quantity: String(quantity),
             });
           })
           .then(() => {
@@ -421,7 +408,11 @@ async function tradeWithFutures(
   }
 }
 
-function calculatePrice(price: number, percent: number, precision?: number) {
+/**
+ * Calculate a new price by apply a percentage
+ */
+function calculatePrice(price: number, percent: number) {
+  const precision = getPrecision(price);
   const newPrice = price * percent;
   return precision ? Number(newPrice.toFixed(precision)) : newPrice;
 }
@@ -435,9 +426,8 @@ function isBuySignal(candles: Candle[]) {
   };
   return (
     // technicalIndicators.bullish(data) ||
-    // RSI.isBuySignal(candles) ||
-    // SMA.isBuySignal(candles) ||
-    RSI_SMA.isBuySignal(candles)
+    // CROSS_SMA.isBuySignal(candles) ||
+    RSI.isBuySignal(candles) || SMA.isBuySignal(candles)
   );
 }
 
@@ -450,10 +440,45 @@ function isSellSignal(candles: Candle[]) {
   };
   return (
     // technicalIndicators.bearish(data) ||
-    // RSI.isSellSignal(candles) ||
-    // SMA.isSellSignal(candles) ||
-    RSI_SMA.isSellSignal(candles)
+    // CROSS_SMA.isSellSignal(candles) ||
+    RSI.isSellSignal(candles) || SMA.isSellSignal(candles)
   );
+}
+
+/**
+ * Get the quantity of a crypto to trade according to the available balance,
+ * the allocation to take, and the current price of the crypto
+ */
+function getQuantity(
+  pair: string,
+  availableBalance: number,
+  allocation: number,
+  realtimePrice: number,
+  exchangeInfo: ExchangeInfo
+) {
+  const minQuantity = Number(
+    exchangeInfo.symbols
+      .find((symbol) => symbol.symbol === pair)
+      // @ts-ignore
+      .filters.find((filter) => filter.filterType === 'LOT_SIZE').minQty
+  );
+
+  const quantity = Number(
+    ((availableBalance * allocation) / realtimePrice).toFixed(
+      getPrecision(realtimePrice)
+    )
+  );
+
+  return quantity >= minQuantity ? quantity : minQuantity;
+}
+
+/**
+ * Get the number of decimals
+ */
+function getPrecision(number: number) {
+  return String(number).split('.').length === 2
+    ? String(number).split('.')[1].length
+    : 0;
 }
 
 function log(message: string) {
@@ -462,7 +487,7 @@ function log(message: string) {
 }
 
 function error(message: string) {
-  logger.warning(message);
+  logger.warn(message);
   console.error(`${new Date(Date.now())} : ${message}`);
 }
 

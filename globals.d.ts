@@ -1,5 +1,4 @@
 interface TradeConfig {
-  mode: 'spot' | 'futures';
   asset: string;
   base: string;
   allocation: number; // between 0 and 1
@@ -8,3 +7,5 @@ interface TradeConfig {
   interval: CandleChartInterval;
   leverage?: number;
 }
+
+type BinanceMode = 'spot' | 'futures';
