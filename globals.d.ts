@@ -9,3 +9,13 @@ interface TradeConfig {
 }
 
 type BinanceMode = 'spot' | 'futures';
+
+interface ChartCandle {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  closeTime: number;
+  trades: number;
+}

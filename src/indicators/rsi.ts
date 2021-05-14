@@ -1,4 +1,3 @@
-import { Candle } from 'binance-api-node';
 import { RSI } from 'technicalindicators';
 
 const RSI_PERIOD = 14;
@@ -8,10 +7,10 @@ const RSI_OVERSOLD = 30;
 /**
  * Return true if the RSI crosses up the oversold zone line
  */
-export const isBuySignal = (candles: Candle[]) => {
+export const isBuySignal = (candles: ChartCandle[]) => {
   if (candles.length >= RSI_PERIOD) {
     const values = RSI.calculate({
-      values: candles.map((candle) => Number(candle.close)),
+      values: candles.map((candle) => candle.close),
       period: RSI_PERIOD,
     });
 
@@ -26,10 +25,10 @@ export const isBuySignal = (candles: Candle[]) => {
 /**
  * Return true if the RSI crosses down the overbought zone line
  */
-export const isSellSignal = (candles: Candle[]) => {
+export const isSellSignal = (candles: ChartCandle[]) => {
   if (candles.length >= RSI_PERIOD) {
     const values = RSI.calculate({
-      values: candles.map((candle) => Number(candle.close)),
+      values: candles.map((candle) => candle.close),
       period: RSI_PERIOD,
     });
 

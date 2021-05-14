@@ -1,4 +1,3 @@
-import { Candle } from 'binance-api-node';
 import { SMA, CrossUp, CrossDown } from 'technicalindicators';
 
 const SMA_PERIOD = 20;
@@ -6,15 +5,15 @@ const SMA_PERIOD = 20;
 /**
  * Return true if the last candle crosses up the SMA
  */
-export const isBuySignal = (candles: Candle[]) => {
+export const isBuySignal = (candles: ChartCandle[]) => {
   if (candles.length >= SMA_PERIOD) {
     const values = SMA.calculate({
-      values: candles.map((candle) => Number(candle.close)),
+      values: candles.map((candle) => candle.close),
       period: SMA_PERIOD,
     });
 
     const input = {
-      lineA: candles.map((candle) => Number(candle.close)),
+      lineA: candles.map((candle) => candle.close),
       lineB: values,
     };
 
@@ -26,15 +25,15 @@ export const isBuySignal = (candles: Candle[]) => {
 /**
  * Return true if the last candle crosses down the SMA
  */
-export const isSellSignal = (candles: Candle[]) => {
+export const isSellSignal = (candles: ChartCandle[]) => {
   if (candles.length >= SMA_PERIOD) {
     const values = SMA.calculate({
-      values: candles.map((candle) => Number(candle.close)),
+      values: candles.map((candle) => candle.close),
       period: SMA_PERIOD,
     });
 
     const input = {
-      lineA: candles.map((candle) => Number(candle.close)),
+      lineA: candles.map((candle) => candle.close),
       lineB: values,
     };
 

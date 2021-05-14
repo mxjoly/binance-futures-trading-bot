@@ -1,4 +1,3 @@
-import { Candle } from 'binance-api-node';
 import { RSI, SMA, CrossUp, CrossDown } from 'technicalindicators';
 
 const RSI_PERIOD = 14;
@@ -9,15 +8,15 @@ const SMA_PERIOD = 20;
 /**
  * Return true if the RSI crosses up the SMA or if the RSI crosses up the oversold zone line
  */
-export const isBuySignal = (candles: Candle[]) => {
+export const isBuySignal = (candles: ChartCandle[]) => {
   if (candles.length >= RSI_PERIOD) {
     const rsiValues = RSI.calculate({
-      values: candles.map((candle) => Number(candle.close)),
+      values: candles.map((candle) => candle.close),
       period: RSI_PERIOD,
     });
 
     const smaValues = SMA.calculate({
-      values: candles.map((candle) => Number(candle.close)),
+      values: candles.map((candle) => candle.close),
       period: SMA_PERIOD,
     });
 
@@ -36,15 +35,15 @@ export const isBuySignal = (candles: Candle[]) => {
 /**
  * Return true if the RSI crosses down the SMA or if the rsi crosses up the oversold zone line
  */
-export const isSellSignal = (candles: Candle[]) => {
+export const isSellSignal = (candles: ChartCandle[]) => {
   if (candles.length >= RSI_PERIOD) {
     const rsiValues = RSI.calculate({
-      values: candles.map((candle) => Number(candle.close)),
+      values: candles.map((candle) => candle.close),
       period: RSI_PERIOD,
     });
 
     const smaValues = SMA.calculate({
-      values: candles.map((candle) => Number(candle.close)),
+      values: candles.map((candle) => candle.close),
       period: SMA_PERIOD,
     });
 
