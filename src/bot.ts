@@ -32,7 +32,7 @@ const binanceClient = Binance({
   apiSecret: process.env.BINANCE_PRIVATE_KEY,
 });
 
-const closeCandles: { [key: string]: ChartCandle[] } = {};
+const historyCandles: { [key: string]: ChartCandle[] } = {};
 
 // ====================================================================== //
 
@@ -65,7 +65,7 @@ function loadCandles(symbol: string, interval: CandleChartInterval) {
 
   getCandles({ symbol, interval })
     .then((candles) => {
-      closeCandles[symbol] = candles
+      historyCandles[symbol] = candles
         .slice(-MAX_CANDLES_HISTORY)
         .map((candle) => ChartCandle(candle));
     })
@@ -101,7 +101,7 @@ async function run() {
           binanceClient.ws.futuresCandles;
 
     getCandles(pair, tradeConfig.interval, (candle) => {
-      const candles = closeCandles[pair];
+      const candles = historyCandles[pair];
 
       // Add only the closed candles
       if (candle.isFinal) candles.push(ChartCandle(candle));
