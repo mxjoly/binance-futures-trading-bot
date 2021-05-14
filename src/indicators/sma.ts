@@ -7,13 +7,17 @@ const SMA_PERIOD = 20;
  */
 export const isBuySignal = (candles: ChartCandle[]) => {
   if (candles.length >= SMA_PERIOD) {
+    const candleValues = candles
+      .slice(-SMA_PERIOD)
+      .map((candle) => candle.close);
+
     const values = SMA.calculate({
-      values: candles.map((candle) => candle.close),
+      values: candleValues,
       period: SMA_PERIOD,
     });
 
     const input = {
-      lineA: candles.map((candle) => candle.close),
+      lineA: candleValues,
       lineB: values,
     };
 
@@ -27,13 +31,17 @@ export const isBuySignal = (candles: ChartCandle[]) => {
  */
 export const isSellSignal = (candles: ChartCandle[]) => {
   if (candles.length >= SMA_PERIOD) {
+    const candleValues = candles
+      .slice(-SMA_PERIOD)
+      .map((candle) => candle.close);
+
     const values = SMA.calculate({
-      values: candles.map((candle) => candle.close),
+      values: candleValues,
       period: SMA_PERIOD,
     });
 
     const input = {
-      lineA: candles.map((candle) => candle.close),
+      lineA: candleValues,
       lineB: values,
     };
 

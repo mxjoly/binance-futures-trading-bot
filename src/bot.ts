@@ -4,6 +4,7 @@ import Binance, {
   CandleChartInterval,
   CandleChartResult,
   ExchangeInfo,
+  Order,
   PositionRiskResult,
   TradeResult,
 } from 'binance-api-node';
@@ -32,11 +33,21 @@ const binanceClient = Binance({
   apiSecret: process.env.BINANCE_PRIVATE_KEY,
 });
 
-const historyCandles: { [key: string]: ChartCandle[] } = {};
+const historyCandles: { [pair: string]: ChartCandle[] } = {};
+
+// All open orders in futures
+const openOrders: { [pair: string]: number[] } = {};
 
 // ====================================================================== //
 
 function prepare() {
+  // Initialize history and open orders
+  tradeConfigs.forEach((tradeConfig) => {
+    const pair = tradeConfig.asset + tradeConfig.base;
+    historyCandles[pair] = [];
+    openOrders[pair] = [];
+  });
+
   if (BINANCE_MODE === 'futures') {
     // Set the margin type and initial leverage for the futures
     tradeConfigs.forEach((tradeConfig) => {
@@ -61,23 +72,26 @@ function prepare() {
  * Load candles and add them to the history
  */
 function loadCandles(symbol: string, interval: CandleChartInterval) {
-  const getCandles =
-    BINANCE_MODE === 'spot'
-      ? binanceClient.candles
-      : binanceClient.futuresCandles;
+  return new Promise((resolve, reject) => {
+    const getCandles =
+      BINANCE_MODE === 'spot'
+        ? binanceClient.candles
+        : binanceClient.futuresCandles;
 
-  getCandles({ symbol, interval })
-    .then((candles) => {
-      historyCandles[symbol] = candles
-        .slice(-MAX_CANDLES_HISTORY)
-        .map((candle) => ChartCandle(candle));
-    })
-    .then(() => {
-      log(
-        `@${BINANCE_MODE} > The candles for the pair ${symbol} are successfully loaded`
-      );
-    })
-    .catch(error);
+    getCandles({ symbol, interval })
+      .then((candles) => {
+        historyCandles[symbol] = candles
+          .slice(-MAX_CANDLES_HISTORY)
+          .map((candle) => ChartCandle(candle));
+      })
+      .then(() => {
+        log(
+          `@${BINANCE_MODE} > The candles for the pair ${symbol} are successfully loaded`
+        );
+      })
+      .then(resolve)
+      .catch(reject);
+  });
 }
 
 async function run() {
@@ -91,35 +105,50 @@ async function run() {
   tradeConfigs.forEach((tradeConfig) => {
     const pair = tradeConfig.asset + tradeConfig.base;
 
-    loadCandles(pair, tradeConfig.interval);
+    loadCandles(pair, tradeConfig.interval)
+      .then(() => {
+        log(`@${BINANCE_MODE} > The bot trades the pair ${pair}`);
 
-    log(`@${BINANCE_MODE} > The bot trades the pair ${pair}`);
+        const getCandles =
+          BINANCE_MODE === 'spot'
+            ? binanceClient.ws.candles
+            : // @ts-ignore
+              binanceClient.ws.futuresCandles;
 
-    const getCandles =
-      BINANCE_MODE === 'spot'
-        ? binanceClient.ws.candles
-        : // @ts-ignore
-          binanceClient.ws.futuresCandles;
+        getCandles(pair, tradeConfig.interval, (candle: Candle) => {
+          const candles = historyCandles[pair];
 
-    getCandles(pair, tradeConfig.interval, (candle: Candle) => {
-      const candles = historyCandles[pair];
+          // Add only the closed candles
+          if (candle.isFinal) candles.push(ChartCandle(candle));
 
-      // Add only the closed candles
-      if (candle.isFinal) candles.push(ChartCandle(candle));
+          if (candles.length > MAX_CANDLES_HISTORY) candles.slice(1);
 
-      if (candles.length > MAX_CANDLES_HISTORY) candles.slice(1);
+          if (BINANCE_MODE === 'spot') {
+            tradeWithSpot(
+              tradeConfig,
+              candles,
+              Number(candle.close),
+              exchangeInfo
+            );
+          } else {
+            // tradeWithFutures(
+            //   tradeConfig,
+            //   candles,
+            //   Number(candle.close),
+            //   exchangeInfo
+            // );
 
-      if (BINANCE_MODE === 'spot') {
-        tradeWithSpot(tradeConfig, candles, Number(candle.close), exchangeInfo);
-      } else {
-        tradeWithFutures(
-          tradeConfig,
-          candles,
-          Number(candle.close),
-          exchangeInfo
-        );
-      }
-    });
+            if (candle.isFinal) {
+              if (isBuySignal(candles)) {
+                console.log('BUY !');
+              } else if (isSellSignal(candles)) {
+                console.log('SELL !');
+              }
+            }
+          }
+        });
+      })
+      .catch(error);
   });
 }
 
@@ -244,15 +273,15 @@ async function tradeWithFutures(
       .availableBalance
   );
 
-  const currentPosition = (await binanceClient.futuresPositionRisk()).filter(
+  const position = (await binanceClient.futuresPositionRisk()).filter(
     (position) => position.symbol === pair
-  );
+  )[0];
 
   /**
    * Check if the current position must be close or not.
    */
   function checkCurrentPosition(position: PositionRiskResult) {
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((resolve, reject) => {
       const isBuyPosition = position.entryPrice > position.liquidationPrice;
 
       // Avoid to take a position two times when different indicators returns a signal successively
@@ -265,12 +294,13 @@ async function tradeWithFutures(
             quantity: position.positionAmt,
           })
           .then(() => {
+            closeOpenOrders(pair);
             log(
               `@Futures > Close the long position for ${pair}. PNL: ${position.unRealizedProfit}`
             );
           })
           .then(resolve)
-          .catch(error);
+          .catch(reject);
       } else if (isBuyPosition && isSellSignal(candles)) {
         binanceClient
           .futuresOrder({
@@ -280,12 +310,13 @@ async function tradeWithFutures(
             quantity: position.symbol,
           })
           .then(() => {
+            closeOpenOrders(pair);
             log(
               `@Futures > Close the short position for ${pair}. PNL: ${position.unRealizedProfit}`
             );
           })
           .then(resolve)
-          .catch(error);
+          .catch(reject);
       } else {
         resolve();
       }
@@ -326,22 +357,32 @@ async function tradeWithFutures(
           .then(() => {
             if (takeProfitPrice) {
               // Take profit order
-              binanceClient.futuresOrder({
-                side: 'SELL',
-                type: 'TAKE_PROFIT_MARKET',
-                symbol: pair,
-                quantity: String(quantity),
-              });
+              binanceClient
+                .futuresOrder({
+                  side: 'SELL',
+                  type: 'TAKE_PROFIT_MARKET',
+                  symbol: pair,
+                  quantity: String(quantity),
+                })
+                .then((order) => {
+                  openOrders[pair].push(order.orderId);
+                })
+                .catch(error);
             }
 
             // Stop loss order
-            binanceClient.futuresOrder({
-              side: 'SELL',
-              type: 'STOP_MARKET',
-              symbol: pair,
-              stopPrice: String(stopLossPrice),
-              quantity: String(quantity),
-            });
+            binanceClient
+              .futuresOrder({
+                side: 'SELL',
+                type: 'STOP_MARKET',
+                symbol: pair,
+                stopPrice: String(stopLossPrice),
+                quantity: String(quantity),
+              })
+              .then((order) => {
+                openOrders[pair].push(order.orderId);
+              })
+              .catch(error);
           })
           .then(() => {
             log(
@@ -379,22 +420,32 @@ async function tradeWithFutures(
           .then(() => {
             if (takeProfitPrice) {
               // Take profit order
-              binanceClient.futuresOrder({
-                side: 'BUY',
-                type: 'TAKE_PROFIT_MARKET',
-                symbol: pair,
-                quantity: String(quantity),
-              });
+              binanceClient
+                .futuresOrder({
+                  side: 'BUY',
+                  type: 'TAKE_PROFIT_MARKET',
+                  symbol: pair,
+                  quantity: String(quantity),
+                })
+                .then((order) => {
+                  openOrders[pair].push(order.orderId);
+                })
+                .catch(error);
             }
 
             // Stop loss order
-            binanceClient.futuresOrder({
-              side: 'BUY',
-              type: 'STOP_MARKET',
-              symbol: pair,
-              stopPrice: String(stopLossPrice),
-              quantity: String(quantity),
-            });
+            binanceClient
+              .futuresOrder({
+                side: 'BUY',
+                type: 'STOP_MARKET',
+                symbol: pair,
+                stopPrice: String(stopLossPrice),
+                quantity: String(quantity),
+              })
+              .then((order) => {
+                openOrders[pair].push(order.orderId);
+              })
+              .catch(error);
           })
           .then(() => {
             log(
@@ -408,14 +459,36 @@ async function tradeWithFutures(
     }
   }
 
-  if (currentPosition.length > 0) {
+  if (Number(position.positionAmt) > 0) {
     // There is only one position for a crypto
     // Used when we need to close a position and open directly a new position
-    checkCurrentPosition(currentPosition[0]).then(() => lookForPosition());
+    checkCurrentPosition(position).then(lookForPosition).catch(error);
   } else {
+    if (openOrders[pair].length > 0) {
+      closeOpenOrders(pair);
+    }
     lookForPosition();
   }
 }
+
+function closeOpenOrders(symbol: string) {
+  openOrders[symbol].forEach((order) => {
+    const cancel =
+      BINANCE_MODE === 'spot'
+        ? binanceClient.cancelOrder
+        : binanceClient.futuresCancelOrder;
+
+    cancel({ symbol, orderId: order.orderId })
+      .then(() => {
+        log(
+          `@${BINANCE_MODE} > Close all the open orders for the pair ${symbol}`
+        );
+      })
+      .catch(error);
+  });
+}
+
+// ==================================================================================== //
 
 function ChartCandle(candle: Candle | CandleChartResult): ChartCandle {
   return {
@@ -435,7 +508,10 @@ function ChartCandle(candle: Candle | CandleChartResult): ChartCandle {
 function calculatePrice(price: number, percent: number) {
   const precision = getPrecision(price);
   const newPrice = price * percent;
-  return precision ? Number(newPrice.toFixed(precision)) : newPrice;
+  const newPricePrecision = getPrecision(newPrice);
+  return newPricePrecision > precision
+    ? Number(newPrice.toFixed(precision))
+    : newPrice;
 }
 
 function isBuySignal(candles: ChartCandle[]) {
