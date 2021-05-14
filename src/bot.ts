@@ -57,6 +57,9 @@ function prepare() {
   }
 }
 
+/**
+ * Load candles and add them to the history
+ */
 function loadCandles(symbol: string, interval: CandleChartInterval) {
   const getCandles =
     BINANCE_MODE === 'spot'
@@ -71,7 +74,7 @@ function loadCandles(symbol: string, interval: CandleChartInterval) {
     })
     .then(() => {
       log(
-        `@${BINANCE_MODE} > Candles for the pair ${symbol} are successful loaded`
+        `@${BINANCE_MODE} > The candles for the pair ${symbol} are successfully loaded`
       );
     })
     .catch(error);
@@ -90,9 +93,7 @@ async function run() {
 
     loadCandles(pair, tradeConfig.interval);
 
-    log(
-      `@${BINANCE_MODE} > The bot trades the pair ${tradeConfig.asset}/${tradeConfig.base}`
-    );
+    log(`@${BINANCE_MODE} > The bot trades the pair ${pair}`);
 
     const getCandles =
       BINANCE_MODE === 'spot'
@@ -100,7 +101,7 @@ async function run() {
         : // @ts-ignore
           binanceClient.ws.futuresCandles;
 
-    getCandles(pair, tradeConfig.interval, (candle) => {
+    getCandles(pair, tradeConfig.interval, (candle: Candle) => {
       const candles = historyCandles[pair];
 
       // Add only the closed candles
@@ -130,6 +131,7 @@ async function tradeWithSpot(
 ) {
   const pair = `${tradeConfig.asset}${tradeConfig.base}`;
 
+  // Ge the available balance of base asset
   const { balances } = await binanceClient.accountInfo();
   const availableBalance = Number(
     balances.find((balance) => balance.asset === tradeConfig.base).free
@@ -235,6 +237,7 @@ async function tradeWithFutures(
 ) {
   const pair = `${tradeConfig.asset}${tradeConfig.base}`;
 
+  // Ge the available balance of base asset
   const balances = await binanceClient.futuresAccountBalance();
   const availableBalance = Number(
     balances.find((balance) => balance.asset === tradeConfig.base)
@@ -258,12 +261,12 @@ async function tradeWithFutures(
           .futuresOrder({
             side: 'BUY',
             type: 'MARKET',
-            symbol: position.symbol,
+            symbol: pair,
             quantity: position.positionAmt,
           })
           .then(() => {
             log(
-              `@Futures > Close the long position for ${position.symbol}. PNL: ${position.unRealizedProfit}`
+              `@Futures > Close the long position for ${pair}. PNL: ${position.unRealizedProfit}`
             );
           })
           .then(resolve)
