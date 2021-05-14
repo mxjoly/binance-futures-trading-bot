@@ -478,7 +478,7 @@ function closeOpenOrders(symbol: string) {
         ? binanceClient.cancelOrder
         : binanceClient.futuresCancelOrder;
 
-    cancel({ symbol, orderId: order.orderId })
+    cancel({ symbol, orderId: order })
       .then(() => {
         log(
           `@${BINANCE_MODE} > Close all the open orders for the pair ${symbol}`
