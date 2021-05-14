@@ -355,6 +355,7 @@ async function tradeWithFutures(
                   side: 'SELL',
                   type: 'TAKE_PROFIT_MARKET',
                   symbol: pair,
+                  stopPrice: String(takeProfitPrice),
                   quantity: String(quantity),
                 })
                 .then((order) => {
@@ -418,6 +419,7 @@ async function tradeWithFutures(
                   side: 'BUY',
                   type: 'TAKE_PROFIT_MARKET',
                   symbol: pair,
+                  stopPrice: String(takeProfitPrice),
                   quantity: String(quantity),
                 })
                 .then((order) => {
