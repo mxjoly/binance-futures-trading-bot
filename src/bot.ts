@@ -116,34 +116,27 @@ async function run() {
               binanceClient.ws.futuresCandles;
 
         getCandles(pair, tradeConfig.interval, (candle: Candle) => {
-          const candles = historyCandles[pair];
+          let candles = historyCandles[pair];
 
           // Add only the closed candles
-          if (candle.isFinal) candles.push(ChartCandle(candle));
+          if (candle.isFinal) {
+            candles.push(ChartCandle(candle));
+            candles = candles.slice(1);
 
-          if (candles.length > MAX_CANDLES_HISTORY) candles.slice(1);
-
-          if (BINANCE_MODE === 'spot') {
-            tradeWithSpot(
-              tradeConfig,
-              candles,
-              Number(candle.close),
-              exchangeInfo
-            );
-          } else {
-            // tradeWithFutures(
-            //   tradeConfig,
-            //   candles,
-            //   Number(candle.close),
-            //   exchangeInfo
-            // );
-
-            if (candle.isFinal) {
-              if (isBuySignal(candles)) {
-                console.log('BUY !');
-              } else if (isSellSignal(candles)) {
-                console.log('SELL !');
-              }
+            if (BINANCE_MODE === 'spot') {
+              tradeWithSpot(
+                tradeConfig,
+                candles,
+                Number(candle.close),
+                exchangeInfo
+              );
+            } else {
+              tradeWithFutures(
+                tradeConfig,
+                candles,
+                Number(candle.close),
+                exchangeInfo
+              );
             }
           }
         });

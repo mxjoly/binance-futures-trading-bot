@@ -1,4 +1,5 @@
 import { SMA, CrossUp, CrossDown } from 'technicalindicators';
+import { MAX_CANDLES_HISTORY } from '../config';
 
 const SMA_PERIOD = 20;
 
@@ -7,9 +8,7 @@ const SMA_PERIOD = 20;
  */
 export const isBuySignal = (candles: ChartCandle[]) => {
   if (candles.length >= SMA_PERIOD) {
-    const candleValues = candles
-      .slice(-SMA_PERIOD)
-      .map((candle) => candle.close);
+    const candleValues = candles.map((candle) => candle.close);
 
     const values = SMA.calculate({
       values: candleValues,
@@ -17,12 +16,12 @@ export const isBuySignal = (candles: ChartCandle[]) => {
     });
 
     const input = {
-      lineA: candleValues,
+      lineA: candleValues.slice(-(MAX_CANDLES_HISTORY - SMA_PERIOD + 1)),
       lineB: values,
     };
 
     const results = CrossUp.calculate(input);
-    return results[results.length - 1] === true;
+    return results[results.length - 1];
   }
 };
 
@@ -31,9 +30,7 @@ export const isBuySignal = (candles: ChartCandle[]) => {
  */
 export const isSellSignal = (candles: ChartCandle[]) => {
   if (candles.length >= SMA_PERIOD) {
-    const candleValues = candles
-      .slice(-SMA_PERIOD)
-      .map((candle) => candle.close);
+    const candleValues = candles.map((candle) => candle.close);
 
     const values = SMA.calculate({
       values: candleValues,
@@ -41,11 +38,11 @@ export const isSellSignal = (candles: ChartCandle[]) => {
     });
 
     const input = {
-      lineA: candleValues,
+      lineA: candleValues.slice(-(MAX_CANDLES_HISTORY - SMA_PERIOD + 1)),
       lineB: values,
     };
 
     const results = CrossDown.calculate(input);
-    return results[results.length - 1] === true;
+    return results[results.length - 1];
   }
 };

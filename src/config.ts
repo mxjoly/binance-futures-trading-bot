@@ -16,6 +16,6 @@ export const tradeConfigs: TradeConfig[] = [
     lossTolerance: 0.03,
     profitTarget: 0.1,
     interval: CandleChartInterval.ONE_MINUTE,
-    leverage: 2,
+    leverage: 1,
   },
 ];
