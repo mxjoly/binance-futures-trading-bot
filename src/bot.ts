@@ -12,7 +12,7 @@ import { RSI, CROSS_SMA, SMA, RSI_SMA } from './indicators';
 import {
   tradeConfigs,
   BINANCE_MODE,
-  TRADE_PERIOD,
+  MAX_CANDLES_HISTORY,
   MIN_FREE_BALANCE_FOR_FUTURE_TRADING,
   MIN_FREE_BALANCE_FOR_SPOT_TRADING,
 } from './config';
@@ -66,7 +66,7 @@ function loadCandles(symbol: string, interval: CandleChartInterval) {
   getCandles({ symbol, interval })
     .then((candles) => {
       closeCandles[symbol] = candles
-        .slice(-TRADE_PERIOD)
+        .slice(-MAX_CANDLES_HISTORY)
         .map((candle) => ChartCandle(candle));
     })
     .then(() => {
@@ -106,7 +106,7 @@ async function run() {
       // Add only the closed candles
       if (candle.isFinal) candles.push(ChartCandle(candle));
 
-      if (candles.length > TRADE_PERIOD) candles.slice(1);
+      if (candles.length > MAX_CANDLES_HISTORY) candles.slice(1);
 
       if (BINANCE_MODE === 'spot') {
         tradeWithSpot(tradeConfig, candles, Number(candle.close), exchangeInfo);
@@ -245,9 +245,15 @@ async function tradeWithFutures(
     (position) => position.symbol === pair
   );
 
+  /**
+   * Check if the current position must be close or not.
+   */
   function checkCurrentPosition(position: PositionRiskResult) {
     return new Promise<void>((resolve) => {
-      if (isBuySignal(candles)) {
+      const isBuyPosition = position.entryPrice > position.liquidationPrice;
+
+      // Avoid to take a position two times when different indicators returns a signal successively
+      if (!isBuyPosition && isBuySignal(candles)) {
         binanceClient
           .futuresOrder({
             side: 'BUY',
@@ -262,7 +268,7 @@ async function tradeWithFutures(
           })
           .then(resolve)
           .catch(error);
-      } else if (isSellSignal(candles)) {
+      } else if (isBuyPosition && isSellSignal(candles)) {
         binanceClient
           .futuresOrder({
             side: 'SELL',
@@ -283,6 +289,9 @@ async function tradeWithFutures(
     });
   }
 
+  /**
+   * Look for a position to take
+   */
   function lookForPosition() {
     // Allow trading with a minimum of balance
     if (availableBalance >= MIN_FREE_BALANCE_FOR_FUTURE_TRADING) {
@@ -483,7 +492,7 @@ function getQuantity(
     ((availableBalance * allocation) / price).toFixed(minQuantityPrecision)
   );
 
-  return quantity >= minQuantity ? quantity : minQuantity;
+  return quantity > minQuantity ? quantity : minQuantity;
 }
 
 /**

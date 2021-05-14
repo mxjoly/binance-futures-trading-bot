@@ -2,7 +2,7 @@ import { CandleChartInterval } from 'binance-api-node';
 
 // ============================ CONST =================================== //
 export const BINANCE_MODE: BinanceMode = 'futures';
-export const TRADE_PERIOD = 30; // max candles in data used for analysis
+export const MAX_CANDLES_HISTORY = 30; // max candles saved is history for analysis
 export const MIN_FREE_BALANCE_FOR_SPOT_TRADING = 0;
 export const MIN_FREE_BALANCE_FOR_FUTURE_TRADING = 0;
 
