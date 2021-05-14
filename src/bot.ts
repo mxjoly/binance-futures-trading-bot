@@ -8,8 +8,12 @@ import Binance, {
   PositionRiskResult,
   TradeResult,
 } from 'binance-api-node';
-import technicalIndicators from 'technicalindicators';
-import { RSI, CROSS_SMA, SMA, RSI_SMA } from './indicators';
+import technicalIndicators, {
+  RSI,
+  CROSS_SMA,
+  SMA,
+  RSI_SMA,
+} from './indicators';
 import {
   tradeConfigs,
   BINANCE_MODE,
@@ -95,6 +99,7 @@ function loadCandles(symbol: string, interval: CandleChartInterval) {
 }
 
 async function run() {
+  return;
   log('====================== Binance Bot Trading ======================');
 
   const exchangeInfo =
@@ -172,6 +177,7 @@ async function tradeWithSpot(
           type: 'MARKET',
           symbol: openTrade.symbol,
           quantity: openTrade.qty,
+          recvWindow: 60000,
         })
         .then(() => {
           log(
@@ -210,6 +216,7 @@ async function tradeWithSpot(
           type: 'MARKET',
           symbol: pair,
           quantity: String(quantity),
+          recvWindow: 60000,
         })
         .then(() => {
           if (takeProfitPrice) {
@@ -221,7 +228,8 @@ async function tradeWithSpot(
                 price: String(takeProfitPrice),
                 stopPrice: String(stopLossPrice),
                 stopLimitPrice: String(stopLossPrice),
-                quantity: '100',
+                quantity: String(quantity),
+                recvWindow: 60000,
               })
               .catch(error);
           } else {
@@ -232,7 +240,8 @@ async function tradeWithSpot(
                 type: 'LIMIT',
                 symbol: pair,
                 price: String(stopLossPrice),
-                quantity: '100',
+                quantity: String(quantity),
+                recvWindow: 60000,
               })
               .catch(error);
           }
@@ -285,6 +294,7 @@ async function tradeWithFutures(
             type: 'MARKET',
             symbol: pair,
             quantity: position.positionAmt,
+            recvWindow: 60000,
           })
           .then(() => {
             closeOpenOrders(pair);
@@ -300,7 +310,8 @@ async function tradeWithFutures(
             side: 'SELL',
             type: 'MARKET',
             symbol: pair,
-            quantity: position.symbol,
+            quantity: position.positionAmt,
+            recvWindow: 60000,
           })
           .then(() => {
             closeOpenOrders(pair);
@@ -346,6 +357,7 @@ async function tradeWithFutures(
             type: 'MARKET',
             symbol: pair,
             quantity: String(quantity),
+            recvWindow: 60000,
           })
           .then(() => {
             if (takeProfitPrice) {
@@ -357,6 +369,7 @@ async function tradeWithFutures(
                   symbol: pair,
                   stopPrice: String(takeProfitPrice),
                   quantity: String(quantity),
+                  recvWindow: 60000,
                 })
                 .then((order) => {
                   openOrders[pair].push(order.orderId);
@@ -372,6 +385,7 @@ async function tradeWithFutures(
                 symbol: pair,
                 stopPrice: String(stopLossPrice),
                 quantity: String(quantity),
+                recvWindow: 60000,
               })
               .then((order) => {
                 openOrders[pair].push(order.orderId);
@@ -410,6 +424,7 @@ async function tradeWithFutures(
             type: 'MARKET',
             symbol: pair,
             quantity: String(quantity),
+            recvWindow: 60000,
           })
           .then(() => {
             if (takeProfitPrice) {
@@ -421,6 +436,7 @@ async function tradeWithFutures(
                   symbol: pair,
                   stopPrice: String(takeProfitPrice),
                   quantity: String(quantity),
+                  recvWindow: 60000,
                 })
                 .then((order) => {
                   openOrders[pair].push(order.orderId);
@@ -436,6 +452,7 @@ async function tradeWithFutures(
                 symbol: pair,
                 stopPrice: String(stopLossPrice),
                 quantity: String(quantity),
+                recvWindow: 60000,
               })
               .then((order) => {
                 openOrders[pair].push(order.orderId);
@@ -450,6 +467,8 @@ async function tradeWithFutures(
             );
           })
           .catch(error);
+      } else {
+        log('@futures > Waiting to find the trade...');
       }
     }
   }
@@ -481,6 +500,7 @@ function closeOpenOrders(symbol: string) {
       })
       .catch(error);
   });
+  openOrders[symbol] = []; // reset the list of order id
 }
 
 // ==================================================================================== //

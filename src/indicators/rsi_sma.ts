@@ -1,4 +1,9 @@
-import { RSI, SMA, CrossUp, CrossDown } from 'technicalindicators';
+import technicalIndicators, {
+  RSI,
+  SMA,
+  CrossUp,
+  CrossDown,
+} from 'technicalindicators';
 
 const RSI_PERIOD = 14;
 const RSI_OVERBOUGHT = 70;

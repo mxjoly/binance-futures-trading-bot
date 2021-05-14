@@ -1,4 +1,8 @@
-import { SMA, CrossUp, CrossDown } from 'technicalindicators';
+import technicalIndicators, {
+  SMA,
+  CrossUp,
+  CrossDown,
+} from 'technicalindicators';
 
 const SMA_SMALL_PERIOD = 20;
 const SMA_LONG_PERIOD = 50;
