@@ -99,7 +99,6 @@ function loadCandles(symbol: string, interval: CandleChartInterval) {
 }
 
 async function run() {
-  return;
   log('====================== Binance Bot Trading ======================');
 
   const exchangeInfo =
