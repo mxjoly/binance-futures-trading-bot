@@ -85,7 +85,7 @@ function loadCandles(symbol: string, interval: CandleChartInterval) {
     getCandles({ symbol, interval })
       .then((candles) => {
         historyCandles[symbol] = candles
-          .slice(-MAX_CANDLES_HISTORY)
+          .slice(-(MAX_CANDLES_HISTORY + 1), -1) // The last candles are not closed yet
           .map((candle) => ChartCandle(candle));
       })
       .then(() => {
@@ -120,27 +120,32 @@ async function run() {
               binanceClient.ws.futuresCandles;
 
         getCandles(pair, tradeConfig.interval, (candle: Candle) => {
-          let candles = historyCandles[pair];
-
           // Add only the closed candles
           if (candle.isFinal) {
-            candles.push(ChartCandle(candle));
-            candles = candles.slice(1);
+            historyCandles[pair].push(ChartCandle(candle));
+            historyCandles[pair] = historyCandles[pair].slice(1);
+
+            console.log(historyCandles[pair].map((c) => c.close));
 
             if (BINANCE_MODE === 'spot') {
               tradeWithSpot(
                 tradeConfig,
-                candles,
+                historyCandles[pair],
                 Number(candle.close),
                 exchangeInfo
               );
             } else {
               tradeWithFutures(
                 tradeConfig,
-                candles,
+                historyCandles[pair],
                 Number(candle.close),
                 exchangeInfo
               );
+              // if (isBuySignal(historyCandles[pair])) {
+              //   log('BUY');
+              // } else if (isSellSignal(historyCandles[pair])) {
+              //   log('SELL');
+              // }
             }
           }
         });
@@ -273,10 +278,6 @@ async function tradeWithFutures(
     balances.find((balance) => balance.asset === tradeConfig.base)
       .availableBalance
   );
-
-  const position = (await binanceClient.futuresPositionRisk()).filter(
-    (position) => position.symbol === pair
-  )[0];
 
   /**
    * Check if the current position must be close or not.
@@ -466,22 +467,32 @@ async function tradeWithFutures(
             );
           })
           .catch(error);
-      } else {
-        log('@futures > Waiting to find the trade...');
       }
     }
   }
 
-  if (Number(position.positionAmt) > 0) {
-    // There is only one position for a crypto
-    // Used when we need to close a position and open directly a new position
-    checkCurrentPosition(position).then(lookForPosition).catch(error);
-  } else {
-    if (openOrders[pair].length > 0) {
-      closeOpenOrders(pair);
+  // Check the current positions
+  binanceClient.futuresPositionRisk().then((allPositions) => {
+    const positions = allPositions.filter(
+      (position) => position.symbol === pair
+    );
+
+    if (positions.length > 0) {
+      const promises = [];
+      // Used when we need to close a position and open directly a new position
+      positions.forEach((position) => {
+        promises.push(
+          new Promise((resolve, reject) => {
+            checkCurrentPosition(position).then(resolve).catch(reject);
+          })
+        );
+      });
+
+      Promise.all(promises).then(lookForPosition).catch(error);
+    } else {
+      lookForPosition();
     }
-    lookForPosition();
-  }
+  });
 }
 
 function closeOpenOrders(symbol: string) {

@@ -1,8 +1,4 @@
-import technicalIndicators, {
-  SMA,
-  CrossUp,
-  CrossDown,
-} from 'technicalindicators';
+import { SMA, CrossUp, CrossDown } from 'technicalindicators';
 import { MAX_CANDLES_HISTORY } from '../config';
 
 const SMA_PERIOD = 20;
