@@ -317,13 +317,12 @@ async function tradeWithFutures(
       ? Number(position.positionAmt)
       : 0;
 
-    // If the quantity you want considering quantity to remove for closing the previous
-    // position is lower than the minimal quantity authorized
-    if (quantity + previousPositionQuantity >= minQuantity) {
-      quantity += previousPositionQuantity;
-    }
-
-    if (!isValidQuantity(quantity, pair, exchangeInfo)) {
+    // To close the previous short position
+    if (
+      isValidQuantity(quantity - previousPositionQuantity, pair, exchangeInfo)
+    ) {
+      quantity -= previousPositionQuantity;
+    } else {
       throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
     }
 
@@ -425,13 +424,12 @@ async function tradeWithFutures(
       ? Number(position.positionAmt)
       : 0;
 
-    // If the quantity you want considering quantity to remove for closing the previous
-    // position is lower than the minimal quantity authorized
-    if (quantity + previousPositionQuantity >= minQuantity) {
+    // To close the previous long position
+    if (
+      isValidQuantity(quantity + previousPositionQuantity, pair, exchangeInfo)
+    ) {
       quantity += previousPositionQuantity;
-    }
-
-    if (!isValidQuantity(quantity, pair, exchangeInfo)) {
+    } else {
       throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
     }
 
