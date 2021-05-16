@@ -7,7 +7,12 @@ import Binance, {
 } from 'binance-api-node';
 import technicalIndicators from 'technicalindicators';
 import { RSI, CROSS_SMA, SMA, RSI_SMA } from './indicators';
-import { tradeConfigs, BINANCE_MODE, MAX_CANDLES_HISTORY } from './config';
+import {
+  tradeConfigs,
+  BINANCE_MODE,
+  MAX_CANDLES_HISTORY,
+  FUTURES_STRATEGY,
+} from './config';
 
 require('dotenv').config();
 
@@ -262,15 +267,33 @@ async function tradeWithFutures(
 
   const { positions } = await binanceClient.futuresAccountInfo();
   const position = positions.find((position) => position.symbol === pair);
-  const hasPosition = Number(position.positionAmt) !== 0;
-  const isLongPosition = Number(position.positionAmt) > 0;
-  const isShortPosition = Number(position.positionAmt) < 0;
+  const hasLongPosition = Number(position.positionAmt) > 0;
+  const hasShortPosition = Number(position.positionAmt) < 0;
 
   const pricePrecision = getPricePrecision(pair, exchangeInfo);
 
   const minQuantity = await getMinOrderQuantity(asset, exchangeInfo);
 
-  if (!isLongPosition && isBuySignal(candles)) {
+  if (!hasLongPosition && isBuySignal(candles)) {
+    // If long position are not enabled, just close the short position and wait for a sell signal
+    if (hasShortPosition && FUTURES_STRATEGY.long === false) {
+      binanceClient
+        .futuresOrder({
+          side: 'BUY',
+          type: 'MARKET',
+          symbol: pair,
+          quantity: position.positionAmt,
+          recvWindow: 60000,
+        })
+        .then(() => {
+          closeOpenOrders(pair);
+          log(
+            `@Futures > Closes the short position for ${pair}. PNL: ${position.unrealizedProfit}`
+          );
+        });
+      return;
+    }
+
     const takeProfitPrice = profitTarget
       ? decimalCeil(realtimePrice * (1 + profitTarget), pricePrecision)
       : null;
@@ -288,8 +311,9 @@ async function tradeWithFutures(
     );
 
     // Quantity to add to close the previous position
-    let previousPositionQuantity =
-      hasPosition && isShortPosition ? Number(position.positionAmt) : 0;
+    let previousPositionQuantity = hasShortPosition
+      ? Number(position.positionAmt)
+      : 0;
 
     // If the quantity you want considering quantity to remove for closing the previous
     // position is lower than the minimal quantity authorized
@@ -310,7 +334,7 @@ async function tradeWithFutures(
         recvWindow: 60000,
       })
       .then(() => {
-        if (hasPosition && isShortPosition) {
+        if (hasShortPosition) {
           closeOpenOrders(pair);
           log(
             `@Futures > Closes the short position for ${pair}. PNL: ${position.unrealizedProfit}`
@@ -357,7 +381,26 @@ async function tradeWithFutures(
         );
       })
       .catch(error);
-  } else if (!isShortPosition && isSellSignal(candles)) {
+  } else if (!hasShortPosition && isSellSignal(candles)) {
+    // If short position are not enabled, just close the long position and wait for a buy signal
+    if (hasLongPosition && FUTURES_STRATEGY.short === false) {
+      binanceClient
+        .futuresOrder({
+          side: 'SELL',
+          type: 'MARKET',
+          symbol: pair,
+          quantity: position.positionAmt,
+          recvWindow: 60000,
+        })
+        .then(() => {
+          closeOpenOrders(pair);
+          log(
+            `@Futures > Closes the long position for ${pair}. PNL: ${position.unrealizedProfit}`
+          );
+        });
+      return;
+    }
+
     const takeProfitPrice = profitTarget
       ? decimalCeil(realtimePrice * (1 - profitTarget), pricePrecision)
       : null;
@@ -375,8 +418,9 @@ async function tradeWithFutures(
     );
 
     // Quantity to add to close the previous position
-    let previousPositionQuantity =
-      hasPosition && isLongPosition ? Number(position.positionAmt) : 0;
+    let previousPositionQuantity = hasLongPosition
+      ? Number(position.positionAmt)
+      : 0;
 
     // If the quantity you want considering quantity to remove for closing the previous
     // position is lower than the minimal quantity authorized
@@ -397,7 +441,7 @@ async function tradeWithFutures(
         recvWindow: 60000,
       })
       .then(() => {
-        if (hasPosition && isLongPosition) {
+        if (hasLongPosition) {
           closeOpenOrders(pair);
           log(
             `@Futures > Closes the long position for ${pair}. PNL: ${position.unrealizedProfit}`
