@@ -586,12 +586,11 @@ async function getMinOrderQuantity(asset: string, exchangeInfo: ExchangeInfo) {
  */
 function getLotSizeQuantityRules(pair: string, exchangeInfo: ExchangeInfo) {
   // @ts-ignore
-  const { minQty, maxQty, stepSize } = Number(
-    exchangeInfo.symbols
-      .find((symbol) => symbol.symbol === pair)
-      // @ts-ignore
-      .filters.find((filter) => filter.filterType === 'LOT_SIZE')
-  );
+  const { minQty, maxQty, stepSize } = exchangeInfo.symbols
+    .find((symbol) => symbol.symbol === pair)
+    // @ts-ignore
+    .filters.find((filter) => filter.filterType === 'LOT_SIZE');
+
   return {
     minQty: Number(minQty),
     maxQty: Number(maxQty),
@@ -618,6 +617,11 @@ function calculateAllocationQuantity(
   const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
   const allocationQuantity = (availableBalance * allocation) / realtimePrice;
   const minQuantity = getLotSizeQuantityRules(pair, exchangeInfo).minQty;
+
+  console.log('quantityPrecision :', quantityPrecision);
+  console.log('allocationQuantity :', allocationQuantity);
+  console.log('minQuantity :', minQuantity);
+
   return allocationQuantity > minQuantity
     ? decimalCeil(allocationQuantity, quantityPrecision)
     : minQuantity;
