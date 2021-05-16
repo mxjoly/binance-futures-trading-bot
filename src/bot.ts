@@ -5,6 +5,7 @@ import Binance, {
   CandleChartResult,
   ExchangeInfo,
 } from 'binance-api-node';
+import dateFormat from 'dateformat';
 import technicalIndicators from 'technicalindicators';
 import { RSI, CROSS_SMA, SMA, RSI_SMA } from './indicators';
 import {
@@ -175,7 +176,7 @@ async function tradeWithSpot(
         })
         .then(() => {
           log(
-            `@Spot > Sells ${openTrade.symbol} to ${base}. Gain: ${
+            `@spot > Sells ${openTrade.symbol} to ${base}. Gain: ${
               realtimePrice * Number(openTrade.qty) -
               Number(openTrade.price) * Number(openTrade.qty)
             }`
@@ -241,7 +242,7 @@ async function tradeWithSpot(
         })
         .then(() => {
           log(
-            `@Spot > Buys ${asset} with ${base} at the price ${realtimePrice}. TP/SL: ${
+            `@spot > Buys ${asset} with ${base} at the price ${realtimePrice}. TP/SL: ${
               takeProfitPrice ? takeProfitPrice : '----'
             }/${stopLossPrice}`
           );
@@ -273,6 +274,11 @@ async function tradeWithFutures(
 
   const pricePrecision = getPricePrecision(pair, exchangeInfo);
 
+  // Prevent remaining open orders when a stop profit or a stop loss is activated
+  if (!hasLongPosition && !hasShortPosition && openOrders[pair].length > 0) {
+    closeOpenOrders(pair);
+  }
+
   if (!hasLongPosition && isBuySignal(candles)) {
     // If long position are not enabled, just close the short position and wait for a sell signal
     if (hasShortPosition && FUTURES_STRATEGY.long === false) {
@@ -287,7 +293,7 @@ async function tradeWithFutures(
         .then(() => {
           closeOpenOrders(pair);
           log(
-            `@Futures > Closes the short position for ${pair}. PNL: ${position.unrealizedProfit}`
+            `@futures > Closes the short position for ${pair}. PNL: ${position.unrealizedProfit}`
           );
         });
       return;
@@ -336,33 +342,18 @@ async function tradeWithFutures(
         if (hasShortPosition) {
           closeOpenOrders(pair);
           log(
-            `@Futures > Closes the short position for ${pair}. PNL: ${position.unrealizedProfit}`
+            `@futures > Closes the short position for ${pair}. PNL: ${position.unrealizedProfit}`
           );
-        } else {
-          if (takeProfitPrice) {
-            // Take profit order
-            binanceClient
-              .futuresOrder({
-                side: 'SELL',
-                type: 'TAKE_PROFIT_MARKET',
-                symbol: pair,
-                stopPrice: String(takeProfitPrice),
-                quantity: String(quantity),
-                recvWindow: 60000,
-              })
-              .then((order) => {
-                openOrders[pair].push(order.orderId);
-              })
-              .catch(error);
-          }
+        }
 
-          // Stop loss order
+        if (takeProfitPrice) {
+          // Take profit order
           binanceClient
             .futuresOrder({
               side: 'SELL',
-              type: 'STOP_MARKET',
+              type: 'TAKE_PROFIT_MARKET',
               symbol: pair,
-              stopPrice: String(stopLossPrice),
+              stopPrice: String(takeProfitPrice),
               quantity: String(quantity),
               recvWindow: 60000,
             })
@@ -371,10 +362,25 @@ async function tradeWithFutures(
             })
             .catch(error);
         }
+
+        // Stop loss order
+        binanceClient
+          .futuresOrder({
+            side: 'SELL',
+            type: 'STOP_MARKET',
+            symbol: pair,
+            stopPrice: String(stopLossPrice),
+            quantity: String(quantity),
+            recvWindow: 60000,
+          })
+          .then((order) => {
+            openOrders[pair].push(order.orderId);
+          })
+          .catch(error);
       })
       .then(() => {
         log(
-          `@Futures > Takes a long position for ${pair} at the price ${realtimePrice} with TP/SL: ${
+          `@futures > Takes a long position for ${pair} at the price ${realtimePrice} with TP/SL: ${
             takeProfitPrice ? takeProfitPrice : '----'
           }/${stopLossPrice}`
         );
@@ -394,7 +400,7 @@ async function tradeWithFutures(
         .then(() => {
           closeOpenOrders(pair);
           log(
-            `@Futures > Closes the long position for ${pair}. PNL: ${position.unrealizedProfit}`
+            `@futures > Closes the long position for ${pair}. PNL: ${position.unrealizedProfit}`
           );
         });
       return;
@@ -443,33 +449,18 @@ async function tradeWithFutures(
         if (hasLongPosition) {
           closeOpenOrders(pair);
           log(
-            `@Futures > Closes the long position for ${pair}. PNL: ${position.unrealizedProfit}`
+            `@futures > Closes the long position for ${pair}. PNL: ${position.unrealizedProfit}`
           );
-        } else {
-          if (takeProfitPrice) {
-            // Take profit order
-            binanceClient
-              .futuresOrder({
-                side: 'BUY',
-                type: 'TAKE_PROFIT_MARKET',
-                symbol: pair,
-                stopPrice: String(takeProfitPrice),
-                quantity: String(quantity),
-                recvWindow: 60000,
-              })
-              .then((order) => {
-                openOrders[pair].push(order.orderId);
-              })
-              .catch(error);
-          }
+        }
 
-          // Stop loss order
+        if (takeProfitPrice) {
+          // Take profit order
           binanceClient
             .futuresOrder({
               side: 'BUY',
-              type: 'STOP_MARKET',
+              type: 'TAKE_PROFIT_MARKET',
               symbol: pair,
-              stopPrice: String(stopLossPrice),
+              stopPrice: String(takeProfitPrice),
               quantity: String(quantity),
               recvWindow: 60000,
             })
@@ -478,10 +469,25 @@ async function tradeWithFutures(
             })
             .catch(error);
         }
+
+        // Stop loss order
+        binanceClient
+          .futuresOrder({
+            side: 'BUY',
+            type: 'STOP_MARKET',
+            symbol: pair,
+            stopPrice: String(stopLossPrice),
+            quantity: String(quantity),
+            recvWindow: 60000,
+          })
+          .then((order) => {
+            openOrders[pair].push(order.orderId);
+          })
+          .catch(error);
       })
       .then(() => {
         log(
-          `@Futures > Bot takes a short for ${pair} at the price ${realtimePrice} with TP/SL: ${
+          `@futures > Bot takes a short for ${pair} at the price ${realtimePrice} with TP/SL: ${
             takeProfitPrice ? takeProfitPrice : '----'
           }/${stopLossPrice}`
         );
@@ -497,15 +503,10 @@ function closeOpenOrders(symbol: string) {
         ? binanceClient.cancelOrder
         : binanceClient.futuresCancelOrder;
 
-    cancel({ symbol, orderId: order })
-      .then(() => {
-        log(
-          `@${BINANCE_MODE} > Close all the open orders for the pair ${symbol}`
-        );
-      })
-      .catch(error);
+    cancel({ symbol, orderId: order }).catch(error);
   });
   openOrders[symbol] = []; // reset the list of order id
+  log(`@${BINANCE_MODE} > Close all the open orders for the pair ${symbol}`);
 }
 
 function ChartCandle(candle: Candle | CandleChartResult): ChartCandle {
@@ -530,7 +531,8 @@ function isBuySignal(candles: ChartCandle[]) {
   return (
     // technicalIndicators.bullish(data) ||
     // CROSS_SMA.isBuySignal(candles) ||
-    RSI.isBuySignal(candles) || SMA.isBuySignal(candles)
+    // RSI.isBuySignal(candles) ||
+    SMA.isBuySignal(candles)
   );
 }
 
@@ -544,7 +546,8 @@ function isSellSignal(candles: ChartCandle[]) {
   return (
     // technicalIndicators.bearish(data) ||
     // CROSS_SMA.isSellSignal(candles) ||
-    RSI.isSellSignal(candles) || SMA.isSellSignal(candles)
+    // RSI.isSellSignal(candles) ||
+    SMA.isSellSignal(candles)
   );
 }
 
@@ -653,13 +656,13 @@ function decimalCeil(x: number, precision: number) {
 }
 
 function log(message: string) {
-  logger.info(message);
-  console.log(`${new Date(Date.now())} : ${message}`);
+  logger.info(`${dateFormat()} : ${message}`);
+  console.log(`${dateFormat()} : ${message}`);
 }
 
 function error(message: string) {
-  logger.warn(message);
-  console.error(`${new Date(Date.now())} : ${message}`);
+  logger.warn(`${dateFormat()} : ${message}`);
+  console.error(`${dateFormat()} : ${message}`);
 }
 
 prepare();

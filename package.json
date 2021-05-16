@@ -12,6 +12,7 @@
   "license": "MIT",
   "dependencies": {
     "binance-api-node": "^0.10.43",
+    "dateformat": "^4.5.1",
     "nodemon": "^2.0.7",
     "technicalindicators": "^3.1.0",
     "winston": "^3.3.3"
