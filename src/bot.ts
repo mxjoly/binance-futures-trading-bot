@@ -273,8 +273,6 @@ async function tradeWithFutures(
 
   const pricePrecision = getPricePrecision(pair, exchangeInfo);
 
-  const minQuantity = getMinOrderQuantity(asset, realtimePrice, exchangeInfo);
-
   if (!hasLongPosition && isBuySignal(candles)) {
     // If long position are not enabled, just close the short position and wait for a sell signal
     if (hasShortPosition && FUTURES_STRATEGY.long === false) {
@@ -650,8 +648,8 @@ function getPricePrecision(pair: string, exchangeInfo: ExchangeInfo) {
  * @param a
  * @param precision - The number of decimals after the comma
  */
-function decimalCeil(a: number, precision: number) {
-  return Math.ceil(a * Math.pow(10, precision)) / Math.pow(10, precision);
+function decimalCeil(x: number, precision: number) {
+  return Math.ceil(x * Math.pow(10, precision)) / Math.pow(10, precision);
 }
 
 function log(message: string) {
