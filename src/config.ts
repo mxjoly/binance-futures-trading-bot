@@ -1,16 +1,24 @@
 import { CandleChartInterval } from 'binance-api-node';
 
 // ============================ CONST =================================== //
+
+// The bot wii trade with the binance :
 export const BINANCE_MODE: BinanceMode = 'futures';
-export const MAX_CANDLES_HISTORY = 30; // max candles saved is history for analysis
-export const MIN_FREE_BALANCE_FOR_SPOT_TRADING = 0;
-export const MIN_FREE_BALANCE_FOR_FUTURE_TRADING = 0;
+
+// Max candles saved is history for analysis
+export const MAX_CANDLES_HISTORY = 30;
+
+// In futures, the bot will only use as position :
+export const FUTURES_STRATEGY = {
+  long: true,
+  short: true,
+};
 
 // ====================================================================== //
 
 export const tradeConfigs: TradeConfig[] = [
   {
-    asset: 'BTC',
+    asset: 'LIT',
     base: 'USDT',
     allocation: 0.001,
     lossTolerance: 0.03,

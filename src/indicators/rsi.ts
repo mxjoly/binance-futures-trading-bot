@@ -1,4 +1,4 @@
-import technicalIndicators, { RSI } from 'technicalindicators';
+import { RSI } from 'technicalindicators';
 
 const RSI_PERIOD = 14;
 const RSI_OVERBOUGHT = 70;

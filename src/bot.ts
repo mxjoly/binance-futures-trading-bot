@@ -4,23 +4,10 @@ import Binance, {
   CandleChartInterval,
   CandleChartResult,
   ExchangeInfo,
-  Order,
-  PositionRiskResult,
-  TradeResult,
 } from 'binance-api-node';
-import technicalIndicators, {
-  RSI,
-  CROSS_SMA,
-  SMA,
-  RSI_SMA,
-} from './indicators';
-import {
-  tradeConfigs,
-  BINANCE_MODE,
-  MAX_CANDLES_HISTORY,
-  MIN_FREE_BALANCE_FOR_FUTURE_TRADING,
-  MIN_FREE_BALANCE_FOR_SPOT_TRADING,
-} from './config';
+import technicalIndicators from 'technicalindicators';
+import { RSI, CROSS_SMA, SMA, RSI_SMA } from './indicators';
+import { tradeConfigs, BINANCE_MODE, MAX_CANDLES_HISTORY } from './config';
 
 require('dotenv').config();
 
@@ -99,7 +86,9 @@ function loadCandles(symbol: string, interval: CandleChartInterval) {
 }
 
 async function run() {
-  log('====================== Binance Bot Trading ======================');
+  log(
+    '====================== 💵 BINANCE BOT TRADING 💵 ======================'
+  );
 
   const exchangeInfo =
     BINANCE_MODE === 'spot'
@@ -125,8 +114,6 @@ async function run() {
             historyCandles[pair].push(ChartCandle(candle));
             historyCandles[pair] = historyCandles[pair].slice(1);
 
-            console.log(historyCandles[pair].map((c) => c.close));
-
             if (BINANCE_MODE === 'spot') {
               tradeWithSpot(
                 tradeConfig,
@@ -141,11 +128,6 @@ async function run() {
                 Number(candle.close),
                 exchangeInfo
               );
-              // if (isBuySignal(historyCandles[pair])) {
-              //   log('BUY');
-              // } else if (isSellSignal(historyCandles[pair])) {
-              //   log('SELL');
-              // }
             }
           }
         });
@@ -160,13 +142,16 @@ async function tradeWithSpot(
   realtimePrice: number,
   exchangeInfo: ExchangeInfo
 ) {
-  const pair = `${tradeConfig.asset}${tradeConfig.base}`;
+  const { asset, base, allocation, profitTarget, lossTolerance } = tradeConfig;
+  const pair = `${asset}${base}`;
 
   // Ge the available balance of base asset
   const { balances } = await binanceClient.accountInfo();
   const availableBalance = Number(
-    balances.find((balance) => balance.asset === tradeConfig.base).free
+    balances.find((balance) => balance.asset === base).free
   );
+
+  const pricePrecision = getPricePrecision(pair, exchangeInfo);
 
   const currentTrades = await binanceClient.myTrades({ symbol: pair });
 
@@ -185,9 +170,7 @@ async function tradeWithSpot(
         })
         .then(() => {
           log(
-            `@Spot > Bot sold ${openTrade.symbol} to ${
-              tradeConfig.base
-            }. Gain: ${
+            `@Spot > Sells ${openTrade.symbol} to ${base}. Gain: ${
               realtimePrice * Number(openTrade.qty) -
               Number(openTrade.price) * Number(openTrade.qty)
             }`
@@ -195,20 +178,20 @@ async function tradeWithSpot(
         })
         .catch(error);
     }
-  } else if (availableBalance >= MIN_FREE_BALANCE_FOR_SPOT_TRADING) {
+  } else {
     if (isBuySignal(candles)) {
-      const takeProfitPrice = tradeConfig.profitTarget
-        ? calculatePrice(realtimePrice, 1 + tradeConfig.profitTarget)
+      const takeProfitPrice = profitTarget
+        ? decimalCeil(realtimePrice * (1 + profitTarget), pricePrecision)
         : null;
-      const stopLossPrice = calculatePrice(
-        realtimePrice,
-        1 - tradeConfig.lossTolerance
+      const stopLossPrice = decimalCeil(
+        realtimePrice * (1 - lossTolerance),
+        pricePrecision
       );
 
-      const quantity = getQuantity(
+      const quantity = calculateAllocationQuantity(
         pair,
         availableBalance,
-        tradeConfig.allocation,
+        allocation,
         realtimePrice,
         exchangeInfo
       );
@@ -252,9 +235,7 @@ async function tradeWithSpot(
         })
         .then(() => {
           log(
-            `@Spot > Bot bought ${tradeConfig.asset} with ${
-              tradeConfig.base
-            } at the price ${realtimePrice}. TP/SL: ${
+            `@Spot > Buys ${asset} with ${base} at the price ${realtimePrice}. TP/SL: ${
               takeProfitPrice ? takeProfitPrice : '----'
             }/${stopLossPrice}`
           );
@@ -270,120 +251,79 @@ async function tradeWithFutures(
   realtimePrice: number,
   exchangeInfo: ExchangeInfo
 ) {
-  const pair = `${tradeConfig.asset}${tradeConfig.base}`;
+  const { asset, base, lossTolerance, profitTarget, allocation } = tradeConfig;
+  const pair = `${asset}${base}`;
 
   // Ge the available balance of base asset
   const balances = await binanceClient.futuresAccountBalance();
   const availableBalance = Number(
-    balances.find((balance) => balance.asset === tradeConfig.base)
-      .availableBalance
+    balances.find((balance) => balance.asset === base).availableBalance
   );
 
-  /**
-   * Check if the current position must be close or not.
-   */
-  function checkCurrentPosition(position: PositionRiskResult) {
-    return new Promise<void>((resolve, reject) => {
-      const isBuyPosition = position.entryPrice > position.liquidationPrice;
+  const { positions } = await binanceClient.futuresAccountInfo();
+  const position = positions.find((position) => position.symbol === pair);
+  const hasPosition = Number(position.positionAmt) !== 0;
+  const isLongPosition = Number(position.positionAmt) > 0;
+  const isShortPosition = Number(position.positionAmt) < 0;
 
-      // Avoid to take a position two times when different indicators returns a signal successively
-      if (!isBuyPosition && isBuySignal(candles)) {
-        binanceClient
-          .futuresOrder({
-            side: 'BUY',
-            type: 'MARKET',
-            symbol: pair,
-            quantity: position.positionAmt,
-            recvWindow: 60000,
-          })
-          .then(() => {
-            closeOpenOrders(pair);
-            log(
-              `@Futures > Close the long position for ${pair}. PNL: ${position.unRealizedProfit}`
-            );
-          })
-          .then(resolve)
-          .catch(reject);
-      } else if (isBuyPosition && isSellSignal(candles)) {
-        binanceClient
-          .futuresOrder({
-            side: 'SELL',
-            type: 'MARKET',
-            symbol: pair,
-            quantity: position.positionAmt,
-            recvWindow: 60000,
-          })
-          .then(() => {
-            closeOpenOrders(pair);
-            log(
-              `@Futures > Close the short position for ${pair}. PNL: ${position.unRealizedProfit}`
-            );
-          })
-          .then(resolve)
-          .catch(reject);
-      } else {
-        resolve();
-      }
-    });
-  }
+  const pricePrecision = getPricePrecision(pair, exchangeInfo);
 
-  /**
-   * Look for a position to take
-   */
-  function lookForPosition() {
-    // Allow trading with a minimum of balance
-    if (availableBalance >= MIN_FREE_BALANCE_FOR_FUTURE_TRADING) {
-      if (isBuySignal(candles)) {
-        const takeProfitPrice = tradeConfig.profitTarget
-          ? calculatePrice(realtimePrice, 1 + tradeConfig.profitTarget)
-          : null;
-        const stopLossPrice = calculatePrice(
-          realtimePrice,
-          1 - tradeConfig.lossTolerance
-        );
+  const minQuantity = await getMinOrderQuantity(asset, exchangeInfo);
 
-        const quantity = getQuantity(
-          pair,
-          availableBalance,
-          tradeConfig.allocation,
-          realtimePrice,
-          exchangeInfo
-        );
+  if (!isLongPosition && isBuySignal(candles)) {
+    const takeProfitPrice = profitTarget
+      ? decimalCeil(realtimePrice * (1 + profitTarget), pricePrecision)
+      : null;
+    const stopLossPrice = decimalCeil(
+      realtimePrice * (1 - lossTolerance),
+      pricePrecision
+    );
 
-        // Buy limit order
-        binanceClient
-          .futuresOrder({
-            side: 'BUY',
-            type: 'MARKET',
-            symbol: pair,
-            quantity: String(quantity),
-            recvWindow: 60000,
-          })
-          .then(() => {
-            if (takeProfitPrice) {
-              // Take profit order
-              binanceClient
-                .futuresOrder({
-                  side: 'SELL',
-                  type: 'TAKE_PROFIT_MARKET',
-                  symbol: pair,
-                  stopPrice: String(takeProfitPrice),
-                  quantity: String(quantity),
-                  recvWindow: 60000,
-                })
-                .then((order) => {
-                  openOrders[pair].push(order.orderId);
-                })
-                .catch(error);
-            }
+    let quantity = calculateAllocationQuantity(
+      pair,
+      availableBalance,
+      allocation,
+      realtimePrice,
+      exchangeInfo
+    );
 
-            // Stop loss order
+    // Quantity to add to close the previous position
+    let previousPositionQuantity =
+      hasPosition && isShortPosition ? Number(position.positionAmt) : 0;
+
+    // If the quantity you want considering quantity to remove for closing the previous
+    // position is lower than the minimal quantity authorized
+    if (quantity + previousPositionQuantity >= minQuantity) {
+      quantity = minQuantity;
+    }
+
+    if (!isValidQuantity(quantity, pair, exchangeInfo)) {
+      throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
+    }
+
+    binanceClient
+      .futuresOrder({
+        side: 'BUY',
+        type: 'MARKET',
+        symbol: pair,
+        quantity: String(quantity),
+        recvWindow: 60000,
+      })
+      .then(() => {
+        if (hasPosition && isShortPosition) {
+          closeOpenOrders(pair);
+          log(
+            `@Futures > Closes the short position for ${pair}. PNL: ${position.unrealizedProfit}`
+          );
+        } else {
+          if (takeProfitPrice) {
+            // Take profit order
             binanceClient
               .futuresOrder({
                 side: 'SELL',
-                type: 'STOP_MARKET',
+                type: 'TAKE_PROFIT_MARKET',
                 symbol: pair,
-                stopPrice: String(stopLossPrice),
+                stopPrice: String(takeProfitPrice),
                 quantity: String(quantity),
                 recvWindow: 60000,
               })
@@ -391,66 +331,86 @@ async function tradeWithFutures(
                 openOrders[pair].push(order.orderId);
               })
               .catch(error);
-          })
-          .then(() => {
-            log(
-              `@Futures > Bot takes a long for ${pair} at the price ${realtimePrice} with TP/SL: ${
-                takeProfitPrice ? takeProfitPrice : '----'
-              }/${stopLossPrice}`
-            );
-          })
-          .catch(error);
-      } else if (isSellSignal(candles)) {
-        const takeProfitPrice = tradeConfig.profitTarget
-          ? calculatePrice(realtimePrice, 1 - tradeConfig.profitTarget)
-          : null;
-        const stopLossPrice = calculatePrice(
-          realtimePrice,
-          1 + tradeConfig.lossTolerance
+          }
+
+          // Stop loss order
+          binanceClient
+            .futuresOrder({
+              side: 'SELL',
+              type: 'STOP_MARKET',
+              symbol: pair,
+              stopPrice: String(stopLossPrice),
+              quantity: String(quantity),
+              recvWindow: 60000,
+            })
+            .then((order) => {
+              openOrders[pair].push(order.orderId);
+            })
+            .catch(error);
+        }
+      })
+      .then(() => {
+        log(
+          `@Futures > Takes a long position for ${pair} at the price ${realtimePrice} with TP/SL: ${
+            takeProfitPrice ? takeProfitPrice : '----'
+          }/${stopLossPrice}`
         );
+      })
+      .catch(error);
+  } else if (!isShortPosition && isSellSignal(candles)) {
+    const takeProfitPrice = profitTarget
+      ? decimalCeil(realtimePrice * (1 - profitTarget), pricePrecision)
+      : null;
+    const stopLossPrice = decimalCeil(
+      realtimePrice * (1 + lossTolerance),
+      pricePrecision
+    );
 
-        const quantity = getQuantity(
-          pair,
-          availableBalance,
-          tradeConfig.allocation,
-          realtimePrice,
-          exchangeInfo
-        );
+    let quantity = calculateAllocationQuantity(
+      pair,
+      availableBalance,
+      allocation,
+      realtimePrice,
+      exchangeInfo
+    );
 
-        // Sell limit order
-        binanceClient
-          .futuresOrder({
-            side: 'SELL',
-            type: 'MARKET',
-            symbol: pair,
-            quantity: String(quantity),
-            recvWindow: 60000,
-          })
-          .then(() => {
-            if (takeProfitPrice) {
-              // Take profit order
-              binanceClient
-                .futuresOrder({
-                  side: 'BUY',
-                  type: 'TAKE_PROFIT_MARKET',
-                  symbol: pair,
-                  stopPrice: String(takeProfitPrice),
-                  quantity: String(quantity),
-                  recvWindow: 60000,
-                })
-                .then((order) => {
-                  openOrders[pair].push(order.orderId);
-                })
-                .catch(error);
-            }
+    // Quantity to add to close the previous position
+    let previousPositionQuantity =
+      hasPosition && isLongPosition ? Number(position.positionAmt) : 0;
 
-            // Stop loss order
+    // If the quantity you want considering quantity to remove for closing the previous
+    // position is lower than the minimal quantity authorized
+    if (quantity + previousPositionQuantity >= minQuantity) {
+      quantity = minQuantity;
+    }
+
+    if (!isValidQuantity(quantity, pair, exchangeInfo)) {
+      throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
+    }
+
+    binanceClient
+      .futuresOrder({
+        side: 'SELL',
+        type: 'MARKET',
+        symbol: pair,
+        quantity: String(quantity),
+        recvWindow: 60000,
+      })
+      .then(() => {
+        if (hasPosition && isLongPosition) {
+          closeOpenOrders(pair);
+          log(
+            `@Futures > Closes the long position for ${pair}. PNL: ${position.unrealizedProfit}`
+          );
+        } else {
+          if (takeProfitPrice) {
+            // Take profit order
             binanceClient
               .futuresOrder({
                 side: 'BUY',
-                type: 'STOP_MARKET',
+                type: 'TAKE_PROFIT_MARKET',
                 symbol: pair,
-                stopPrice: String(stopLossPrice),
+                stopPrice: String(takeProfitPrice),
                 quantity: String(quantity),
                 recvWindow: 60000,
               })
@@ -458,41 +418,33 @@ async function tradeWithFutures(
                 openOrders[pair].push(order.orderId);
               })
               .catch(error);
-          })
-          .then(() => {
-            log(
-              `@Futures > Bot takes a short for ${pair} at the price ${realtimePrice} with TP/SL: ${
-                takeProfitPrice ? takeProfitPrice : '----'
-              }/${stopLossPrice}`
-            );
-          })
-          .catch(error);
-      }
-    }
-  }
+          }
 
-  // Check the current positions
-  binanceClient.futuresPositionRisk().then((allPositions) => {
-    const positions = allPositions.filter(
-      (position) => position.symbol === pair
-    );
-
-    if (positions.length > 0) {
-      const promises = [];
-      // Used when we need to close a position and open directly a new position
-      positions.forEach((position) => {
-        promises.push(
-          new Promise((resolve, reject) => {
-            checkCurrentPosition(position).then(resolve).catch(reject);
-          })
+          // Stop loss order
+          binanceClient
+            .futuresOrder({
+              side: 'BUY',
+              type: 'STOP_MARKET',
+              symbol: pair,
+              stopPrice: String(stopLossPrice),
+              quantity: String(quantity),
+              recvWindow: 60000,
+            })
+            .then((order) => {
+              openOrders[pair].push(order.orderId);
+            })
+            .catch(error);
+        }
+      })
+      .then(() => {
+        log(
+          `@Futures > Bot takes a short for ${pair} at the price ${realtimePrice} with TP/SL: ${
+            takeProfitPrice ? takeProfitPrice : '----'
+          }/${stopLossPrice}`
         );
-      });
-
-      Promise.all(promises).then(lookForPosition).catch(error);
-    } else {
-      lookForPosition();
-    }
-  });
+      })
+      .catch(error);
+  }
 }
 
 function closeOpenOrders(symbol: string) {
@@ -513,8 +465,6 @@ function closeOpenOrders(symbol: string) {
   openOrders[symbol] = []; // reset the list of order id
 }
 
-// ==================================================================================== //
-
 function ChartCandle(candle: Candle | CandleChartResult): ChartCandle {
   return {
     open: Number(candle.open),
@@ -525,18 +475,6 @@ function ChartCandle(candle: Candle | CandleChartResult): ChartCandle {
     closeTime: Number(candle.closeTime),
     trades: Number(candle.trades),
   };
-}
-
-/**
- * Calculate a new price by apply a percentage
- */
-function calculatePrice(price: number, percent: number) {
-  const precision = getPrecision(price);
-  const newPrice = price * percent;
-  const newPricePrecision = getPrecision(newPrice);
-  return newPricePrecision > precision
-    ? Number(newPrice.toFixed(precision))
-    : newPrice;
 }
 
 function isBuySignal(candles: ChartCandle[]) {
@@ -568,44 +506,104 @@ function isSellSignal(candles: ChartCandle[]) {
 }
 
 /**
- * Get the quantity of a crypto to trade according to the available balance,
- * the allocation to take, and the price of the crypto
+ * @see https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md#lot_size
  */
-function getQuantity(
+function isValidQuantity(
+  quantity: number,
   pair: string,
-  availableBalance: number,
-  allocation: number,
-  price: number,
   exchangeInfo: ExchangeInfo
 ) {
-  const minQuantity = Number(
-    exchangeInfo.symbols
-      .find((symbol) => symbol.symbol === pair)
-      // @ts-ignore
-      .filters.find((filter) => filter.filterType === 'LOT_SIZE').minQty
-  );
-
-  // Get the number of decimals
-  const minQuantityFormatted = Number(minQuantity).toString(); // Remove useless 0 at the end
-  const hasDecimals = minQuantityFormatted.split('.').length === 2;
-  const minQuantityPrecision = hasDecimals
-    ? minQuantityFormatted.split('.')[1].length
-    : 0;
-
-  const quantity = Number(
-    ((availableBalance * allocation) / price).toFixed(minQuantityPrecision)
-  );
-
-  return quantity > minQuantity ? quantity : minQuantity;
+  const rules = getLotSizeQuantityRules(pair, exchangeInfo);
+  return quantity >= rules.minQty && quantity <= rules.maxQty;
 }
 
 /**
- * Get the number of decimals
+ * Get the minimal quantity to trade with this pair according to the
+ * Binance futures trading rules
+ *
  */
-function getPrecision(number: number) {
-  return String(number).split('.').length === 2
-    ? String(number).split('.')[1].length
-    : 0;
+async function getMinOrderQuantity(asset: string, exchangeInfo: ExchangeInfo) {
+  const getPrice =
+    BINANCE_MODE === 'spot'
+      ? binanceClient.prices
+      : binanceClient.futuresPrices;
+
+  const prices = await getPrice();
+  const usdtPrice = Number(prices[`${asset}USDT`]);
+  const precision = getQuantityPrecision(`${asset}USDT`, exchangeInfo);
+  const minimumNotionalValue = 5; // threshold in USDT
+  return decimalCeil(minimumNotionalValue / usdtPrice, precision);
+}
+
+/**
+ * Get the quantity rules to make a valid order
+ * @see https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md#lot_size
+ * @see https://www.binance.com/en/support/faq/360033161972
+ */
+function getLotSizeQuantityRules(pair: string, exchangeInfo: ExchangeInfo) {
+  // @ts-ignore
+  const { minQty, maxQty, stepSize } = Number(
+    exchangeInfo.symbols
+      .find((symbol) => symbol.symbol === pair)
+      // @ts-ignore
+      .filters.find((filter) => filter.filterType === 'LOT_SIZE')
+  );
+  return {
+    minQty: Number(minQty),
+    maxQty: Number(maxQty),
+    stepSize: Number(stepSize),
+  };
+}
+
+/**
+ * Calculate the quantity of crypto to buy according to your available balance,
+ * the allocation you want, and the current price of the crypto
+ * @param pair - The pair to trade
+ * @param availableBalance - Your available balance in your wallet
+ * @param allocation - The allocation to take from your wallet total balance
+ * @param realtimePrice - The current price of the crypto to buy
+ * @param exchangeInfo
+ */
+function calculateAllocationQuantity(
+  pair: string,
+  availableBalance: number,
+  allocation: number,
+  realtimePrice: number,
+  exchangeInfo: ExchangeInfo
+) {
+  const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
+  const allocationQuantity = (availableBalance * allocation) / realtimePrice;
+  const minQuantity = getLotSizeQuantityRules(pair, exchangeInfo).minQty;
+  return allocationQuantity > minQuantity
+    ? decimalCeil(allocationQuantity, quantityPrecision)
+    : minQuantity;
+}
+
+/**
+ * Get the maximal number of decimals for a pair quantity
+ */
+function getQuantityPrecision(pair: string, exchangeInfo: ExchangeInfo) {
+  const symbol = exchangeInfo.symbols.find((symbol) => symbol.symbol === pair);
+  // @ts-ignore
+  return symbol.quantityPrecision as number;
+}
+
+/**
+ * Get the maximal number of decimals for a pair quantity
+ */
+function getPricePrecision(pair: string, exchangeInfo: ExchangeInfo) {
+  const symbol = exchangeInfo.symbols.find((symbol) => symbol.symbol === pair);
+  // @ts-ignore
+  return symbol.pricePrecision as number;
+}
+
+/**
+ * Math.ceil with decimals
+ * @param a
+ * @param precision - The number of decimals after the comma
+ */
+function decimalCeil(a: number, precision: number) {
+  return Math.ceil(a * Math.pow(10, precision)) / Math.pow(10, precision);
 }
 
 function log(message: string) {
