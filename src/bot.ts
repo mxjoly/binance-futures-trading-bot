@@ -320,7 +320,7 @@ async function tradeWithFutures(
     // If the quantity you want considering quantity to remove for closing the previous
     // position is lower than the minimal quantity authorized
     if (quantity + previousPositionQuantity >= minQuantity) {
-      quantity = minQuantity;
+      quantity += previousPositionQuantity;
     }
 
     if (!isValidQuantity(quantity, pair, exchangeInfo)) {
@@ -428,7 +428,7 @@ async function tradeWithFutures(
     // If the quantity you want considering quantity to remove for closing the previous
     // position is lower than the minimal quantity authorized
     if (quantity + previousPositionQuantity >= minQuantity) {
-      quantity = minQuantity;
+      quantity += previousPositionQuantity;
     }
 
     if (!isValidQuantity(quantity, pair, exchangeInfo)) {
