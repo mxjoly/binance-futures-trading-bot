@@ -193,8 +193,9 @@ async function tradeWithSpot(
         pricePrecision
       );
 
-      const quantity = calculateAllocationQuantity(
-        pair,
+      const quantity = await calculateAllocationQuantity(
+        asset,
+        base,
         availableBalance,
         allocation,
         realtimePrice,
@@ -272,7 +273,7 @@ async function tradeWithFutures(
 
   const pricePrecision = getPricePrecision(pair, exchangeInfo);
 
-  const minQuantity = await getMinOrderQuantity(asset, exchangeInfo);
+  const minQuantity = getMinOrderQuantity(asset, realtimePrice, exchangeInfo);
 
   if (!hasLongPosition && isBuySignal(candles)) {
     // If long position are not enabled, just close the short position and wait for a sell signal
@@ -302,8 +303,9 @@ async function tradeWithFutures(
       pricePrecision
     );
 
-    let quantity = calculateAllocationQuantity(
-      pair,
+    let quantity = await calculateAllocationQuantity(
+      asset,
+      base,
       availableBalance,
       allocation,
       realtimePrice,
@@ -409,8 +411,9 @@ async function tradeWithFutures(
       pricePrecision
     );
 
-    let quantity = calculateAllocationQuantity(
-      pair,
+    let quantity = await calculateAllocationQuantity(
+      asset,
+      base,
       availableBalance,
       allocation,
       realtimePrice,
@@ -564,16 +567,12 @@ function isValidQuantity(
 /**
  * Get the minimal quantity to trade with this pair according to the
  * Binance futures trading rules
- *
  */
-async function getMinOrderQuantity(asset: string, exchangeInfo: ExchangeInfo) {
-  const getPrice =
-    BINANCE_MODE === 'spot'
-      ? binanceClient.prices
-      : binanceClient.futuresPrices;
-
-  const prices = await getPrice();
-  const usdtPrice = Number(prices[`${asset}USDT`]);
+function getMinOrderQuantity(
+  asset: string,
+  usdtPrice: number,
+  exchangeInfo: ExchangeInfo
+) {
   const precision = getQuantityPrecision(`${asset}USDT`, exchangeInfo);
   const minimumNotionalValue = 5; // threshold in USDT
   return decimalCeil(minimumNotionalValue / usdtPrice, precision);
@@ -601,26 +600,29 @@ function getLotSizeQuantityRules(pair: string, exchangeInfo: ExchangeInfo) {
 /**
  * Calculate the quantity of crypto to buy according to your available balance,
  * the allocation you want, and the current price of the crypto
- * @param pair - The pair to trade
+ * @param asset
+ * @param base
  * @param availableBalance - Your available balance in your wallet
  * @param allocation - The allocation to take from your wallet total balance
  * @param realtimePrice - The current price of the crypto to buy
  * @param exchangeInfo
  */
-function calculateAllocationQuantity(
-  pair: string,
+async function calculateAllocationQuantity(
+  asset: string,
+  base: string,
   availableBalance: number,
   allocation: number,
   realtimePrice: number,
   exchangeInfo: ExchangeInfo
 ) {
+  const pair = asset + base;
   const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
   const allocationQuantity = (availableBalance * allocation) / realtimePrice;
-  const minQuantity = getLotSizeQuantityRules(pair, exchangeInfo).minQty;
 
-  console.log('quantityPrecision :', quantityPrecision);
-  console.log('allocationQuantity :', allocationQuantity);
-  console.log('minQuantity :', minQuantity);
+  const minQuantity =
+    BINANCE_MODE === 'spot'
+      ? getLotSizeQuantityRules(pair, exchangeInfo).minQty
+      : getMinOrderQuantity(asset, realtimePrice, exchangeInfo);
 
   return allocationQuantity > minQuantity
     ? decimalCeil(allocationQuantity, quantityPrecision)
