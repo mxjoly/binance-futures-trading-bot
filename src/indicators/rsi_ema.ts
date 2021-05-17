@@ -1,14 +1,9 @@
-import technicalIndicators, {
-  RSI,
-  SMA,
-  CrossUp,
-  CrossDown,
-} from 'technicalindicators';
+import { RSI, SMA, CrossUp, CrossDown } from 'technicalindicators';
 
 const RSI_PERIOD = 14;
 const RSI_OVERBOUGHT = 70;
 const RSI_OVERSOLD = 30;
-const SMA_PERIOD = 20;
+const EMA_PERIOD = 20;
 
 /**
  * Return true if the RSI crosses up the SMA or if the RSI crosses up the oversold zone line
@@ -20,15 +15,15 @@ export const isBuySignal = (candles: ChartCandle[]) => {
       period: RSI_PERIOD,
     });
 
-    const smaValues = SMA.calculate({
+    const emaValues = SMA.calculate({
       values: candles.map((candle) => candle.close),
-      period: SMA_PERIOD,
+      period: EMA_PERIOD,
     });
 
     const lastRsiValue = rsiValues[rsiValues.length - 2];
     const currentRsiValue = rsiValues[rsiValues.length - 1];
 
-    const results = CrossUp.calculate({ lineA: rsiValues, lineB: smaValues });
+    const results = CrossUp.calculate({ lineA: rsiValues, lineB: emaValues });
 
     return (
       results[results.length - 1] === true ||
@@ -47,15 +42,15 @@ export const isSellSignal = (candles: ChartCandle[]) => {
       period: RSI_PERIOD,
     });
 
-    const smaValues = SMA.calculate({
+    const emaValues = SMA.calculate({
       values: candles.map((candle) => candle.close),
-      period: SMA_PERIOD,
+      period: EMA_PERIOD,
     });
 
     const lastRsiValue = rsiValues[rsiValues.length - 2];
     const currentRsiValue = rsiValues[rsiValues.length - 1];
 
-    const results = CrossDown.calculate({ lineA: rsiValues, lineB: smaValues });
+    const results = CrossDown.calculate({ lineA: rsiValues, lineB: emaValues });
 
     return (
       results[results.length - 1] === true ||

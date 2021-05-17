@@ -7,7 +7,7 @@ import Binance, {
 } from 'binance-api-node';
 import dateFormat from 'dateformat';
 import technicalIndicators from 'technicalindicators';
-import { RSI, CROSS_SMA, SMA, RSI_SMA } from './indicators';
+import { RSI, CROSS_SMA, SMA, RSI_EMA } from './indicators';
 import {
   tradeConfigs,
   BINANCE_MODE,
@@ -548,7 +548,7 @@ function isBuySignal(candles: ChartCandle[]) {
     // CROSS_SMA.isBuySignal(candles) ||
     // RSI.isBuySignal(candles) ||
     // SMA.isBuySignal(candles) ||
-    RSI_SMA.isBuySignal(candles)
+    RSI_EMA.isBuySignal(candles)
   );
 }
 
@@ -564,7 +564,7 @@ function isSellSignal(candles: ChartCandle[]) {
     // CROSS_SMA.isSellSignal(candles) ||
     // RSI.isSellSignal(candles) ||
     // SMA.isSellSignal(candles) ||
-    RSI_SMA.isSellSignal(candles)
+    RSI_EMA.isSellSignal(candles)
   );
 }
 
