@@ -48,17 +48,26 @@ function prepare() {
   if (BINANCE_MODE === 'futures') {
     // Set the margin type and initial leverage for the futures
     tradeConfigs.forEach((tradeConfig) => {
-      binanceClient
-        .futuresMarginType({
-          symbol: tradeConfig.asset + tradeConfig.base,
-          marginType: 'ISOLATED',
-        })
-        .catch(error);
+      const pair = tradeConfig.asset + tradeConfig.base;
 
       binanceClient
         .futuresLeverage({
-          symbol: tradeConfig.asset + tradeConfig.base,
-          leverage: tradeConfig.leverage || 2,
+          symbol: pair,
+          leverage: tradeConfig.leverage || 1,
+        })
+        .then(() =>
+          log(
+            `@futures > Leverage for ${pair} is set to ${
+              tradeConfig.leverage || 1
+            }`
+          )
+        )
+        .catch(error);
+
+      binanceClient
+        .futuresMarginType({
+          symbol: pair,
+          marginType: 'ISOLATED',
         })
         .catch(error);
     });
@@ -299,6 +308,9 @@ async function tradeWithFutures(
       return;
     }
 
+    // Do not trade with long position if the strategy is disabled
+    if (FUTURES_STRATEGY.long === false) return;
+
     const takeProfitPrice = profitTarget
       ? decimalCeil(realtimePrice * (1 + profitTarget), pricePrecision)
       : null;
@@ -311,7 +323,7 @@ async function tradeWithFutures(
       asset,
       base,
       availableBalance,
-      allocation,
+      allocation * (tradeConfig.leverage || 1),
       realtimePrice,
       exchangeInfo
     );
@@ -406,6 +418,9 @@ async function tradeWithFutures(
       return;
     }
 
+    // Do not trade with short position if the strategy is disabled
+    if (FUTURES_STRATEGY.short === false) return;
+
     const takeProfitPrice = profitTarget
       ? decimalCeil(realtimePrice * (1 - profitTarget), pricePrecision)
       : null;
@@ -418,7 +433,7 @@ async function tradeWithFutures(
       asset,
       base,
       availableBalance,
-      allocation,
+      allocation * (tradeConfig.leverage || 1),
       realtimePrice,
       exchangeInfo
     );
@@ -532,7 +547,8 @@ function isBuySignal(candles: ChartCandle[]) {
     // technicalIndicators.bullish(data) ||
     // CROSS_SMA.isBuySignal(candles) ||
     // RSI.isBuySignal(candles) ||
-    SMA.isBuySignal(candles)
+    // SMA.isBuySignal(candles) ||
+    RSI_SMA.isBuySignal(candles)
   );
 }
 
@@ -547,7 +563,8 @@ function isSellSignal(candles: ChartCandle[]) {
     // technicalIndicators.bearish(data) ||
     // CROSS_SMA.isSellSignal(candles) ||
     // RSI.isSellSignal(candles) ||
-    SMA.isSellSignal(candles)
+    // SMA.isSellSignal(candles) ||
+    RSI_SMA.isSellSignal(candles)
   );
 }
 

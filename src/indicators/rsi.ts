@@ -1,8 +1,8 @@
 import { RSI } from 'technicalindicators';
 
 const RSI_PERIOD = 14;
-const RSI_OVERBOUGHT = 70;
-const RSI_OVERSOLD = 30;
+const RSI_OVERBOUGHT = 75;
+const RSI_OVERSOLD = 35;
 
 /**
  * Return true if the RSI crosses up the oversold zone line
