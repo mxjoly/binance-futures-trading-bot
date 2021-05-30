@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "rimraf ./bot.log && nodemon ./build/bot.js",
+    "start": "rimraf ./bot.log && nodemon ./build/index.js",
     "build": "tsc"
   },
   "keywords": [],

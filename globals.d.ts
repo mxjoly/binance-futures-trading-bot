@@ -19,3 +19,17 @@ interface ChartCandle {
   closeTime: number;
   trades: number;
 }
+
+type VirtualWallet = {
+  [asset: string]: number;
+};
+
+interface VirtualOrder {
+  side: 'BUY' | 'SELL';
+  type: 'MARKET' | 'STOP_LOSS' | 'TAKE_PROFIT';
+  symbol: string;
+  price: number;
+  quantity: number;
+  leverage?: number;
+  stopPrice?: number;
+}

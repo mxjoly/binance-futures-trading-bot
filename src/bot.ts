@@ -1,29 +1,29 @@
-import winston from 'winston';
 import Binance, {
   Candle,
   CandleChartInterval,
-  CandleChartResult,
   ExchangeInfo,
 } from 'binance-api-node';
-import dateFormat from 'dateformat';
-import technicalIndicators from 'technicalindicators';
-import { RSI, CROSS_SMA, SMA, RSI_EMA } from './indicators';
 import {
   tradeConfigs,
   BINANCE_MODE,
   MAX_CANDLES_HISTORY,
   FUTURES_STRATEGY,
 } from './config';
+import {
+  calculateAllocationQuantity,
+  decimalCeil,
+  getPricePrecision,
+  isBuySignal,
+  isSellSignal,
+  isValidQuantity,
+  ChartCandle,
+  error,
+  log,
+} from './utils';
 
 require('dotenv').config();
 
 // ====================================================================== //
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.simple(),
-  transports: [new winston.transports.File({ filename: 'bot.log' })],
-});
 
 const binanceClient = Binance({
   apiKey: process.env.BINANCE_PUBLIC_KEY,
@@ -37,7 +37,7 @@ const openOrders: { [pair: string]: number[] } = {};
 
 // ====================================================================== //
 
-function prepare() {
+export function prepare() {
   // Initialize history and open orders
   tradeConfigs.forEach((tradeConfig) => {
     const pair = tradeConfig.asset + tradeConfig.base;
@@ -74,33 +74,7 @@ function prepare() {
   }
 }
 
-/**
- * Load candles and add them to the history
- */
-function loadCandles(symbol: string, interval: CandleChartInterval) {
-  return new Promise((resolve, reject) => {
-    const getCandles =
-      BINANCE_MODE === 'spot'
-        ? binanceClient.candles
-        : binanceClient.futuresCandles;
-
-    getCandles({ symbol, interval })
-      .then((candles) => {
-        historyCandles[symbol] = candles
-          .slice(-(MAX_CANDLES_HISTORY + 1), -1) // The last candles are not closed yet
-          .map((candle) => ChartCandle(candle));
-      })
-      .then(() => {
-        log(
-          `@${BINANCE_MODE} > The candles for the pair ${symbol} are successfully loaded`
-        );
-      })
-      .then(resolve)
-      .catch(reject);
-  });
-}
-
-async function run() {
+export async function run() {
   log(
     '====================== 💵 BINANCE BOT TRADING 💵 ======================'
   );
@@ -151,6 +125,32 @@ async function run() {
   });
 }
 
+/**
+ * Load candles and add them to the history
+ */
+function loadCandles(symbol: string, interval: CandleChartInterval) {
+  return new Promise((resolve, reject) => {
+    const getCandles =
+      BINANCE_MODE === 'spot'
+        ? binanceClient.candles
+        : binanceClient.futuresCandles;
+
+    getCandles({ symbol, interval })
+      .then((candles) => {
+        historyCandles[symbol] = candles
+          .slice(MAX_CANDLES_HISTORY, -1) // The last candles are not closed yet
+          .map((candle) => ChartCandle(candle));
+      })
+      .then(() => {
+        log(
+          `@${BINANCE_MODE} > The candles for the pair ${symbol} are successfully loaded`
+        );
+      })
+      .then(resolve)
+      .catch(reject);
+  });
+}
+
 async function tradeWithSpot(
   tradeConfig: TradeConfig,
   candles: ChartCandle[],
@@ -185,7 +185,7 @@ async function tradeWithSpot(
         })
         .then(() => {
           log(
-            `@spot > Sells ${openTrade.symbol} to ${base}. Gain: ${
+            `@spot > Sells ${asset} to ${base}. Gain: ${
               realtimePrice * Number(openTrade.qty) -
               Number(openTrade.price) * Number(openTrade.qty)
             }`
@@ -523,164 +523,3 @@ function closeOpenOrders(symbol: string) {
   openOrders[symbol] = []; // reset the list of order id
   log(`@${BINANCE_MODE} > Close all the open orders for the pair ${symbol}`);
 }
-
-function ChartCandle(candle: Candle | CandleChartResult): ChartCandle {
-  return {
-    open: Number(candle.open),
-    high: Number(candle.high),
-    low: Number(candle.low),
-    close: Number(candle.close),
-    volume: Number(candle.volume),
-    closeTime: Number(candle.closeTime),
-    trades: Number(candle.trades),
-  };
-}
-
-function isBuySignal(candles: ChartCandle[]) {
-  const data = {
-    open: candles.map((candle) => candle.open),
-    high: candles.map((candle) => candle.high),
-    close: candles.map((candle) => candle.close),
-    low: candles.map((candle) => candle.low),
-  };
-  return (
-    // technicalIndicators.bullish(data) ||
-    // CROSS_SMA.isBuySignal(candles) ||
-    // RSI.isBuySignal(candles) ||
-    // SMA.isBuySignal(candles) ||
-    RSI_EMA.isBuySignal(candles)
-  );
-}
-
-function isSellSignal(candles: ChartCandle[]) {
-  const data = {
-    open: candles.map((candle) => candle.open),
-    high: candles.map((candle) => candle.high),
-    close: candles.map((candle) => candle.close),
-    low: candles.map((candle) => candle.low),
-  };
-  return (
-    // technicalIndicators.bearish(data) ||
-    // CROSS_SMA.isSellSignal(candles) ||
-    // RSI.isSellSignal(candles) ||
-    // SMA.isSellSignal(candles) ||
-    RSI_EMA.isSellSignal(candles)
-  );
-}
-
-/**
- * @see https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md#lot_size
- */
-function isValidQuantity(
-  quantity: number,
-  pair: string,
-  exchangeInfo: ExchangeInfo
-) {
-  const rules = getLotSizeQuantityRules(pair, exchangeInfo);
-  return quantity >= rules.minQty && quantity <= rules.maxQty;
-}
-
-/**
- * Get the minimal quantity to trade with this pair according to the
- * Binance futures trading rules
- */
-function getMinOrderQuantity(
-  asset: string,
-  usdtPrice: number,
-  exchangeInfo: ExchangeInfo
-) {
-  const precision = getQuantityPrecision(`${asset}USDT`, exchangeInfo);
-  const minimumNotionalValue = 5; // threshold in USDT
-  return decimalCeil(minimumNotionalValue / usdtPrice, precision);
-}
-
-/**
- * Get the quantity rules to make a valid order
- * @see https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md#lot_size
- * @see https://www.binance.com/en/support/faq/360033161972
- */
-function getLotSizeQuantityRules(pair: string, exchangeInfo: ExchangeInfo) {
-  // @ts-ignore
-  const { minQty, maxQty, stepSize } = exchangeInfo.symbols
-    .find((symbol) => symbol.symbol === pair)
-    // @ts-ignore
-    .filters.find((filter) => filter.filterType === 'LOT_SIZE');
-
-  return {
-    minQty: Number(minQty),
-    maxQty: Number(maxQty),
-    stepSize: Number(stepSize),
-  };
-}
-
-/**
- * Calculate the quantity of crypto to buy according to your available balance,
- * the allocation you want, and the current price of the crypto
- * @param asset
- * @param base
- * @param availableBalance - Your available balance in your wallet
- * @param allocation - The allocation to take from your wallet total balance
- * @param realtimePrice - The current price of the crypto to buy
- * @param exchangeInfo
- */
-async function calculateAllocationQuantity(
-  asset: string,
-  base: string,
-  availableBalance: number,
-  allocation: number,
-  realtimePrice: number,
-  exchangeInfo: ExchangeInfo
-) {
-  const pair = asset + base;
-  const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
-  const allocationQuantity = (availableBalance * allocation) / realtimePrice;
-
-  const minQuantity =
-    BINANCE_MODE === 'spot'
-      ? getLotSizeQuantityRules(pair, exchangeInfo).minQty
-      : getMinOrderQuantity(asset, realtimePrice, exchangeInfo);
-
-  return allocationQuantity > minQuantity
-    ? decimalCeil(allocationQuantity, quantityPrecision)
-    : minQuantity;
-}
-
-/**
- * Get the maximal number of decimals for a pair quantity
- */
-function getQuantityPrecision(pair: string, exchangeInfo: ExchangeInfo) {
-  const symbol = exchangeInfo.symbols.find((symbol) => symbol.symbol === pair);
-  // @ts-ignore
-  return symbol.quantityPrecision as number;
-}
-
-/**
- * Get the maximal number of decimals for a pair quantity
- */
-function getPricePrecision(pair: string, exchangeInfo: ExchangeInfo) {
-  const symbol = exchangeInfo.symbols.find((symbol) => symbol.symbol === pair);
-  // @ts-ignore
-  return symbol.pricePrecision as number;
-}
-
-/**
- * Math.ceil with decimals
- * @param a
- * @param precision - The number of decimals after the comma
- */
-function decimalCeil(x: number, precision: number) {
-  return Math.ceil(x * Math.pow(10, precision)) / Math.pow(10, precision);
-}
-
-function log(message: string) {
-  logger.info(`${dateFormat()} : ${message}`);
-  console.log(`${dateFormat()} : ${message}`);
-}
-
-function error(message: string) {
-  logger.warn(`${dateFormat()} : ${message}`);
-  console.error(`${dateFormat()} : ${message}`);
-}
-
-prepare();
-run();
