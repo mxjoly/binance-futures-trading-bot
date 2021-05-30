@@ -157,7 +157,15 @@ async function tradeWithSpot(
   realtimePrice: number,
   exchangeInfo: ExchangeInfo
 ) {
-  const { asset, base, allocation, profitTarget, lossTolerance } = tradeConfig;
+  const {
+    asset,
+    base,
+    allocation,
+    profitTarget,
+    lossTolerance,
+    buyStrategy,
+    sellStrategy,
+  } = tradeConfig;
   const pair = `${asset}${base}`;
 
   // Ge the available balance of base asset
@@ -174,7 +182,7 @@ async function tradeWithSpot(
   if (currentTrades.length > 0) {
     const openTrade = currentTrades[0];
 
-    if (isSellSignal(candles)) {
+    if (isSellSignal(candles, sellStrategy)) {
       binanceClient
         .order({
           side: 'SELL',
@@ -194,7 +202,7 @@ async function tradeWithSpot(
         .catch(error);
     }
   } else {
-    if (isBuySignal(candles)) {
+    if (isBuySignal(candles, buyStrategy)) {
       const takeProfitPrice = profitTarget
         ? decimalCeil(realtimePrice * (1 + profitTarget), pricePrecision)
         : null;
@@ -267,7 +275,15 @@ async function tradeWithFutures(
   realtimePrice: number,
   exchangeInfo: ExchangeInfo
 ) {
-  const { asset, base, lossTolerance, profitTarget, allocation } = tradeConfig;
+  const {
+    asset,
+    base,
+    lossTolerance,
+    profitTarget,
+    allocation,
+    buyStrategy,
+    sellStrategy,
+  } = tradeConfig;
   const pair = `${asset}${base}`;
 
   // Ge the available balance of base asset
@@ -288,7 +304,7 @@ async function tradeWithFutures(
     closeOpenOrders(pair);
   }
 
-  if (!hasLongPosition && isBuySignal(candles)) {
+  if (!hasLongPosition && isBuySignal(candles, buyStrategy)) {
     // If long position are not enabled, just close the short position and wait for a sell signal
     if (hasShortPosition && FUTURES_STRATEGY.long === false) {
       binanceClient
@@ -398,7 +414,7 @@ async function tradeWithFutures(
         );
       })
       .catch(error);
-  } else if (!hasShortPosition && isSellSignal(candles)) {
+  } else if (!hasShortPosition && isSellSignal(candles, sellStrategy)) {
     // If short position are not enabled, just close the long position and wait for a buy signal
     if (hasLongPosition && FUTURES_STRATEGY.short === false) {
       binanceClient

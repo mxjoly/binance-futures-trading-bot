@@ -6,7 +6,6 @@ import Binance, {
 } from 'binance-api-node';
 import dateFormat from 'dateformat';
 import technicalIndicators from 'technicalindicators';
-import { RSI, MA_CROSSOVER, MA } from './strategies';
 import { BINANCE_MODE } from './config';
 
 const logger = winston.createLogger({
@@ -27,46 +26,12 @@ export function ChartCandle(candle: Candle | CandleChartResult): ChartCandle {
   };
 }
 
-export function isBuySignal(candles: ChartCandle[]) {
-  const data = {
-    open: candles.map((candle) => candle.open),
-    high: candles.map((candle) => candle.high),
-    close: candles.map((candle) => candle.close),
-    low: candles.map((candle) => candle.low),
-  };
-  return (
-    // technicalIndicators.bullish(data) ||
-    // CROSS_SMA.isBuySignal(candles) ||
-    // RSI.isBuySignal(candles) ||
-    // SMA.isBuySignal(candles) ||
-    MA_CROSSOVER.isBuySignal(candles, {
-      smallPeriod: 21,
-      longPeriod: 50,
-      smallMAType: 'EMA',
-      longMAType: 'SMA',
-    })
-  );
+export function isBuySignal(candles: ChartCandle[], strategy: Strategy) {
+  return strategy(candles);
 }
 
-export function isSellSignal(candles: ChartCandle[]) {
-  const data = {
-    open: candles.map((candle) => candle.open),
-    high: candles.map((candle) => candle.high),
-    close: candles.map((candle) => candle.close),
-    low: candles.map((candle) => candle.low),
-  };
-  return (
-    // technicalIndicators.bearish(data) ||
-    // CROSS_SMA.isSellSignal(candles) ||
-    // RSI.isSellSignal(candles) ||
-    // SMA.isSellSignal(candles) ||
-    MA_CROSSOVER.isSellSignal(candles, {
-      smallPeriod: 21,
-      longPeriod: 50,
-      smallMAType: 'EMA',
-      longMAType: 'SMA',
-    })
-  );
+export function isSellSignal(candles: ChartCandle[], strategy: Strategy) {
+  return strategy(candles);
 }
 
 /**

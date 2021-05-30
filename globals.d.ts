@@ -6,6 +6,8 @@ interface TradeConfig {
   profitTarget?: number; // between 0 and 1
   interval: CandleChartInterval;
   leverage?: number;
+  buyStrategy: Strategy;
+  sellStrategy: Strategy;
 }
 
 type BinanceMode = 'spot' | 'futures';
@@ -20,16 +22,4 @@ interface ChartCandle {
   trades: number;
 }
 
-type VirtualWallet = {
-  [asset: string]: number;
-};
-
-interface VirtualOrder {
-  side: 'BUY' | 'SELL';
-  type: 'MARKET' | 'STOP_LOSS' | 'TAKE_PROFIT';
-  symbol: string;
-  price: number;
-  quantity: number;
-  leverage?: number;
-  stopPrice?: number;
-}
+type Strategy = (candles: ChartCandle[]) => boolean;

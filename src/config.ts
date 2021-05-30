@@ -1,4 +1,5 @@
 import { CandleChartInterval } from 'binance-api-node';
+import { MA } from './strategies';
 
 // ============================ CONST =================================== //
 
@@ -23,6 +24,16 @@ export const tradeConfigs: TradeConfig[] = [
     allocation: 0.02,
     lossTolerance: 0.05,
     interval: CandleChartInterval.FIFTEEN_MINUTES,
-    leverage: 2,
+    leverage: 10,
+    buyStrategy: (candles: ChartCandle[]) =>
+      MA.isBuySignal(candles, {
+        maPeriod: 20,
+        maType: 'SMA',
+      }),
+    sellStrategy: (candles: ChartCandle[]) =>
+      MA.isSellSignal(candles, {
+        maPeriod: 20,
+        maType: 'SMA',
+      }),
   },
 ];
