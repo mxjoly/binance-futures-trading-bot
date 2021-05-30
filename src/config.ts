@@ -6,9 +6,6 @@ import { MA } from './strategies';
 // The bot wii trade with the binance :
 export const BINANCE_MODE: BinanceMode = 'futures';
 
-// Max candles saved is history for analysis
-export const MAX_CANDLES_HISTORY = 30;
-
 // In futures, the bot will only use as position :
 export const FUTURES_STRATEGY = {
   long: true,
@@ -21,19 +18,20 @@ export const tradeConfigs: TradeConfig[] = [
   {
     asset: 'BTC',
     base: 'USDT',
-    allocation: 0.02,
+    allocation: 0.2,
+    profitTarget: 0.1,
     lossTolerance: 0.05,
-    interval: CandleChartInterval.FIFTEEN_MINUTES,
-    leverage: 10,
+    interval: CandleChartInterval.ONE_MINUTE,
+    leverage: 1,
     buyStrategy: (candles: ChartCandle[]) =>
       MA.isBuySignal(candles, {
         maPeriod: 20,
-        maType: 'SMA',
+        maType: 'EMA',
       }),
     sellStrategy: (candles: ChartCandle[]) =>
       MA.isSellSignal(candles, {
         maPeriod: 20,
-        maType: 'SMA',
+        maType: 'EMA',
       }),
   },
 ];

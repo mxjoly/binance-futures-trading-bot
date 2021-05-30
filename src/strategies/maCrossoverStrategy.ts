@@ -36,7 +36,10 @@ export const isBuySignal = (
       period: longPeriod,
     });
 
-    const input = { lineA: valuesForSmallPeriod, lineB: valuesForLongPeriod };
+    const input = {
+      lineA: valuesForSmallPeriod.slice(-2),
+      lineB: valuesForLongPeriod.slice(-2),
+    };
 
     const results = CrossUp.calculate(input);
     return results[results.length - 1] === true;
@@ -69,7 +72,10 @@ export const isSellSignal = (
       period: longPeriod,
     });
 
-    const input = { lineA: valuesForSmallPeriod, lineB: valuesForLongPeriod };
+    const input = {
+      lineA: valuesForSmallPeriod.slice(-2),
+      lineB: valuesForLongPeriod.slice(-2),
+    };
 
     const results = CrossDown.calculate(input);
     return results[results.length - 1] === true;

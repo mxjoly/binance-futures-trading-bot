@@ -3,12 +3,7 @@ import Binance, {
   CandleChartInterval,
   ExchangeInfo,
 } from 'binance-api-node';
-import {
-  tradeConfigs,
-  BINANCE_MODE,
-  MAX_CANDLES_HISTORY,
-  FUTURES_STRATEGY,
-} from './config';
+import { tradeConfigs, BINANCE_MODE, FUTURES_STRATEGY } from './config';
 import {
   calculateAllocationQuantity,
   decimalCeil,
@@ -20,6 +15,7 @@ import {
   error,
   log,
 } from './utils';
+import { MA_CROSSOVER } from './strategies';
 
 require('dotenv').config();
 
@@ -138,7 +134,7 @@ function loadCandles(symbol: string, interval: CandleChartInterval) {
     getCandles({ symbol, interval })
       .then((candles) => {
         historyCandles[symbol] = candles
-          .slice(MAX_CANDLES_HISTORY, -1) // The last candles are not closed yet
+          .slice(0, -1) // The last candles are not closed yet
           .map((candle) => ChartCandle(candle));
       })
       .then(() => {

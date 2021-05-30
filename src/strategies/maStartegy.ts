@@ -1,5 +1,4 @@
 import { SMA, EMA, WMA, WEMA, CrossUp, CrossDown } from 'technicalindicators';
-import { MAX_CANDLES_HISTORY } from '../config';
 
 interface Options {
   maPeriod?: number;
@@ -27,8 +26,8 @@ export const isBuySignal = (
     });
 
     const input = {
-      lineA: candleValues.slice(-(MAX_CANDLES_HISTORY - maPeriod + 1)),
-      lineB: values,
+      lineA: candleValues.slice(-2),
+      lineB: values.slice(-2),
     };
 
     const results = CrossUp.calculate(input);
@@ -54,8 +53,8 @@ export const isSellSignal = (
     });
 
     const input = {
-      lineA: candleValues.slice(-(MAX_CANDLES_HISTORY - maPeriod + 1)),
-      lineB: values,
+      lineA: candleValues.slice(-2),
+      lineB: values.slice(-2),
     };
 
     const results = CrossDown.calculate(input);
