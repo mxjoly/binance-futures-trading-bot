@@ -1,5 +1,5 @@
 import { CandleChartInterval } from 'binance-api-node';
-import { MA } from './strategies';
+import { MA_CROSSOVER } from './strategies';
 
 // ============================ CONST =================================== //
 
@@ -19,19 +19,23 @@ export const tradeConfigs: TradeConfig[] = [
     asset: 'BTC',
     base: 'USDT',
     allocation: 0.2,
-    profitTarget: 0.1,
-    lossTolerance: 0.05,
-    interval: CandleChartInterval.ONE_MINUTE,
-    leverage: 1,
+    profitTarget: 1,
+    lossTolerance: 0.1,
+    interval: CandleChartInterval.FIFTEEN_MINUTES,
+    leverage: 10,
     buyStrategy: (candles: ChartCandle[]) =>
-      MA.isBuySignal(candles, {
-        maPeriod: 20,
-        maType: 'EMA',
+      MA_CROSSOVER.isBuySignal(candles, {
+        smallPeriod: 21,
+        smallMAType: 'EMA',
+        longPeriod: 50,
+        longMAType: 'SMA',
       }),
     sellStrategy: (candles: ChartCandle[]) =>
-      MA.isSellSignal(candles, {
-        maPeriod: 20,
-        maType: 'EMA',
+      MA_CROSSOVER.isSellSignal(candles, {
+        smallPeriod: 21,
+        smallMAType: 'EMA',
+        longPeriod: 50,
+        longMAType: 'SMA',
       }),
   },
 ];

@@ -276,6 +276,7 @@ async function tradeWithFutures(
     base,
     lossTolerance,
     profitTarget,
+    leverage,
     allocation,
     buyStrategy,
     sellStrategy,
@@ -324,10 +325,13 @@ async function tradeWithFutures(
     if (FUTURES_STRATEGY.long === false) return;
 
     const takeProfitPrice = profitTarget
-      ? decimalCeil(realtimePrice * (1 + profitTarget), pricePrecision)
+      ? decimalCeil(
+          realtimePrice * (1 + profitTarget / leverage),
+          pricePrecision
+        )
       : null;
     const stopLossPrice = decimalCeil(
-      realtimePrice * (1 - lossTolerance),
+      realtimePrice * (1 - lossTolerance / leverage),
       pricePrecision
     );
 
@@ -434,10 +438,13 @@ async function tradeWithFutures(
     if (FUTURES_STRATEGY.short === false) return;
 
     const takeProfitPrice = profitTarget
-      ? decimalCeil(realtimePrice * (1 - profitTarget), pricePrecision)
+      ? decimalCeil(
+          realtimePrice * (1 - profitTarget / leverage),
+          pricePrecision
+        )
       : null;
     const stopLossPrice = decimalCeil(
-      realtimePrice * (1 + lossTolerance),
+      realtimePrice * (1 + lossTolerance / leverage),
       pricePrecision
     );
 
