@@ -5,6 +5,11 @@ interface Options {
   maType?: MAType;
 }
 
+const defaultOptions: Options = {
+  maPeriod: 20,
+  maType: 'SMA',
+};
+
 const getMAClass = (type: MAType) =>
   type === 'SMA' ? SMA : type === 'EMA' ? EMA : type === 'WMA' ? WMA : WEMA;
 
@@ -13,16 +18,16 @@ const getMAClass = (type: MAType) =>
  */
 export const isBuySignal = (
   candles: ChartCandle[],
-  { maPeriod = 20, maType = 'SMA' }: Options
+  options = defaultOptions
 ) => {
-  if (candles.length >= maPeriod) {
-    const ma = getMAClass(maType);
+  if (candles.length >= options.maPeriod) {
+    const ma = getMAClass(options.maType);
 
     const candleValues = candles.map((candle) => candle.close);
 
     const values = ma.calculate({
       values: candleValues,
-      period: maPeriod,
+      period: options.maPeriod,
     });
 
     const input = {
@@ -40,16 +45,16 @@ export const isBuySignal = (
  */
 export const isSellSignal = (
   candles: ChartCandle[],
-  { maPeriod = 20, maType = 'SMA' }: Options
+  options = defaultOptions
 ) => {
-  if (candles.length >= maPeriod) {
-    const ma = getMAClass(maType);
+  if (candles.length >= options.maPeriod) {
+    const ma = getMAClass(options.maType);
 
     const candleValues = candles.map((candle) => candle.close);
 
     const values = ma.calculate({
       values: candleValues,
-      period: maPeriod,
+      period: options.maPeriod,
     });
 
     const input = {

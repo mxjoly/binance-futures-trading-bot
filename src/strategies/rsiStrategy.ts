@@ -6,24 +6,29 @@ interface Options {
   rsiOversold?: number;
 }
 
+const defaultOptions: Options = {
+  rsiPeriod: 14,
+  rsiOversold: 30,
+};
+
 /**
  * Return true if the RSI crosses up the oversold zone line
  */
 export const isBuySignal = (
   candles: ChartCandle[],
-  { rsiPeriod = 14, rsiOversold = 30 }: Options
+  options = defaultOptions
 ) => {
-  if (candles.length >= rsiPeriod) {
+  if (candles.length >= options.rsiPeriod) {
     const values = RSI.calculate({
       values: candles.map((candle) => candle.close),
-      period: rsiPeriod,
+      period: options.rsiPeriod,
     });
 
     const last = values[values.length - 2];
     const current = values[values.length - 1];
 
     // The RSI crossed the oversold line
-    return last < rsiOversold && current > rsiOversold;
+    return last < options.rsiOversold && current > options.rsiOversold;
   }
 };
 
@@ -32,18 +37,18 @@ export const isBuySignal = (
  */
 export const isSellSignal = (
   candles: ChartCandle[],
-  { rsiPeriod = 14, rsiOverbought = 70 }: Options
+  options = defaultOptions
 ) => {
-  if (candles.length >= rsiPeriod) {
+  if (candles.length >= options.rsiPeriod) {
     const values = RSI.calculate({
       values: candles.map((candle) => candle.close),
-      period: rsiPeriod,
+      period: options.rsiPeriod,
     });
 
     const last = values[values.length - 2];
     const current = values[values.length - 1];
 
     // The RSI crossed the overbought line
-    return last > rsiOverbought && current < rsiOverbought;
+    return last > options.rsiOverbought && current < options.rsiOverbought;
   }
 };

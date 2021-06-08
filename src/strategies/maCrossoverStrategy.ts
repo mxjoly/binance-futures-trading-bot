@@ -7,6 +7,13 @@ interface Options {
   longMAType?: MAType;
 }
 
+const defaultOption: Options = {
+  smallPeriod: 20,
+  longPeriod: 50,
+  smallMAType: 'SMA',
+  longMAType: 'SMA',
+};
+
 const getMAClass = (type: MAType) =>
   type === 'SMA' ? SMA : type === 'EMA' ? EMA : type === 'WMA' ? WMA : WEMA;
 
@@ -15,25 +22,20 @@ const getMAClass = (type: MAType) =>
  */
 export const isBuySignal = (
   candles: ChartCandle[],
-  {
-    smallPeriod = 20,
-    longPeriod = 50,
-    smallMAType = 'SMA',
-    longMAType = 'SMA',
-  }: Options
+  options = defaultOption
 ) => {
-  if (candles.length >= longPeriod) {
-    const ma1 = getMAClass(smallMAType);
-    const ma2 = getMAClass(longMAType);
+  if (candles.length >= options.longPeriod) {
+    const ma1 = getMAClass(options.smallMAType);
+    const ma2 = getMAClass(options.longMAType);
 
     const valuesForSmallPeriod = ma1.calculate({
       values: candles.map((candle) => candle.close),
-      period: smallPeriod,
+      period: options.smallPeriod,
     });
 
     const valuesForLongPeriod = ma2.calculate({
       values: candles.map((candle) => candle.close),
-      period: longPeriod,
+      period: options.longPeriod,
     });
 
     const input = {
@@ -51,25 +53,20 @@ export const isBuySignal = (
  */
 export const isSellSignal = (
   candles: ChartCandle[],
-  {
-    smallPeriod = 20,
-    longPeriod = 50,
-    smallMAType = 'SMA',
-    longMAType = 'SMA',
-  }: Options
+  options = defaultOption
 ) => {
-  if (candles.length >= longPeriod) {
-    const ma1 = getMAClass(smallMAType);
-    const ma2 = getMAClass(longMAType);
+  if (candles.length >= options.longPeriod) {
+    const ma1 = getMAClass(options.smallMAType);
+    const ma2 = getMAClass(options.longMAType);
 
     const valuesForSmallPeriod = ma1.calculate({
       values: candles.map((candle) => candle.close),
-      period: smallPeriod,
+      period: options.smallPeriod,
     });
 
     const valuesForLongPeriod = ma2.calculate({
       values: candles.map((candle) => candle.close),
-      period: longPeriod,
+      period: options.longPeriod,
     });
 
     const input = {
