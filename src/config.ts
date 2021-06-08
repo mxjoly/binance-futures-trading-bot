@@ -1,5 +1,5 @@
 import { CandleChartInterval } from 'binance-api-node';
-import { MACD } from './strategies';
+import { ENGULFING } from './strategies';
 
 // ============================ CONST =================================== //
 
@@ -23,7 +23,7 @@ export const tradeConfigs: TradeConfig[] = [
     lossTolerance: 0.05,
     interval: CandleChartInterval.ONE_MINUTE,
     leverage: 10,
-    buyStrategy: (candles: ChartCandle[]) => MACD.isBuySignal(candles),
-    sellStrategy: (candles: ChartCandle[]) => MACD.isSellSignal(candles),
+    buyStrategy: (candles: ChartCandle[]) => ENGULFING.isBuySignal(candles),
+    sellStrategy: (candles: ChartCandle[]) => ENGULFING.isSellSignal(candles),
   },
 ];
