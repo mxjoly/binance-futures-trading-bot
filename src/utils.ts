@@ -5,7 +5,6 @@ import Binance, {
   ExchangeInfo,
 } from 'binance-api-node';
 import dateFormat from 'dateformat';
-import technicalIndicators from 'technicalindicators';
 import { BINANCE_MODE } from './config';
 
 const logger = winston.createLogger({
@@ -14,23 +13,26 @@ const logger = winston.createLogger({
   transports: [new winston.transports.File({ filename: 'bot.log' })],
 });
 
-export function ChartCandle(candle: Candle | CandleChartResult): ChartCandle {
-  return {
-    open: Number(candle.open),
-    high: Number(candle.high),
-    low: Number(candle.low),
-    close: Number(candle.close),
-    volume: Number(candle.volume),
-    closeTime: Number(candle.closeTime),
-    trades: Number(candle.trades),
-  };
-}
+export const ChartCandle = (
+  candle: Candle | CandleChartResult
+): ChartCandle => ({
+  open: Number(candle.open),
+  high: Number(candle.high),
+  low: Number(candle.low),
+  close: Number(candle.close),
+  volume: Number(candle.volume),
+  closeTime: Number(candle.closeTime),
+  trades: Number(candle.trades),
+});
 
-export function isBuySignal(candles: ChartCandle[], strategy: Strategy) {
+export function isBuySignal(candles: ChartCandle[], strategy: BuySellStrategy) {
   return strategy(candles);
 }
 
-export function isSellSignal(candles: ChartCandle[], strategy: Strategy) {
+export function isSellSignal(
+  candles: ChartCandle[],
+  strategy: BuySellStrategy
+) {
   return strategy(candles);
 }
 

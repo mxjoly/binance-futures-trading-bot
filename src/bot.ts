@@ -3,10 +3,10 @@ import Binance, {
   CandleChartInterval,
   ExchangeInfo,
 } from 'binance-api-node';
-import { tradeConfigs, BINANCE_MODE, FUTURES_STRATEGY } from './config';
+import { EMA } from 'technicalindicators';
+import { tradeConfigs, BINANCE_MODE, FUTURES_USE_TREND_LINE } from './config';
 import {
   calculateAllocationQuantity,
-  decimalCeil,
   getPricePrecision,
   isBuySignal,
   isSellSignal,
@@ -15,7 +15,6 @@ import {
   error,
   log,
 } from './utils';
-import { MA_CROSSOVER } from './strategies';
 
 require('dotenv').config();
 
@@ -26,21 +25,12 @@ const binanceClient = Binance({
   apiSecret: process.env.BINANCE_PRIVATE_KEY,
 });
 
-const historyCandles: { [pair: string]: ChartCandle[] } = {};
-
 // All open orders in futures
 const openOrders: { [pair: string]: number[] } = {};
 
 // ====================================================================== //
 
 export function prepare() {
-  // Initialize history and open orders
-  tradeConfigs.forEach((tradeConfig) => {
-    const pair = tradeConfig.asset + tradeConfig.base;
-    historyCandles[pair] = [];
-    openOrders[pair] = [];
-  });
-
   if (BINANCE_MODE === 'futures') {
     // Set the margin type and initial leverage for the futures
     tradeConfigs.forEach((tradeConfig) => {
@@ -84,7 +74,7 @@ export async function run() {
     const pair = tradeConfig.asset + tradeConfig.base;
 
     loadCandles(pair, tradeConfig.interval)
-      .then(() => {
+      .then((candles) => {
         log(`@${BINANCE_MODE} > The bot trades the pair ${pair}`);
 
         const getCandles =
@@ -96,23 +86,13 @@ export async function run() {
         getCandles(pair, tradeConfig.interval, (candle: Candle) => {
           // Add only the closed candles
           if (candle.isFinal) {
-            historyCandles[pair].push(ChartCandle(candle));
-            historyCandles[pair] = historyCandles[pair].slice(1);
+            candles.push(ChartCandle(candle));
+            candles = candles.slice(1);
 
             if (BINANCE_MODE === 'spot') {
-              tradeWithSpot(
-                tradeConfig,
-                historyCandles[pair],
-                Number(candle.close),
-                exchangeInfo
-              );
+              tradeWithSpot(tradeConfig, candles, exchangeInfo);
             } else {
-              tradeWithFutures(
-                tradeConfig,
-                historyCandles[pair],
-                Number(candle.close),
-                exchangeInfo
-              );
+              tradeWithFutures(tradeConfig, candles, exchangeInfo);
             }
           }
         });
@@ -125,7 +105,7 @@ export async function run() {
  * Load candles and add them to the history
  */
 function loadCandles(symbol: string, interval: CandleChartInterval) {
-  return new Promise((resolve, reject) => {
+  return new Promise<ChartCandle[]>((resolve, reject) => {
     const getCandles =
       BINANCE_MODE === 'spot'
         ? binanceClient.candles
@@ -133,16 +113,15 @@ function loadCandles(symbol: string, interval: CandleChartInterval) {
 
     getCandles({ symbol, interval })
       .then((candles) => {
-        historyCandles[symbol] = candles
-          .slice(0, -1) // The last candles are not closed yet
-          .map((candle) => ChartCandle(candle));
-      })
-      .then(() => {
         log(
           `@${BINANCE_MODE} > The candles for the pair ${symbol} are successfully loaded`
         );
+        resolve(
+          candles
+            .slice(0, -1) // The last candles are not closed yet
+            .map((candle) => ChartCandle(candle))
+        );
       })
-      .then(resolve)
       .catch(reject);
   });
 }
@@ -150,18 +129,10 @@ function loadCandles(symbol: string, interval: CandleChartInterval) {
 async function tradeWithSpot(
   tradeConfig: TradeConfig,
   candles: ChartCandle[],
-  realtimePrice: number,
   exchangeInfo: ExchangeInfo
 ) {
-  const {
-    asset,
-    base,
-    allocation,
-    profitTarget,
-    lossTolerance,
-    buyStrategy,
-    sellStrategy,
-  } = tradeConfig;
+  const { asset, base, allocation, buyStrategy, sellStrategy, tpslStrategy } =
+    tradeConfig;
   const pair = `${asset}${base}`;
 
   // Ge the available balance of base asset
@@ -171,7 +142,7 @@ async function tradeWithSpot(
   );
 
   const pricePrecision = getPricePrecision(pair, exchangeInfo);
-
+  const currentPrice = candles[candles.length - 1].close;
   const currentTrades = await binanceClient.myTrades({ symbol: pair });
 
   // If a trade exists, search when to sell
@@ -190,7 +161,7 @@ async function tradeWithSpot(
         .then(() => {
           log(
             `@spot > Sells ${asset} to ${base}. Gain: ${
-              realtimePrice * Number(openTrade.qty) -
+              currentPrice * Number(openTrade.qty) -
               Number(openTrade.price) * Number(openTrade.qty)
             }`
           );
@@ -199,20 +170,19 @@ async function tradeWithSpot(
     }
   } else {
     if (isBuySignal(candles, buyStrategy)) {
-      const takeProfitPrice = profitTarget
-        ? decimalCeil(realtimePrice * (1 + profitTarget), pricePrecision)
-        : null;
-      const stopLossPrice = decimalCeil(
-        realtimePrice * (1 - lossTolerance),
-        pricePrecision
-      );
+      const { takeProfitPrice, stopLossPrice } = tpslStrategy({
+        candles,
+        tradeConfig,
+        pricePrecision,
+        side: 'BUY',
+      });
 
       const quantity = await calculateAllocationQuantity(
         asset,
         base,
         availableBalance,
         allocation,
-        realtimePrice,
+        currentPrice,
         exchangeInfo
       );
 
@@ -255,7 +225,7 @@ async function tradeWithSpot(
         })
         .then(() => {
           log(
-            `@spot > Buys ${asset} with ${base} at the price ${realtimePrice}. TP/SL: ${
+            `@spot > Buys ${asset} with ${base} at the price ${currentPrice}. TP/SL: ${
               takeProfitPrice ? takeProfitPrice : '----'
             }/${stopLossPrice}`
           );
@@ -268,20 +238,18 @@ async function tradeWithSpot(
 async function tradeWithFutures(
   tradeConfig: TradeConfig,
   candles: ChartCandle[],
-  realtimePrice: number,
   exchangeInfo: ExchangeInfo
 ) {
-  const {
-    asset,
-    base,
-    lossTolerance,
-    profitTarget,
-    leverage,
-    allocation,
-    buyStrategy,
-    sellStrategy,
-  } = tradeConfig;
+  const { asset, base, allocation, buyStrategy, sellStrategy, tpslStrategy } =
+    tradeConfig;
   const pair = `${asset}${base}`;
+
+  let useLongPosition = FUTURES_USE_TREND_LINE
+    ? isOverTrendLine(candles)
+    : true;
+  let useShortPosition = FUTURES_USE_TREND_LINE
+    ? !isOverTrendLine(candles)
+    : true;
 
   // Ge the available balance of base asset
   const balances = await binanceClient.futuresAccountBalance();
@@ -294,6 +262,7 @@ async function tradeWithFutures(
   const hasLongPosition = Number(position.positionAmt) > 0;
   const hasShortPosition = Number(position.positionAmt) < 0;
 
+  const currentPrice = candles[candles.length - 1].close;
   const pricePrecision = getPricePrecision(pair, exchangeInfo);
 
   // Prevent remaining open orders when a stop profit or a stop loss is activated
@@ -303,7 +272,7 @@ async function tradeWithFutures(
 
   if (!hasLongPosition && isBuySignal(candles, buyStrategy)) {
     // If long position are not enabled, just close the short position and wait for a sell signal
-    if (hasShortPosition && FUTURES_STRATEGY.long === false) {
+    if (hasShortPosition && useLongPosition === false) {
       binanceClient
         .futuresOrder({
           side: 'BUY',
@@ -322,25 +291,21 @@ async function tradeWithFutures(
     }
 
     // Do not trade with long position if the strategy is disabled
-    if (FUTURES_STRATEGY.long === false) return;
+    if (useLongPosition === false) return;
 
-    const takeProfitPrice = profitTarget
-      ? decimalCeil(
-          realtimePrice * (1 + profitTarget / leverage),
-          pricePrecision
-        )
-      : null;
-    const stopLossPrice = decimalCeil(
-      realtimePrice * (1 - lossTolerance / leverage),
-      pricePrecision
-    );
+    const { takeProfitPrice, stopLossPrice } = tpslStrategy({
+      candles,
+      tradeConfig,
+      pricePrecision,
+      side: 'BUY',
+    });
 
     let quantity = await calculateAllocationQuantity(
       asset,
       base,
       availableBalance,
       allocation * (tradeConfig.leverage || 1),
-      realtimePrice,
+      currentPrice,
       exchangeInfo
     );
 
@@ -391,24 +356,26 @@ async function tradeWithFutures(
             .catch(error);
         }
 
-        // Stop loss order
-        binanceClient
-          .futuresOrder({
-            side: 'SELL',
-            type: 'STOP_MARKET',
-            symbol: pair,
-            stopPrice: String(stopLossPrice),
-            quantity: String(quantity),
-            recvWindow: 60000,
-          })
-          .then((order) => {
-            openOrders[pair].push(order.orderId);
-          })
-          .catch(error);
+        if (stopLossPrice) {
+          // Stop loss order
+          binanceClient
+            .futuresOrder({
+              side: 'SELL',
+              type: 'STOP_MARKET',
+              symbol: pair,
+              stopPrice: String(stopLossPrice),
+              quantity: String(quantity),
+              recvWindow: 60000,
+            })
+            .then((order) => {
+              openOrders[pair].push(order.orderId);
+            })
+            .catch(error);
+        }
       })
       .then(() => {
         log(
-          `@futures > Takes a long position for ${pair} at the price ${realtimePrice} with TP/SL: ${
+          `@futures > Takes a long position for ${pair} at the price ${currentPrice} with TP/SL: ${
             takeProfitPrice ? takeProfitPrice : '----'
           }/${stopLossPrice}`
         );
@@ -416,7 +383,7 @@ async function tradeWithFutures(
       .catch(error);
   } else if (!hasShortPosition && isSellSignal(candles, sellStrategy)) {
     // If short position are not enabled, just close the long position and wait for a buy signal
-    if (hasLongPosition && FUTURES_STRATEGY.short === false) {
+    if (hasLongPosition && useShortPosition === false) {
       binanceClient
         .futuresOrder({
           side: 'SELL',
@@ -435,25 +402,21 @@ async function tradeWithFutures(
     }
 
     // Do not trade with short position if the strategy is disabled
-    if (FUTURES_STRATEGY.short === false) return;
+    if (useShortPosition === false) return;
 
-    const takeProfitPrice = profitTarget
-      ? decimalCeil(
-          realtimePrice * (1 - profitTarget / leverage),
-          pricePrecision
-        )
-      : null;
-    const stopLossPrice = decimalCeil(
-      realtimePrice * (1 + lossTolerance / leverage),
-      pricePrecision
-    );
+    const { takeProfitPrice, stopLossPrice } = tpslStrategy({
+      candles,
+      tradeConfig,
+      pricePrecision,
+      side: 'SELL',
+    });
 
     let quantity = await calculateAllocationQuantity(
       asset,
       base,
       availableBalance,
       allocation * (tradeConfig.leverage || 1),
-      realtimePrice,
+      currentPrice,
       exchangeInfo
     );
 
@@ -504,24 +467,26 @@ async function tradeWithFutures(
             .catch(error);
         }
 
-        // Stop loss order
-        binanceClient
-          .futuresOrder({
-            side: 'BUY',
-            type: 'STOP_MARKET',
-            symbol: pair,
-            stopPrice: String(stopLossPrice),
-            quantity: String(quantity),
-            recvWindow: 60000,
-          })
-          .then((order) => {
-            openOrders[pair].push(order.orderId);
-          })
-          .catch(error);
+        if (stopLossPrice) {
+          // Stop loss order
+          binanceClient
+            .futuresOrder({
+              side: 'BUY',
+              type: 'STOP_MARKET',
+              symbol: pair,
+              stopPrice: String(stopLossPrice),
+              quantity: String(quantity),
+              recvWindow: 60000,
+            })
+            .then((order) => {
+              openOrders[pair].push(order.orderId);
+            })
+            .catch(error);
+        }
       })
       .then(() => {
         log(
-          `@futures > Bot takes a short for ${pair} at the price ${realtimePrice} with TP/SL: ${
+          `@futures > Bot takes a short for ${pair} at the price ${currentPrice} with TP/SL: ${
             takeProfitPrice ? takeProfitPrice : '----'
           }/${stopLossPrice}`
         );
@@ -541,4 +506,15 @@ function closeOpenOrders(symbol: string) {
   });
   openOrders[symbol] = []; // reset the list of order id
   log(`@${BINANCE_MODE} > Close all the open orders for the pair ${symbol}`);
+}
+
+/**
+ * Return true if the trend line is up
+ */
+function isOverTrendLine(candles: ChartCandle[]) {
+  const ema = EMA.calculate({
+    values: candles.map((candle) => candle.close),
+    period: 200,
+  });
+  return candles[candles.length - 1].close > ema[ema.length - 1];
 }

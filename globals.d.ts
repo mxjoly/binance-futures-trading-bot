@@ -2,12 +2,14 @@ interface TradeConfig {
   asset: string;
   base: string;
   allocation: number; // between 0 and 1
-  lossTolerance: number; // between 0 and 1
+  lossTolerance?: number; // between 0 and 1
   profitTarget?: number; // between 0 and 1
+  riskReward?: string; // x:y
   interval: CandleChartInterval;
   leverage?: number;
-  buyStrategy: Strategy;
-  sellStrategy: Strategy;
+  buyStrategy: BuySellStrategy;
+  sellStrategy: BuySellStrategy;
+  tpslStrategy: TPSLStrategy;
 }
 
 type BinanceMode = 'spot' | 'futures';
@@ -22,4 +24,11 @@ interface ChartCandle {
   trades: number;
 }
 
-type Strategy = (candles: ChartCandle[]) => boolean;
+type BuySellStrategy = (candles: ChartCandle[]) => boolean;
+
+type TPSLStrategy = (options: {
+  candles: ChartCandle[];
+  tradeConfig?: TradeConfig;
+  pricePrecision?: number;
+  side: 'BUY' | 'SELL';
+}) => { takeProfitPrice: number; stopLossPrice: number };
