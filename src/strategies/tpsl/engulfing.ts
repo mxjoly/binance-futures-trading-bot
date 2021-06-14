@@ -2,6 +2,7 @@ import { decimalCeil } from '../../utils';
 
 export default ({
   candles,
+  tradeConfig,
   side,
   pricePrecision,
 }: {
@@ -11,6 +12,9 @@ export default ({
   side: 'BUY' | 'SELL';
 }) => {
   const lastCandle = candles[candles.length - 1];
+  const [risk, reward] = tradeConfig.riskReward
+    ? tradeConfig.riskReward.split(':').map((n) => Number(n))
+    : [1, 2];
 
   const bodyHigh = Math.max(lastCandle.close, lastCandle.open);
   const bodyLow = Math.min(lastCandle.close, lastCandle.open);
@@ -18,7 +22,9 @@ export default ({
 
   const stopLossPrice = lastCandle.open;
   const takeProfitPrice = decimalCeil(
-    side === 'BUY' ? stopLossPrice + 2 * body : stopLossPrice - 2 * body,
+    side === 'BUY'
+      ? stopLossPrice + body + (reward * body) / risk
+      : stopLossPrice - body - (reward * body) / risk,
     pricePrecision
   );
 

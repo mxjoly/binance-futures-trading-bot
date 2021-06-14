@@ -12,7 +12,7 @@ const defaultOptions: Options = {
 };
 
 /**
- * Return true if there is a bullish engulfing pattern detected and the trend is up
+ * Return true if there is a bullish engulfing pattern detected
  */
 export const isBuySignal = (
   candles: ChartCandle[],
@@ -30,11 +30,15 @@ export const isBuySignal = (
 
   const isUpTrendEMA = candles[candles.length - 1].close > ema[ema.length - 1];
   const isUpTrendRSI = rsi[rsi.length - 1] > 50;
-  return isUpTrendEMA && isUpTrendRSI && isBullEngulfing(candles);
+  const isNotOverBought = rsi[rsi.length - 1] < 70;
+
+  return (
+    isUpTrendEMA && isUpTrendRSI && isNotOverBought && isBullEngulfing(candles)
+  );
 };
 
 /**
- * Return true if there is a bearish engulfing pattern detected and the trend is down
+ * Return true if there is a bearish engulfing pattern detected
  */
 export const isSellSignal = (
   candles: ChartCandle[],
@@ -53,5 +57,12 @@ export const isSellSignal = (
   const isDownTrendEMA =
     candles[candles.length - 1].close < ema[ema.length - 1];
   const isDownTrendRSI = rsi[rsi.length - 1] < 50;
-  return isDownTrendEMA && isDownTrendRSI && isBearEngulfing(candles);
+  const isNotOverSold = rsi[rsi.length - 1] > 30;
+
+  return (
+    isDownTrendEMA &&
+    isDownTrendRSI &&
+    isNotOverSold &&
+    isBearEngulfing(candles)
+  );
 };

@@ -5,6 +5,7 @@ import Binance, {
 } from 'binance-api-node';
 import { EMA } from 'technicalindicators';
 import { tradeConfigs, BINANCE_MODE, FUTURES_USE_TREND_LINE } from './config';
+import { isBullEngulfing } from './patterns/engulfing';
 import {
   calculateAllocationQuantity,
   getPricePrecision,
