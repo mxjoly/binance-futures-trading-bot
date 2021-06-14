@@ -16,10 +16,8 @@ export const tradeConfigs: TradeConfig[] = [
   {
     asset: 'BTC',
     base: 'USDT',
-    allocation: 0.05,
-    profitTarget: 0.1,
-    lossTolerance: 0.05,
-    interval: CandleChartInterval.ONE_MINUTE,
+    allocation: 0.01,
+    interval: CandleChartInterval.ONE_HOUR,
     leverage: 10,
     buyStrategy: (candles: ChartCandle[]) => RSI.isBuySignal(candles),
     sellStrategy: (candles: ChartCandle[]) => RSI.isSellSignal(candles),

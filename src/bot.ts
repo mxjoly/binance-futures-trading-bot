@@ -5,7 +5,6 @@ import Binance, {
 } from 'binance-api-node';
 import { EMA } from 'technicalindicators';
 import { tradeConfigs, BINANCE_MODE, FUTURES_USE_TREND_LINE } from './config';
-import { isBullEngulfing } from './patterns/engulfing';
 import {
   calculateAllocationQuantity,
   getPricePrecision,
@@ -177,12 +176,14 @@ async function tradeWithSpot(
     }
   } else {
     if (isBuySignal(candles, buyStrategy)) {
-      const { takeProfitPrice, stopLossPrice } = tpslStrategy({
-        candles,
-        tradeConfig,
-        pricePrecision,
-        side: 'BUY',
-      });
+      const { takeProfitPrice, stopLossPrice } = tpslStrategy
+        ? tpslStrategy({
+            candles,
+            tradeConfig,
+            pricePrecision,
+            side: 'BUY',
+          })
+        : { takeProfitPrice: null, stopLossPrice: null };
 
       const quantity = await calculateAllocationQuantity(
         asset,
@@ -203,7 +204,7 @@ async function tradeWithSpot(
           recvWindow: 60000,
         })
         .then(() => {
-          if (takeProfitPrice) {
+          if (takeProfitPrice && stopLossPrice) {
             // Sell oco order as TP/SL
             binanceClient
               .orderOco({
@@ -217,24 +218,39 @@ async function tradeWithSpot(
               })
               .catch(error);
           } else {
-            // Sell limit order as SL
-            binanceClient
-              .order({
-                side: 'SELL',
-                type: 'LIMIT',
-                symbol: pair,
-                price: String(stopLossPrice),
-                quantity: String(quantity),
-                recvWindow: 60000,
-              })
-              .catch(error);
+            if (takeProfitPrice) {
+              // Sell limit order as TP
+              binanceClient
+                .order({
+                  side: 'SELL',
+                  type: 'LIMIT',
+                  symbol: pair,
+                  price: String(takeProfitPrice),
+                  quantity: String(quantity),
+                  recvWindow: 60000,
+                })
+                .catch(error);
+            }
+            if (stopLossPrice) {
+              // Sell limit order as SL
+              binanceClient
+                .order({
+                  side: 'SELL',
+                  type: 'LIMIT',
+                  symbol: pair,
+                  price: String(stopLossPrice),
+                  quantity: String(quantity),
+                  recvWindow: 60000,
+                })
+                .catch(error);
+            }
           }
         })
         .then(() => {
           log(
             `@spot > Buys ${asset} with ${base} at the price ${currentPrice}. TP/SL: ${
               takeProfitPrice ? takeProfitPrice : '----'
-            }/${stopLossPrice}`
+            }/${stopLossPrice ? stopLossPrice : '----'}`
           );
         })
         .catch(error);
@@ -300,12 +316,14 @@ async function tradeWithFutures(
     // Do not trade with long position if the strategy is disabled
     if (useLongPosition === false) return;
 
-    const { takeProfitPrice, stopLossPrice } = tpslStrategy({
-      candles,
-      tradeConfig,
-      pricePrecision,
-      side: 'BUY',
-    });
+    const { takeProfitPrice, stopLossPrice } = tpslStrategy
+      ? tpslStrategy({
+          candles,
+          tradeConfig,
+          pricePrecision,
+          side: 'BUY',
+        })
+      : { takeProfitPrice: null, stopLossPrice: null };
 
     let quantity = await calculateAllocationQuantity(
       asset,
@@ -384,7 +402,7 @@ async function tradeWithFutures(
         log(
           `@futures > Takes a long position for ${pair} at the price ${currentPrice} with TP/SL: ${
             takeProfitPrice ? takeProfitPrice : '----'
-          }/${stopLossPrice}`
+          }/${stopLossPrice ? stopLossPrice : '----'}`
         );
       })
       .catch(error);
@@ -411,12 +429,14 @@ async function tradeWithFutures(
     // Do not trade with short position if the strategy is disabled
     if (useShortPosition === false) return;
 
-    const { takeProfitPrice, stopLossPrice } = tpslStrategy({
-      candles,
-      tradeConfig,
-      pricePrecision,
-      side: 'SELL',
-    });
+    const { takeProfitPrice, stopLossPrice } = tpslStrategy
+      ? tpslStrategy({
+          candles,
+          tradeConfig,
+          pricePrecision,
+          side: 'SELL',
+        })
+      : { takeProfitPrice: null, stopLossPrice: null };
 
     let quantity = await calculateAllocationQuantity(
       asset,
@@ -495,7 +515,7 @@ async function tradeWithFutures(
         log(
           `@futures > Bot takes a short for ${pair} at the price ${currentPrice} with TP/SL: ${
             takeProfitPrice ? takeProfitPrice : '----'
-          }/${stopLossPrice}`
+          }/${stopLossPrice ? stopLossPrice : '----'}`
         );
       })
       .catch(error);

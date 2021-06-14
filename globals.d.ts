@@ -9,7 +9,7 @@ interface TradeConfig {
   leverage?: number;
   buyStrategy: BuySellStrategy;
   sellStrategy: BuySellStrategy;
-  tpslStrategy: TPSLStrategy;
+  tpslStrategy?: TPSLStrategy;
 }
 
 type BinanceMode = 'spot' | 'futures';
