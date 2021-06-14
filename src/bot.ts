@@ -33,6 +33,12 @@ const openOrders: { [pair: string]: number[] } = {};
 
 export function prepare() {
   if (BINANCE_MODE === 'futures') {
+    // Initialize the arrays of open orders
+    tradeConfigs.forEach((tradeConfig) => {
+      const pair = tradeConfig.asset + tradeConfig.base;
+      openOrders[pair] = [];
+    });
+
     // Set the margin type and initial leverage for the futures
     tradeConfigs.forEach((tradeConfig) => {
       const pair = tradeConfig.asset + tradeConfig.base;
