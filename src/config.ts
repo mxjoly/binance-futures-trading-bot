@@ -1,5 +1,5 @@
 import { CandleChartInterval } from 'binance-api-node';
-import { ENGULFING } from './strategies';
+import { RSI } from './strategies';
 import calculateTPSL from './strategies/tpsl/basic';
 
 // ============================ CONST =================================== //
@@ -17,11 +17,12 @@ export const tradeConfigs: TradeConfig[] = [
     asset: 'BTC',
     base: 'USDT',
     allocation: 0.05,
-    riskReward: '1:2',
+    profitTarget: 0.1,
+    lossTolerance: 0.05,
     interval: CandleChartInterval.ONE_MINUTE,
     leverage: 10,
-    buyStrategy: (candles: ChartCandle[]) => ENGULFING.isBuySignal(candles),
-    sellStrategy: (candles: ChartCandle[]) => ENGULFING.isSellSignal(candles),
+    buyStrategy: (candles: ChartCandle[]) => RSI.isBuySignal(candles),
+    sellStrategy: (candles: ChartCandle[]) => RSI.isSellSignal(candles),
     tpslStrategy: calculateTPSL,
   },
 ];

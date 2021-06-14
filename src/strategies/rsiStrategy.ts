@@ -9,6 +9,7 @@ interface Options {
 const defaultOptions: Options = {
   rsiPeriod: 14,
   rsiOversold: 30,
+  rsiOverbought: 70,
 };
 
 /**
