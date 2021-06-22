@@ -15,6 +15,8 @@ interface TradeConfig {
 type BinanceMode = 'spot' | 'futures';
 
 interface ChartCandle {
+  symbol: string;
+  interval: CandleChartInterval;
   open: number;
   high: number;
   low: number;
@@ -24,7 +26,7 @@ interface ChartCandle {
   trades: number;
 }
 
-type BuySellStrategy = (candles: ChartCandle[]) => boolean;
+type BuySellStrategy = (candles: ChartCandle[]) => Promise<boolean> | boolean;
 
 type TPSLStrategy = (options: {
   candles: ChartCandle[];

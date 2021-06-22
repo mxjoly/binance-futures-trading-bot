@@ -1,5 +1,5 @@
 import { CandleChartInterval } from 'binance-api-node';
-import { RSI } from './strategies';
+import { MACD_MTF } from './strategies';
 import calculateTPSL from './strategies/tpsl/basic';
 
 // ============================ CONST =================================== //
@@ -17,10 +17,10 @@ export const tradeConfigs: TradeConfig[] = [
     asset: 'BTC',
     base: 'USDT',
     allocation: 0.01,
-    interval: CandleChartInterval.ONE_HOUR,
+    interval: CandleChartInterval.ONE_MINUTE,
     leverage: 10,
-    buyStrategy: (candles: ChartCandle[]) => RSI.isBuySignal(candles),
-    sellStrategy: (candles: ChartCandle[]) => RSI.isSellSignal(candles),
+    buyStrategy: (candles: ChartCandle[]) => MACD_MTF.isBuySignal(candles),
+    sellStrategy: (candles: ChartCandle[]) => MACD_MTF.isSellSignal(candles),
     tpslStrategy: calculateTPSL,
   },
 ];

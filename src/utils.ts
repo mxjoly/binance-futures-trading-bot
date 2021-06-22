@@ -1,10 +1,13 @@
 import winston from 'winston';
-import Binance, {
+import {
   Candle,
+  CandleChartInterval,
   CandleChartResult,
   ExchangeInfo,
 } from 'binance-api-node';
 import dateFormat from 'dateformat';
+import { EMA } from 'technicalindicators';
+import { binanceClient } from './index';
 import { BINANCE_MODE } from './config';
 
 const logger = winston.createLogger({
@@ -13,9 +16,13 @@ const logger = winston.createLogger({
   transports: [new winston.transports.File({ filename: 'bot.log' })],
 });
 
-export const ChartCandle = (
-  candle: Candle | CandleChartResult
+export const buildCandle = (
+  candle: Candle | CandleChartResult,
+  symbol: string,
+  interval: CandleChartInterval
 ): ChartCandle => ({
+  symbol,
+  interval,
   open: Number(candle.open),
   high: Number(candle.high),
   low: Number(candle.low),
@@ -24,6 +31,43 @@ export const ChartCandle = (
   closeTime: Number(candle.closeTime),
   trades: Number(candle.trades),
 });
+
+/**
+ * Load candles and add them to the history
+ */
+export const loadCandles = (
+  symbol: string,
+  interval: CandleChartInterval,
+  onlyFinalCandle = true
+) => {
+  return new Promise<ChartCandle[]>((resolve, reject) => {
+    const getCandles =
+      BINANCE_MODE === 'spot'
+        ? binanceClient.candles
+        : binanceClient.futuresCandles;
+
+    getCandles({ symbol, interval })
+      .then((candles) => {
+        resolve(
+          candles
+            .slice(0, onlyFinalCandle ? -1 : candles.length)
+            .map((candle) => buildCandle(candle, symbol, interval))
+        );
+      })
+      .catch(reject);
+  });
+};
+
+/**
+ * Return true if the trend line is up
+ */
+export function isOverTrendLine(candles: ChartCandle[]) {
+  const ema = EMA.calculate({
+    values: candles.map((candle) => candle.close),
+    period: 200,
+  });
+  return candles[candles.length - 1].close > ema[ema.length - 1];
+}
 
 export function isBuySignal(candles: ChartCandle[], strategy: BuySellStrategy) {
   return strategy(candles);
