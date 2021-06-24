@@ -10,13 +10,12 @@ interface TradeConfig {
   buyStrategy: BuySellStrategy;
   sellStrategy: BuySellStrategy;
   tpslStrategy?: TPSLStrategy;
+  checkTrend?: CheckTrend;
 }
 
 type BinanceMode = 'spot' | 'futures';
 
 interface ChartCandle {
-  symbol: string;
-  interval: CandleChartInterval;
   open: number;
   high: number;
   low: number;
@@ -26,7 +25,7 @@ interface ChartCandle {
   trades: number;
 }
 
-type BuySellStrategy = (candles: ChartCandle[]) => Promise<boolean> | boolean;
+type BuySellStrategy = (candles: ChartCandle[]) => boolean;
 
 type TPSLStrategy = (options: {
   candles: ChartCandle[];
@@ -34,3 +33,5 @@ type TPSLStrategy = (options: {
   pricePrecision?: number;
   side: 'BUY' | 'SELL';
 }) => { takeProfitPrice: number; stopLossPrice: number };
+
+type CheckTrend = (candles: ChartCandle[]) => boolean;

@@ -1,14 +1,8 @@
-import {
-  Binance,
-  Candle,
-  CandleChartInterval,
-  ExchangeInfo,
-} from 'binance-api-node';
+import { Binance, Candle, ExchangeInfo } from 'binance-api-node';
 import { binanceClient } from './index';
-import { BINANCE_MODE, FUTURES_USE_TREND_LINE } from './config';
+import { BINANCE_MODE } from './config';
 import {
   loadCandles,
-  isOverTrendLine,
   calculateAllocationQuantity,
   getPricePrecision,
   isBuySignal,
@@ -95,7 +89,7 @@ export class Bot {
 
           getCandles(pair, tradeConfig.interval, (candle: Candle) => {
             if (candle.isFinal) {
-              candles.push(buildCandle(candle, pair, tradeConfig.interval));
+              candles.push(buildCandle(candle));
               candles = candles.slice(1);
 
               if (BINANCE_MODE === 'spot') {
@@ -133,7 +127,7 @@ export class Bot {
     if (currentTrades.length > 0) {
       const openTrade = currentTrades[0];
 
-      if (await isSellSignal(candles, sellStrategy)) {
+      if (isSellSignal(candles, sellStrategy)) {
         binanceClient
           .order({
             side: 'SELL',
@@ -153,7 +147,7 @@ export class Bot {
           .catch(error);
       }
     } else {
-      if (await isBuySignal(candles, buyStrategy)) {
+      if (isBuySignal(candles, buyStrategy)) {
         const { takeProfitPrice, stopLossPrice } = tpslStrategy
           ? tpslStrategy({
               candles,
@@ -241,16 +235,19 @@ export class Bot {
     candles: ChartCandle[],
     exchangeInfo: ExchangeInfo
   ) {
-    const { asset, base, allocation, buyStrategy, sellStrategy, tpslStrategy } =
-      tradeConfig;
+    const {
+      asset,
+      base,
+      allocation,
+      buyStrategy,
+      sellStrategy,
+      tpslStrategy,
+      checkTrend,
+    } = tradeConfig;
     const pair = `${asset}${base}`;
 
-    let useLongPosition = FUTURES_USE_TREND_LINE
-      ? isOverTrendLine(candles)
-      : true;
-    let useShortPosition = FUTURES_USE_TREND_LINE
-      ? !isOverTrendLine(candles)
-      : true;
+    let useLongPosition = checkTrend ? checkTrend(candles) : true;
+    let useShortPosition = checkTrend ? !checkTrend(candles) : true;
 
     // Ge the available balance of base asset
     const balances = await binanceClient.futuresAccountBalance();
@@ -275,9 +272,7 @@ export class Bot {
       this.closeOpenOrders(pair);
     }
 
-    if (!hasLongPosition && (await isBuySignal(candles, buyStrategy))) {
-      log('BUY');
-      return;
+    if (!hasLongPosition && isBuySignal(candles, buyStrategy)) {
       // If long position are not enabled, just close the short position and wait for a sell signal
       if (hasShortPosition && useLongPosition === false) {
         binanceClient
@@ -390,12 +385,7 @@ export class Bot {
           );
         })
         .catch(error);
-    } else if (
-      !hasShortPosition &&
-      (await isSellSignal(candles, sellStrategy))
-    ) {
-      log('SELL');
-      return;
+    } else if (!hasShortPosition && isSellSignal(candles, sellStrategy)) {
       // If short position are not enabled, just close the long position and wait for a buy signal
       if (hasLongPosition && useShortPosition === false) {
         binanceClient

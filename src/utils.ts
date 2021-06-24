@@ -17,12 +17,8 @@ const logger = winston.createLogger({
 });
 
 export const buildCandle = (
-  candle: Candle | CandleChartResult,
-  symbol: string,
-  interval: CandleChartInterval
+  candle: Candle | CandleChartResult
 ): ChartCandle => ({
-  symbol,
-  interval,
   open: Number(candle.open),
   high: Number(candle.high),
   low: Number(candle.low),
@@ -51,23 +47,12 @@ export const loadCandles = (
         resolve(
           candles
             .slice(0, onlyFinalCandle ? -1 : candles.length)
-            .map((candle) => buildCandle(candle, symbol, interval))
+            .map((candle) => buildCandle(candle))
         );
       })
       .catch(reject);
   });
 };
-
-/**
- * Return true if the trend line is up
- */
-export function isOverTrendLine(candles: ChartCandle[]) {
-  const ema = EMA.calculate({
-    values: candles.map((candle) => candle.close),
-    period: 200,
-  });
-  return candles[candles.length - 1].close > ema[ema.length - 1];
-}
 
 export function isBuySignal(candles: ChartCandle[], strategy: BuySellStrategy) {
   return strategy(candles);
