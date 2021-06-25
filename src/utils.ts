@@ -1,13 +1,6 @@
 import winston from 'winston';
-import {
-  Candle,
-  CandleChartInterval,
-  CandleChartResult,
-  ExchangeInfo,
-} from 'binance-api-node';
+import { Candle, CandleChartResult, ExchangeInfo } from 'binance-api-node';
 import dateFormat from 'dateformat';
-import { EMA } from 'technicalindicators';
-import { binanceClient } from './index';
 import { BINANCE_MODE } from './config';
 
 const logger = winston.createLogger({
@@ -27,32 +20,6 @@ export const buildCandle = (
   closeTime: Number(candle.closeTime),
   trades: Number(candle.trades),
 });
-
-/**
- * Load candles and add them to the history
- */
-export const loadCandles = (
-  symbol: string,
-  interval: CandleChartInterval,
-  onlyFinalCandle = true
-) => {
-  return new Promise<ChartCandle[]>((resolve, reject) => {
-    const getCandles =
-      BINANCE_MODE === 'spot'
-        ? binanceClient.candles
-        : binanceClient.futuresCandles;
-
-    getCandles({ symbol, interval })
-      .then((candles) => {
-        resolve(
-          candles
-            .slice(0, onlyFinalCandle ? -1 : candles.length)
-            .map((candle) => buildCandle(candle))
-        );
-      })
-      .catch(reject);
-  });
-};
 
 export function isBuySignal(candles: ChartCandle[], strategy: BuySellStrategy) {
   return strategy(candles);

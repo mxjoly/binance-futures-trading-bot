@@ -4,16 +4,18 @@ interface Options {
   rsiPeriod?: number;
   rsiOverbought?: number;
   rsiOversold?: number;
+  signalAtBreakout?: boolean;
 }
 
 const defaultOptions: Options = {
   rsiPeriod: 14,
   rsiOversold: 30,
   rsiOverbought: 70,
+  signalAtBreakout: true,
 };
 
 /**
- * Return true if the RSI crosses up the oversold zone line
+ * Return true if the RSI crosses up the oversold threshold
  */
 export const isBuySignal = (
   candles: ChartCandle[],
@@ -28,13 +30,16 @@ export const isBuySignal = (
     const last = values[values.length - 2];
     const current = values[values.length - 1];
 
-    // The RSI crossed the oversold line
-    return last < options.rsiOversold && current > options.rsiOversold;
+    if (options.signalAtBreakout) {
+      return last < options.rsiOversold && current > options.rsiOversold;
+    } else {
+      return last > options.rsiOversold && current < options.rsiOversold;
+    }
   }
 };
 
 /**
- * Return true if the RSI crosses down the overbought zone line
+ * Return true if the RSI crosses down the overbought threshold
  */
 export const isSellSignal = (
   candles: ChartCandle[],
@@ -49,7 +54,10 @@ export const isSellSignal = (
     const last = values[values.length - 2];
     const current = values[values.length - 1];
 
-    // The RSI crossed the overbought line
-    return last > options.rsiOverbought && current < options.rsiOverbought;
+    if (options.signalAtBreakout) {
+      return last > options.rsiOverbought && current < options.rsiOverbought;
+    } else {
+      return last < options.rsiOverbought && current > options.rsiOverbought;
+    }
   }
 };

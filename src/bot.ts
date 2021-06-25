@@ -1,8 +1,12 @@
-import { Binance, Candle, ExchangeInfo } from 'binance-api-node';
+import {
+  Binance,
+  Candle,
+  CandleChartInterval,
+  ExchangeInfo,
+} from 'binance-api-node';
 import { binanceClient } from './index';
 import { BINANCE_MODE } from './config';
 import {
-  loadCandles,
   calculateAllocationQuantity,
   getPricePrecision,
   isBuySignal,
@@ -77,7 +81,7 @@ export class Bot {
     this.tradeConfigs.forEach((tradeConfig) => {
       const pair = tradeConfig.asset + tradeConfig.base;
 
-      loadCandles(pair, tradeConfig.interval)
+      this.loadCandles(pair, tradeConfig.interval)
         .then((candles) => {
           log(`@${BINANCE_MODE} > The bot trades the pair ${pair}`);
 
@@ -275,6 +279,8 @@ export class Bot {
     if (!hasLongPosition && isBuySignal(candles, buyStrategy)) {
       // If long position are not enabled, just close the short position and wait for a sell signal
       if (hasShortPosition && useLongPosition === false) {
+        log('BUY');
+        return;
         binanceClient
           .futuresOrder({
             side: 'BUY',
@@ -294,6 +300,9 @@ export class Bot {
 
       // Do not trade with long position if the strategy is disabled
       if (useLongPosition === false) return;
+
+      log('BUY');
+      return;
 
       const { takeProfitPrice, stopLossPrice } = tpslStrategy
         ? tpslStrategy({
@@ -388,6 +397,8 @@ export class Bot {
     } else if (!hasShortPosition && isSellSignal(candles, sellStrategy)) {
       // If short position are not enabled, just close the long position and wait for a buy signal
       if (hasLongPosition && useShortPosition === false) {
+        log('SELL');
+        return;
         binanceClient
           .futuresOrder({
             side: 'SELL',
@@ -407,6 +418,9 @@ export class Bot {
 
       // Do not trade with short position if the strategy is disabled
       if (useShortPosition === false) return;
+
+      log('SELL');
+      return;
 
       const { takeProfitPrice, stopLossPrice } = tpslStrategy
         ? tpslStrategy({
@@ -499,6 +513,32 @@ export class Bot {
         })
         .catch(error);
     }
+  }
+
+  /**
+   * Load candles and add them to the history
+   */
+  private loadCandles(
+    symbol: string,
+    interval: CandleChartInterval,
+    onlyFinalCandle = true
+  ) {
+    return new Promise<ChartCandle[]>((resolve, reject) => {
+      const getCandles =
+        BINANCE_MODE === 'spot'
+          ? binanceClient.candles
+          : binanceClient.futuresCandles;
+
+      getCandles({ symbol, interval })
+        .then((candles) => {
+          resolve(
+            candles
+              .slice(0, onlyFinalCandle ? -1 : candles.length)
+              .map((candle) => buildCandle(candle))
+          );
+        })
+        .catch(reject);
+    });
   }
 
   private closeOpenOrders(symbol: string) {

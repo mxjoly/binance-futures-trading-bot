@@ -20,15 +20,17 @@ export const tradeConfigs: TradeConfig[] = [
     lossTolerance: 0.1,
     buyStrategy: (candles: ChartCandle[]) =>
       RSI.isBuySignal(candles, {
-        rsiOverbought: 90,
-        rsiOversold: 10,
+        rsiOverbought: 85,
+        rsiOversold: 15,
         rsiPeriod: 2,
+        signalAtBreakout: false,
       }),
     sellStrategy: (candles: ChartCandle[]) =>
       RSI.isSellSignal(candles, {
-        rsiOverbought: 90,
-        rsiOversold: 10,
+        rsiOverbought: 85,
+        rsiOversold: 15,
         rsiPeriod: 2,
+        signalAtBreakout: false,
       }),
     tpslStrategy: calculateTPSL,
     checkTrend: supertrend.isOverTrendLine,
