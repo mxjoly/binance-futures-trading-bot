@@ -1,8 +1,19 @@
 import Binance from 'binance-api-node';
+import winston from 'winston';
 import { Bot } from './bot';
 import { tradeConfigs } from './config';
 
-export const binanceClient = Binance({
+require('dotenv').config();
+
+export const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.simple(),
+  transports: [new winston.transports.File({ filename: 'log/bot.log' })],
+});
+
+// ****************************************************************************** //
+
+const binanceClient = Binance({
   apiKey: process.env.BINANCE_PUBLIC_KEY,
   apiSecret: process.env.BINANCE_PRIVATE_KEY,
 });

@@ -1,13 +1,7 @@
-import winston from 'winston';
 import { Candle, CandleChartResult, ExchangeInfo } from 'binance-api-node';
 import dateFormat from 'dateformat';
 import { BINANCE_MODE } from './config';
-
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.simple(),
-  transports: [new winston.transports.File({ filename: 'bot.log' })],
-});
+import { logger } from './index';
 
 export const buildCandle = (
   candle: Candle | CandleChartResult
