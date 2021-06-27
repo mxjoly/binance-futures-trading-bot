@@ -25,6 +25,20 @@ interface ChartCandle {
   trades: number;
 }
 
+interface OpenOrder {
+  id: number;
+  side: 'BUY' | 'SELL';
+  type:
+    | 'LIMIT'
+    | 'LIMIT_MAKER'
+    | 'MARKET'
+    | 'STOP'
+    | 'STOP_MARKET'
+    | 'TAKE_PROFIT_MARKET'
+    | 'TRAILING_STOP_MARKET';
+  stopPrice: number;
+}
+
 type BuySellStrategy = (candles: ChartCandle[]) => boolean;
 
 type TPSLStrategy = (options: {

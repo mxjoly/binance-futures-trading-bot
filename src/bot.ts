@@ -1,11 +1,19 @@
 import {
+  Account,
   Binance,
   Candle,
   CandleChartInterval,
   ExchangeInfo,
+  FuturesAccountInfoResult,
 } from 'binance-api-node';
 import { BINANCE_MODE } from './config';
-import { db, getOpenOrders, deleteOpenOrder, addOpenOrder } from './db';
+import {
+  db,
+  getOpenOrders,
+  deleteOpenOrders,
+  addOpenOrder,
+  deleteOpenOrder,
+} from './db';
 import {
   calculateAllocationQuantity,
   getPricePrecision,
@@ -22,6 +30,7 @@ import {
 export class Bot {
   private binanceClient: Binance;
   private exchangeInfo: ExchangeInfo;
+  private accountInfo: Account | FuturesAccountInfoResult;
   private tradeConfigs: TradeConfig[];
 
   constructor(binanceClient: Binance, tradeConfigs: TradeConfig[]) {
@@ -88,8 +97,15 @@ export class Bot {
               : // @ts-ignore
                 this.binanceClient.ws.futuresCandles;
 
-          getCandles(pair, tradeConfig.interval, (candle: Candle) => {
+          getCandles(pair, tradeConfig.interval, async (candle: Candle) => {
+            this.checkOpenOrders(pair, Number(candle.close));
+
             if (candle.isFinal) {
+              this.accountInfo =
+                BINANCE_MODE === 'spot'
+                  ? await this.binanceClient.accountInfo()
+                  : await this.binanceClient.futuresAccountInfo();
+
               candles.push(buildCandle(candle));
               candles = candles.slice(1);
 
@@ -114,7 +130,7 @@ export class Bot {
     const pair = `${asset}${base}`;
 
     // Ge the available balance of base asset
-    const { balances } = await this.binanceClient.accountInfo();
+    const { balances } = this.accountInfo as Account;
     const availableBalance = Number(
       balances.find((balance) => balance.asset === base).free
     );
@@ -254,7 +270,7 @@ export class Bot {
       balances.find((balance) => balance.asset === base).availableBalance
     );
 
-    const { positions } = await this.binanceClient.futuresAccountInfo();
+    const { positions } = this.accountInfo as FuturesAccountInfoResult;
     const position = positions.find((position) => position.symbol === pair);
     const hasLongPosition = Number(position.positionAmt) > 0;
     const hasShortPosition = Number(position.positionAmt) < 0;
@@ -358,7 +374,13 @@ export class Bot {
                 recvWindow: 60000,
               })
               .then((order) => {
-                addOpenOrder(pair, order.orderId);
+                addOpenOrder(
+                  pair,
+                  order.orderId,
+                  order.side,
+                  order.type,
+                  Number(order.stopPrice)
+                );
               })
               .catch(error);
           }
@@ -375,7 +397,13 @@ export class Bot {
                 recvWindow: 60000,
               })
               .then((order) => {
-                addOpenOrder(pair, order.orderId);
+                addOpenOrder(
+                  pair,
+                  order.orderId,
+                  order.side,
+                  order.type,
+                  Number(order.stopPrice)
+                );
               })
               .catch(error);
           }
@@ -475,7 +503,13 @@ export class Bot {
                 recvWindow: 60000,
               })
               .then((order) => {
-                addOpenOrder(pair, order.orderId);
+                addOpenOrder(
+                  pair,
+                  order.orderId,
+                  order.side,
+                  order.type,
+                  Number(order.stopPrice)
+                );
               })
               .catch(error);
           }
@@ -492,7 +526,13 @@ export class Bot {
                 recvWindow: 60000,
               })
               .then((order) => {
-                addOpenOrder(pair, order.orderId);
+                addOpenOrder(
+                  pair,
+                  order.orderId,
+                  order.side,
+                  order.type,
+                  Number(order.stopPrice)
+                );
               })
               .catch(error);
           }
@@ -538,15 +578,37 @@ export class Bot {
   }
 
   private closeOpenOrders(symbol: string) {
-    getOpenOrders(symbol).forEach((order) => {
-      const cancel =
-        BINANCE_MODE === 'spot'
-          ? this.binanceClient.cancelOrder
-          : this.binanceClient.futuresCancelOrder;
+    const orders = getOpenOrders(symbol);
+    if (orders) {
+      orders.forEach(({ id }) => {
+        const cancel =
+          BINANCE_MODE === 'spot'
+            ? this.binanceClient.cancelOrder
+            : this.binanceClient.futuresCancelOrder;
 
-      cancel({ symbol, orderId: order }).catch(error);
-    });
-    deleteOpenOrder(symbol);
-    log(`@${BINANCE_MODE} > Close all the open orders for the pair ${symbol}`);
+        cancel({ symbol, orderId: id }).catch(error);
+      });
+      deleteOpenOrders(symbol);
+      log(
+        `@${BINANCE_MODE} > Close all the open orders for the pair ${symbol}`
+      );
+    }
+  }
+
+  private checkOpenOrders(symbol: string, realtimePrice: number) {
+    const orders = getOpenOrders(symbol);
+    if (orders) {
+      orders.forEach(({ id, side, type, stopPrice }) => {
+        if (side === 'BUY' && realtimePrice <= stopPrice) {
+          if (type === 'TAKE_PROFIT_MARKET' || type === 'STOP_MARKET') {
+            deleteOpenOrder(symbol, id);
+          }
+        } else if (side === 'SELL' && realtimePrice >= stopPrice) {
+          if (type === 'TAKE_PROFIT_MARKET' || type === 'STOP_MARKET') {
+            deleteOpenOrder(symbol, id);
+          }
+        }
+      });
+    }
   }
 }
