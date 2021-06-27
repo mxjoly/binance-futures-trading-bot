@@ -20,6 +20,7 @@ export const addOpenOrder = (
 export const getOpenOrders = (symbol: string) => {
   if (db.exists(`${OPEN_ORDERS_PATH}/${symbol}`))
     return db.getData(`${OPEN_ORDERS_PATH}/${symbol}`) as OpenOrder[];
+  return [];
 };
 
 export const deleteOpenOrder = (symbol: string, orderId: number) => {
