@@ -17,7 +17,6 @@ export const tradeConfigs: TradeConfig[] = [
     allocation: 0.01,
     leverage: 10,
     interval: CandleChartInterval.ONE_MINUTE,
-    lossTolerance: 0.1,
     buyStrategy: (candles: ChartCandle[]) =>
       RSI.isBuySignal(candles, {
         rsiOverbought: 85,

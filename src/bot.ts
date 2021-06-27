@@ -13,6 +13,7 @@ import {
   deleteOpenOrders,
   addOpenOrder,
   deleteOpenOrder,
+  OPEN_ORDERS_PATH,
 } from './db';
 import {
   calculateAllocationQuantity,
@@ -73,8 +74,8 @@ export class Bot {
         : await this.binanceClient.futuresExchangeInfo();
 
     // Close the last open orders
-    if (db.exists('/futures/open_orders/')) {
-      const orders = db.getObject('/futures/open_orders/');
+    if (db.exists(OPEN_ORDERS_PATH)) {
+      const orders = db.getObject(OPEN_ORDERS_PATH);
       Object.keys(orders).forEach((symbol) => this.closeOpenOrders(symbol));
     }
   }
