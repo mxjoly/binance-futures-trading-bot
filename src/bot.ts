@@ -262,7 +262,7 @@ export class Bot {
     const currentPrice = candles[candles.length - 1].close;
     const pricePrecision = getPricePrecision(pair, this.exchangeInfo);
 
-    // Prevent remaining open orders when a stop profit or a stop loss is activated
+    // Prevent remaining open orders when a stop profit or a stop loss has been activated
     if (
       !hasLongPosition &&
       !hasShortPosition &&
