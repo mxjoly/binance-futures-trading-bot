@@ -1,7 +1,5 @@
 import { CandleChartInterval } from 'binance-api-node';
 import { RSI } from './strategies/buy_sell';
-import calculateTPSL from './strategies/tpsl/basic';
-import { supertrend } from './strategies/trend';
 
 // ============================ CONST =================================== //
 
@@ -31,7 +29,5 @@ export const tradeConfigs: TradeConfig[] = [
         rsiPeriod: 2,
         signalAtBreakout: false,
       }),
-    tpslStrategy: calculateTPSL,
-    checkTrend: supertrend.isOverTrendLine,
   },
 ];
