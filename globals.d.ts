@@ -7,10 +7,12 @@ interface TradeConfig {
   riskReward?: string; // x:y
   interval: CandleChartInterval;
   leverage?: number;
+  allowPyramiding?: boolean; // Allow cumulative longs/shorts
+  maxPyramidingAllocation?: number; // Max allocation for a position in pyramiding (between 0 and 1)
   buyStrategy: BuySellStrategy;
   sellStrategy: BuySellStrategy;
   tpslStrategy?: TPSLStrategy;
-  checkTrend?: CheckTrend;
+  checkTrend?: CheckTrend; // If the trend is up, only take long, else take short
 }
 
 type BinanceMode = 'spot' | 'futures';

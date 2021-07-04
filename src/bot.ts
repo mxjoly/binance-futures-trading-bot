@@ -126,15 +126,33 @@ export class Bot {
     tradeConfig: TradeConfig,
     candles: ChartCandle[]
   ) {
-    const { asset, base, allocation, buyStrategy, sellStrategy, tpslStrategy } =
-      tradeConfig;
+    const {
+      asset,
+      base,
+      allocation,
+      buyStrategy,
+      sellStrategy,
+      tpslStrategy,
+      allowPyramiding,
+      maxPyramidingAllocation,
+    } = tradeConfig;
     const pair = `${asset}${base}`;
 
     // Ge the available balance of base asset
     const { balances } = this.accountInfo as Account;
-    const availableBalance = Number(
+    const baseAvailableBalance = Number(
       balances.find((balance) => balance.asset === base).free
     );
+    const assetAvailableBalance = Number(
+      balances.find((balance) => balance.asset === asset).free
+    );
+
+    const price = Number((await this.binanceClient.prices())[pair]);
+    const canBuy =
+      !allowPyramiding ||
+      (allowPyramiding &&
+        assetAvailableBalance * price <=
+          baseAvailableBalance * maxPyramidingAllocation);
 
     const pricePrecision = getPricePrecision(pair, this.exchangeInfo);
     const currentPrice = candles[candles.length - 1].close;
@@ -142,28 +160,28 @@ export class Bot {
 
     // If a trade exists, search when to sell
     if (currentTrades.length > 0) {
-      const openTrade = currentTrades[0];
-
       if (isSellSignal(candles, sellStrategy)) {
-        this.binanceClient
-          .order({
-            side: 'SELL',
-            type: 'MARKET',
-            symbol: openTrade.symbol,
-            quantity: openTrade.qty,
-            recvWindow: 60000,
-          })
-          .then(() => {
-            log(
-              `@spot > Sells ${asset} to ${base}. Gain: ${
-                currentPrice * Number(openTrade.qty) -
-                Number(openTrade.price) * Number(openTrade.qty)
-              }`
-            );
-          })
-          .catch(error);
+        currentTrades.forEach((trade) => {
+          this.binanceClient
+            .order({
+              side: 'SELL',
+              type: 'MARKET',
+              symbol: trade.symbol,
+              quantity: trade.qty,
+              recvWindow: 60000,
+            })
+            .then(() => {
+              log(
+                `@spot > Sells ${asset} to ${base}. Gain: ${
+                  currentPrice * Number(trade.qty) -
+                  Number(trade.price) * Number(trade.qty)
+                }`
+              );
+            })
+            .catch(error);
+        });
       }
-    } else {
+    } else if (canBuy) {
       if (isBuySignal(candles, buyStrategy)) {
         const { takeProfitPrice, stopLossPrice } = tpslStrategy
           ? tpslStrategy({
@@ -177,7 +195,7 @@ export class Bot {
         const quantity = await calculateAllocationQuantity(
           asset,
           base,
-          availableBalance,
+          baseAvailableBalance,
           allocation,
           currentPrice,
           this.exchangeInfo
@@ -259,22 +277,32 @@ export class Bot {
       sellStrategy,
       tpslStrategy,
       checkTrend,
+      allowPyramiding,
+      maxPyramidingAllocation,
     } = tradeConfig;
     const pair = `${asset}${base}`;
 
-    let useLongPosition = checkTrend ? checkTrend(candles) : true;
-    let useShortPosition = checkTrend ? !checkTrend(candles) : true;
+    const useLongPosition = checkTrend ? checkTrend(candles) : true;
+    const useShortPosition = checkTrend ? !checkTrend(candles) : true;
 
     // Ge the available balance of base asset
     const balances = await this.binanceClient.futuresAccountBalance();
-    const availableBalance = Number(
-      balances.find((balance) => balance.asset === base).availableBalance
+    const { balance, availableBalance } = balances.find(
+      (balance) => balance.asset === base
     );
 
     const { positions } = this.accountInfo as FuturesAccountInfoResult;
     const position = positions.find((position) => position.symbol === pair);
     const hasLongPosition = Number(position.positionAmt) > 0;
     const hasShortPosition = Number(position.positionAmt) < 0;
+    const canAddToPosition = allowPyramiding
+      ? Number(position.initialMargin) + Number(balance) * allocation <=
+        Number(balance) * maxPyramidingAllocation
+      : false;
+    const canTakeLongPosition =
+      (!allowPyramiding && !hasLongPosition) || allowPyramiding;
+    const canTakeShortPosition =
+      (!allowPyramiding && !hasShortPosition) || allowPyramiding;
 
     const currentPrice = candles[candles.length - 1].close;
     const pricePrecision = getPricePrecision(pair, this.exchangeInfo);
@@ -288,9 +316,9 @@ export class Bot {
       this.closeOpenOrders(pair);
     }
 
-    if (!hasLongPosition && isBuySignal(candles, buyStrategy)) {
+    if (canTakeLongPosition && isBuySignal(candles, buyStrategy)) {
       // If long position are not enabled, just close the short position and wait for a sell signal
-      if (hasShortPosition && useLongPosition === false) {
+      if (hasShortPosition && !useLongPosition) {
         this.binanceClient
           .futuresOrder({
             side: 'BUY',
@@ -309,7 +337,10 @@ export class Bot {
       }
 
       // Do not trade with long position if the strategy is disabled
-      if (useLongPosition === false) return;
+      if (!useLongPosition) return;
+
+      // Do not add to the current position if the allocation is over the max allocation
+      if (allowPyramiding && hasLongPosition && !canAddToPosition) return;
 
       const { takeProfitPrice, stopLossPrice } = tpslStrategy
         ? tpslStrategy({
@@ -323,7 +354,7 @@ export class Bot {
       let quantity = await calculateAllocationQuantity(
         asset,
         base,
-        availableBalance,
+        allowPyramiding ? Number(balance) : Number(availableBalance),
         allocation * (tradeConfig.leverage || 1),
         currentPrice,
         this.exchangeInfo
@@ -417,9 +448,9 @@ export class Bot {
           );
         })
         .catch(error);
-    } else if (!hasShortPosition && isSellSignal(candles, sellStrategy)) {
+    } else if (canTakeShortPosition && isSellSignal(candles, sellStrategy)) {
       // If short position are not enabled, just close the long position and wait for a buy signal
-      if (hasLongPosition && useShortPosition === false) {
+      if (hasLongPosition && !useShortPosition) {
         this.binanceClient
           .futuresOrder({
             side: 'SELL',
@@ -438,7 +469,10 @@ export class Bot {
       }
 
       // Do not trade with short position if the strategy is disabled
-      if (useShortPosition === false) return;
+      if (!useShortPosition) return;
+
+      // Do not add to the current position if the allocation is over the max allocation
+      if (allowPyramiding && hasShortPosition && !canAddToPosition) return;
 
       const { takeProfitPrice, stopLossPrice } = tpslStrategy
         ? tpslStrategy({
@@ -452,7 +486,7 @@ export class Bot {
       let quantity = await calculateAllocationQuantity(
         asset,
         base,
-        availableBalance,
+        allowPyramiding ? Number(balance) : Number(availableBalance),
         allocation * (tradeConfig.leverage || 1),
         currentPrice,
         this.exchangeInfo

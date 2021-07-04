@@ -14,6 +14,8 @@ export const tradeConfigs: TradeConfig[] = [
     base: 'USDT',
     allocation: 0.01,
     leverage: 10,
+    allowPyramiding: true,
+    maxPyramidingAllocation: 0.1,
     interval: CandleChartInterval.ONE_MINUTE,
     buyStrategy: (candles: ChartCandle[]) =>
       RSI.isBuySignal(candles, {
