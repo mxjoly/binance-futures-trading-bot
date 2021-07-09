@@ -1,7 +1,7 @@
 import { Candle, CandleChartResult, ExchangeInfo } from 'binance-api-node';
 import dateFormat from 'dateformat';
 import { BINANCE_MODE } from './config';
-import { logger } from './index';
+import { logger } from '.';
 
 export const buildCandle = (
   candle: Candle | CandleChartResult
