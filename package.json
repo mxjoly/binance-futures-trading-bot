@@ -13,6 +13,7 @@
   "dependencies": {
     "binance-api-node": "^0.10.43",
     "dateformat": "^4.5.1",
+    "dotenv": "^10.0.0",
     "node-json-db": "^1.3.0",
     "nodemon": "^2.0.7",
     "technicalindicators": "^3.1.0",
@@ -20,8 +21,6 @@
   },
   "devDependencies": {
     "@types/nodemon": "^1.19.1",
-    "dotenv": "^9.0.1",
-    "rimraf": "^3.0.2",
     "typescript": "^4.2.4"
   }
 }
