@@ -2,8 +2,9 @@
   "name": "binance-trading-bot",
   "version": "1.0.0",
   "description": "",
+  "main": "index.js",
   "scripts": {
-    "start": "nodemon ./build/server.js --ignore \"db.json\"",
+    "start": "nodemon ./build/index.js",
     "build": "tsc"
   },
   "keywords": [],
@@ -18,6 +19,7 @@
     "winston": "^3.3.3"
   },
   "devDependencies": {
+    "@types/nodemon": "^1.19.1",
     "dotenv": "^9.0.1",
     "rimraf": "^3.0.2",
     "typescript": "^4.2.4"
