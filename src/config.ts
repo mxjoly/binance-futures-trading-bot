@@ -13,23 +13,23 @@ export const tradeConfigs: TradeConfig[] = [
     asset: 'BTC',
     base: 'USDT',
     allocation: 0.01,
-    leverage: 10,
+    leverage: 1,
     allowPyramiding: true,
     maxPyramidingAllocation: 0.1,
     interval: CandleChartInterval.ONE_MINUTE,
     buyStrategy: (candles: ChartCandle[]) =>
       RSI.isBuySignal(candles, {
-        rsiOverbought: 85,
-        rsiOversold: 15,
-        rsiPeriod: 2,
-        signalAtBreakout: false,
+        rsiOverbought: 70,
+        rsiOversold: 30,
+        rsiPeriod: 14,
+        signalAtBreakout: true,
       }),
     sellStrategy: (candles: ChartCandle[]) =>
       RSI.isSellSignal(candles, {
-        rsiOverbought: 85,
-        rsiOversold: 15,
-        rsiPeriod: 2,
-        signalAtBreakout: false,
+        rsiOverbought: 70,
+        rsiOversold: 30,
+        rsiPeriod: 14,
+        signalAtBreakout: true,
       }),
   },
 ];
