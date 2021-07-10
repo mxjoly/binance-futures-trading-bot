@@ -13,7 +13,7 @@ export const tradeConfigs: TradeConfig[] = [
     asset: 'BTC',
     base: 'USDT',
     allocation: 0.01,
-    leverage: 1,
+    leverage: 10,
     allowPyramiding: true,
     maxPyramidingAllocation: 0.1,
     interval: CandleChartInterval.ONE_MINUTE,
