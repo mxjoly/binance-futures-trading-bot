@@ -4,7 +4,7 @@ import { isOverTrendLine } from './strategies/trend/supertrend';
 
 // ============================ CONST =================================== //
 
-// The bot wii trade with the binance :
+// The bot will trade with the binance :
 export const BINANCE_MODE: BinanceMode = 'futures';
 
 // ====================================================================== //
