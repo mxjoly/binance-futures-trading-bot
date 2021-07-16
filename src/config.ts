@@ -1,6 +1,7 @@
 import { CandleChartInterval } from 'binance-api-node';
 import { RSI } from './strategies/buy_sell';
 import { isOverTrendLine } from './strategies/trend/supertrend';
+import tpslStrategy from './strategies/tpsl/basic';
 
 // ============================ CONST =================================== //
 
@@ -14,12 +15,13 @@ export const tradeConfigs: TradeConfig[] = [
     asset: 'BTC',
     base: 'USDT',
     allocation: 0.05,
-    leverage: 20,
+    leverage: 100,
     profitTarget: 0.025,
     lossTolerance: 0.05,
     allowPyramiding: false,
     interval: CandleChartInterval.ONE_MINUTE,
     checkTrend: isOverTrendLine,
+    tpslStrategy,
     buyStrategy: (candles: ChartCandle[]) =>
       RSI.isBuySignal(candles, {
         rsiOverbought: 70,
