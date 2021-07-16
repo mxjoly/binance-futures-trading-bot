@@ -88,5 +88,5 @@ export function calculate({
       down: getDown(i),
     });
   }
-  return result;
+  return result.reverse();
 }

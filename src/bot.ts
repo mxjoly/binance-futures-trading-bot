@@ -283,7 +283,7 @@ export class Bot {
     const pair = `${asset}${base}`;
 
     const useLongPosition = checkTrend ? checkTrend(candles) : true;
-    const useShortPosition = checkTrend ? !checkTrend(candles) : true;
+    const useShortPosition = checkTrend ? !useLongPosition : true;
 
     // Ge the available balance of base asset
     const balances = await this.binanceClient.futuresAccountBalance();

@@ -12,7 +12,7 @@ interface TradeConfig {
   buyStrategy: BuySellStrategy;
   sellStrategy: BuySellStrategy;
   tpslStrategy?: TPSLStrategy;
-  checkTrend?: CheckTrend; // If the trend is up, only take long, else take short
+  checkTrend?: CheckTrend; // If the trend is up, only take long, else take only short
 }
 
 type BinanceMode = 'spot' | 'futures';
