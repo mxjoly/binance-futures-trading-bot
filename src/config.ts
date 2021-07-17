@@ -20,6 +20,7 @@ export const tradeConfigs: TradeConfig[] = [
     lossTolerance: 0.005, // 0,5%
     allowPyramiding: false,
     interval: CandleChartInterval.ONE_MINUTE,
+    unidirectional: true,
     checkTrend: isOverTrendLine,
     tpslStrategy,
     buyStrategy: (candles: ChartCandle[]) =>

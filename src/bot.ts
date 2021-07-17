@@ -279,6 +279,7 @@ export class Bot {
       checkTrend,
       allowPyramiding,
       maxPyramidingAllocation,
+      unidirectional,
     } = tradeConfig;
     const pair = `${asset}${base}`;
 
@@ -317,8 +318,8 @@ export class Bot {
     }
 
     if (canTakeLongPosition && isBuySignal(candles, buyStrategy)) {
-      // If long position are not enabled, just close the short position and wait for a sell signal
-      if (hasShortPosition && !useLongPosition) {
+      // Take the profit and not open a new position
+      if (hasShortPosition && unidirectional) {
         this.binanceClient
           .futuresOrder({
             side: 'BUY',
@@ -449,8 +450,8 @@ export class Bot {
         })
         .catch(error);
     } else if (canTakeShortPosition && isSellSignal(candles, sellStrategy)) {
-      // If short position are not enabled, just close the long position and wait for a buy signal
-      if (hasLongPosition && !useShortPosition) {
+      // Take the profit and not open a new position
+      if (hasLongPosition && unidirectional) {
         this.binanceClient
           .futuresOrder({
             side: 'SELL',

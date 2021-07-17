@@ -9,6 +9,7 @@ interface TradeConfig {
   leverage?: number;
   allowPyramiding?: boolean; // Allow cumulative longs/shorts
   maxPyramidingAllocation?: number; // Max allocation for a position in pyramiding (between 0 and 1)
+  unidirectional?: boolean; // When take the profit, close the position instead of opening new position
   buyStrategy: BuySellStrategy;
   sellStrategy: BuySellStrategy;
   tpslStrategy?: TPSLStrategy;
