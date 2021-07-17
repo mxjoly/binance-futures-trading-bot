@@ -14,7 +14,7 @@ export const tradeConfigs: TradeConfig[] = [
   {
     asset: 'BTC',
     base: 'USDT',
-    allocation: 0.01,
+    allocation: 0.1, // 10%
     leverage: 100,
     profitTarget: 0.0025, // 0,25%
     lossTolerance: 0.005, // 0,5%
