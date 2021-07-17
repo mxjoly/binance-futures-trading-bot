@@ -1,5 +1,6 @@
 import { Candle, CandleChartResult, ExchangeInfo } from 'binance-api-node';
 import dateFormat from 'dateformat';
+import chalk from 'chalk';
 import { BINANCE_MODE } from './config';
 import { logger } from '.';
 
@@ -136,11 +137,11 @@ export function decimalCeil(x: number, precision: number) {
 export function log(message: string, date?: number) {
   const logDate = date ? new Date(date) : dateFormat();
   logger.info(`${logDate} : ${message}`);
-  console.log(`${logDate} : ${message}`);
+  console.log(`${chalk.blueBright(logDate)} : ${message}`);
 }
 
 export function error(message: string, date?: number) {
   const logDate = date ? new Date(date) : dateFormat();
   logger.warn(`${logDate} : ${message}`);
-  console.error(`${logDate} : ${message}`);
+  console.error(`${chalk.blueBright(logDate)} : ${message}`);
 }

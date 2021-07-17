@@ -1,24 +1,33 @@
 import fs from 'fs';
 import path from 'path';
+import chalk from 'chalk';
 import nodemon from 'nodemon';
+import dateFormat from 'dateformat';
 
 const appDirectory = fs.realpathSync(process.cwd());
 const resolveApp = (relativePath: string) =>
   path.resolve(appDirectory, relativePath);
 
-nodemon({
-  script: `${resolveApp('build')}/index.js`,
-  ignore: ['db.json', 'bot.log'],
-});
+const server = nodemon({ script: `${resolveApp('build')}/index.js` });
 
-nodemon
+server
   .on('start', () => {
-    console.log('The trading bot has started');
+    console.log(
+      `${chalk.blueBright(dateFormat())} : The trading bot has started`
+    );
+  })
+  .on('restart', () => {
+    console.log(
+      `${chalk.blueBright(dateFormat())} : The trading bot has restarted`
+    );
   })
   .on('quit', () => {
-    console.log('The trading bot stop to trade');
+    console.log(
+      `${chalk.blueBright(dateFormat())} : The trading bot stops to trade`
+    );
     process.exit();
   })
-  .on('restart', (files) => {
-    console.log(`The trading bot has restarted due to : ${files}`);
+  .on('error', () => {
+    console.error(`${chalk.blueBright(dateFormat())} : An error occurred`);
+    process.exit(1);
   });
