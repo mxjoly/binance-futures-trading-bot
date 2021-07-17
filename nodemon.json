@@ -1,5 +1,5 @@
 {
   "verbose": false,
-  "ignore": ["db.json", "log/*.log"],
+  "ignore": ["db.json", "log/**"],
   "delay": 200
 }
