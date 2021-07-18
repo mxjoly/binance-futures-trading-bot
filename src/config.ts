@@ -16,7 +16,7 @@ export const tradeConfigs: TradeConfig[] = [
     base: 'USDT',
     allocation: 0.1, // 10%
     leverage: 100,
-    profitTarget: 0.0025, // 0,25%
+    profitTarget: 0.001, // 0,25%
     lossTolerance: 0.005, // 0,5%
     allowPyramiding: false,
     interval: CandleChartInterval.ONE_MINUTE,
