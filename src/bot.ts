@@ -204,7 +204,7 @@ export class Bot {
           this.exchangeInfo
         );
 
-        // Buy limit order
+        // Buy market order
         this.binanceClient
           .order({
             side: OrderSide.BUY,
@@ -404,8 +404,9 @@ export class Bot {
             this.binanceClient
               .futuresOrder({
                 side: OrderSide.SELL,
-                type: OrderType.TAKE_PROFIT_MARKET,
+                type: OrderType.TAKE_PROFIT_LIMIT,
                 symbol: pair,
+                price: takeProfitPrice,
                 stopPrice: takeProfitPrice,
                 quantity: String(quantity),
                 recvWindow: 60000,
@@ -427,8 +428,9 @@ export class Bot {
             this.binanceClient
               .futuresOrder({
                 side: OrderSide.SELL,
-                type: OrderType.STOP_MARKET,
+                type: OrderType.STOP_LOSS_LIMIT,
                 symbol: pair,
+                price: stopLossPrice,
                 stopPrice: stopLossPrice,
                 quantity: String(quantity),
                 recvWindow: 60000,
@@ -537,8 +539,9 @@ export class Bot {
             this.binanceClient
               .futuresOrder({
                 side: OrderSide.BUY,
-                type: OrderType.TAKE_PROFIT_MARKET,
+                type: OrderType.TAKE_PROFIT_LIMIT,
                 symbol: pair,
+                price: takeProfitPrice,
                 stopPrice: takeProfitPrice,
                 quantity: String(quantity),
                 recvWindow: 60000,
@@ -560,8 +563,9 @@ export class Bot {
             this.binanceClient
               .futuresOrder({
                 side: OrderSide.BUY,
-                type: OrderType.STOP_MARKET,
+                type: OrderType.STOP_LOSS_LIMIT,
                 symbol: pair,
+                price: stopLossPrice,
                 stopPrice: stopLossPrice,
                 quantity: String(quantity),
                 recvWindow: 60000,
