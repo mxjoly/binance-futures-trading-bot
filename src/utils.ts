@@ -81,6 +81,7 @@ export function getLotSizeQuantityRules(
  * @param asset
  * @param base
  * @param availableBalance - Your available balance in your wallet
+ * @param leverage
  * @param allocation - The allocation to take from your wallet total balance
  * @param realtimePrice - The current price of the crypto to buy
  * @param exchangeInfo
@@ -90,12 +91,14 @@ export async function calculateAllocationQuantity(
   base: string,
   availableBalance: number,
   allocation: number,
+  leverage: number,
   realtimePrice: number,
   exchangeInfo: ExchangeInfo
 ) {
   const pair = asset + base;
   const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
-  const allocationQuantity = (availableBalance * allocation) / realtimePrice;
+  const allocationQuantity =
+    (availableBalance * allocation) / realtimePrice / leverage;
 
   const minQuantity =
     BINANCE_MODE === 'spot'
