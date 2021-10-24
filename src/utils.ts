@@ -81,7 +81,7 @@ export function getLotSizeQuantityRules(
  * @param asset
  * @param base
  * @param availableBalance - Your available balance in your wallet
- * @param leverage
+ * @param leverage - The current leverage
  * @param allocation - The allocation to take from your wallet total balance
  * @param realtimePrice - The current price of the crypto to buy
  * @param exchangeInfo
