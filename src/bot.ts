@@ -5,6 +5,8 @@ import {
   CandleChartInterval,
   ExchangeInfo,
   FuturesAccountInfoResult,
+  OrderSide,
+  OrderType,
 } from 'binance-api-node';
 import { BINANCE_MODE } from './config';
 import {
@@ -164,8 +166,8 @@ export class Bot {
         currentTrades.forEach((trade) => {
           this.binanceClient
             .order({
-              side: 'SELL',
-              type: 'MARKET',
+              side: OrderSide.SELL,
+              type: OrderType.MARKET,
               symbol: trade.symbol,
               quantity: trade.qty,
               recvWindow: 60000,
@@ -188,7 +190,7 @@ export class Bot {
               candles,
               tradeConfig,
               pricePrecision,
-              side: 'BUY',
+              side: OrderSide.BUY,
             })
           : { takeProfitPrice: null, stopLossPrice: null };
 
@@ -205,8 +207,8 @@ export class Bot {
         // Buy limit order
         this.binanceClient
           .order({
-            side: 'BUY',
-            type: 'MARKET',
+            side: OrderSide.BUY,
+            type: OrderType.MARKET,
             symbol: pair,
             quantity: String(quantity),
             recvWindow: 60000,
@@ -216,7 +218,7 @@ export class Bot {
               // Sell oco order as TP/SL
               this.binanceClient
                 .orderOco({
-                  side: 'SELL',
+                  side: OrderSide.SELL,
                   symbol: pair,
                   price: String(takeProfitPrice),
                   stopPrice: String(stopLossPrice),
@@ -230,8 +232,8 @@ export class Bot {
                 // Sell limit order as TP
                 this.binanceClient
                   .order({
-                    side: 'SELL',
-                    type: 'LIMIT',
+                    side: OrderSide.SELL,
+                    type: OrderType.LIMIT,
                     symbol: pair,
                     price: String(takeProfitPrice),
                     quantity: String(quantity),
@@ -243,8 +245,8 @@ export class Bot {
                 // Sell limit order as SL
                 this.binanceClient
                   .order({
-                    side: 'SELL',
-                    type: 'LIMIT',
+                    side: OrderSide.SELL,
+                    type: OrderType.LIMIT,
                     symbol: pair,
                     price: String(stopLossPrice),
                     quantity: String(quantity),
@@ -323,8 +325,8 @@ export class Bot {
       if (hasShortPosition && unidirectional) {
         this.binanceClient
           .futuresOrder({
-            side: 'BUY',
-            type: 'MARKET',
+            side: OrderSide.BUY,
+            type: OrderType.MARKET,
             symbol: pair,
             quantity: position.positionAmt,
             recvWindow: 60000,
@@ -349,7 +351,7 @@ export class Bot {
             candles,
             tradeConfig,
             pricePrecision,
-            side: 'BUY',
+            side: OrderSide.BUY,
           })
         : { takeProfitPrice: null, stopLossPrice: null };
 
@@ -383,8 +385,8 @@ export class Bot {
 
       this.binanceClient
         .futuresOrder({
-          side: 'BUY',
-          type: 'MARKET',
+          side: OrderSide.BUY,
+          type: OrderType.MARKET,
           symbol: pair,
           quantity: String(quantity),
           recvWindow: 60000,
@@ -401,10 +403,10 @@ export class Bot {
             // Take profit order
             this.binanceClient
               .futuresOrder({
-                side: 'SELL',
-                type: 'TAKE_PROFIT_MARKET',
+                side: OrderSide.SELL,
+                type: OrderType.TAKE_PROFIT_MARKET,
                 symbol: pair,
-                stopPrice: String(takeProfitPrice),
+                stopPrice: takeProfitPrice,
                 quantity: String(quantity),
                 recvWindow: 60000,
               })
@@ -424,10 +426,10 @@ export class Bot {
             // Stop loss order
             this.binanceClient
               .futuresOrder({
-                side: 'SELL',
-                type: 'STOP_MARKET',
+                side: OrderSide.SELL,
+                type: OrderType.STOP_MARKET,
                 symbol: pair,
-                stopPrice: String(stopLossPrice),
+                stopPrice: stopLossPrice,
                 quantity: String(quantity),
                 recvWindow: 60000,
               })
@@ -456,8 +458,8 @@ export class Bot {
       if (hasLongPosition && unidirectional) {
         this.binanceClient
           .futuresOrder({
-            side: 'SELL',
-            type: 'MARKET',
+            side: OrderSide.SELL,
+            type: OrderType.MARKET,
             symbol: pair,
             quantity: position.positionAmt,
             recvWindow: 60000,
@@ -482,7 +484,7 @@ export class Bot {
             candles,
             tradeConfig,
             pricePrecision,
-            side: 'SELL',
+            side: OrderSide.SELL,
           })
         : { takeProfitPrice: null, stopLossPrice: null };
 
@@ -516,8 +518,8 @@ export class Bot {
 
       this.binanceClient
         .futuresOrder({
-          side: 'SELL',
-          type: 'MARKET',
+          side: OrderSide.SELL,
+          type: OrderType.MARKET,
           symbol: pair,
           quantity: String(quantity),
           recvWindow: 60000,
@@ -534,10 +536,10 @@ export class Bot {
             // Take profit order
             this.binanceClient
               .futuresOrder({
-                side: 'BUY',
-                type: 'TAKE_PROFIT_MARKET',
+                side: OrderSide.BUY,
+                type: OrderType.TAKE_PROFIT_MARKET,
                 symbol: pair,
-                stopPrice: String(takeProfitPrice),
+                stopPrice: takeProfitPrice,
                 quantity: String(quantity),
                 recvWindow: 60000,
               })
@@ -557,10 +559,10 @@ export class Bot {
             // Stop loss order
             this.binanceClient
               .futuresOrder({
-                side: 'BUY',
-                type: 'STOP_MARKET',
+                side: OrderSide.BUY,
+                type: OrderType.STOP_MARKET,
                 symbol: pair,
-                stopPrice: String(stopLossPrice),
+                stopPrice: stopLossPrice,
                 quantity: String(quantity),
                 recvWindow: 60000,
               })

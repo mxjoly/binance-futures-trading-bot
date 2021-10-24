@@ -30,15 +30,8 @@ interface ChartCandle {
 
 interface OpenOrder {
   id: number;
-  side: 'BUY' | 'SELL';
-  type:
-    | 'LIMIT'
-    | 'LIMIT_MAKER'
-    | 'MARKET'
-    | 'STOP'
-    | 'STOP_MARKET'
-    | 'TAKE_PROFIT_MARKET'
-    | 'TRAILING_STOP_MARKET';
+  side: OrderSide_LT;
+  type: OrderType_LT;
   stopPrice: number;
 }
 

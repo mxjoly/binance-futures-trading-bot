@@ -1,4 +1,9 @@
-import { OrderSide, OrderType } from 'binance-api-node';
+import {
+  OrderSide,
+  OrderSide_LT,
+  OrderType,
+  OrderType_LT,
+} from 'binance-api-node';
 import { JsonDB } from 'node-json-db';
 import { Config } from 'node-json-db/dist/lib/JsonDBConfig';
 
@@ -9,8 +14,8 @@ export const OPEN_ORDERS_PATH = '/open_orders';
 export const addOpenOrder = (
   symbol: string,
   id: number,
-  side: OrderSide,
-  type: OrderType,
+  side: OrderSide_LT,
+  type: OrderType_LT,
   stopPrice: number
 ) => {
   const order: OpenOrder = { id, side, type, stopPrice };
