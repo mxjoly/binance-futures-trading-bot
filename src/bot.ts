@@ -197,6 +197,7 @@ export class Bot {
           base,
           baseAvailableBalance,
           allocation,
+          1,
           currentPrice,
           this.exchangeInfo
         );
@@ -357,6 +358,7 @@ export class Bot {
         base,
         allowPyramiding ? Number(balance) : Number(availableBalance),
         allocation * (tradeConfig.leverage || 1),
+        tradeConfig.leverage,
         currentPrice,
         this.exchangeInfo
       );
@@ -489,6 +491,7 @@ export class Bot {
         base,
         allowPyramiding ? Number(balance) : Number(availableBalance),
         allocation * (tradeConfig.leverage || 1),
+        tradeConfig.leverage,
         currentPrice,
         this.exchangeInfo
       );
