@@ -280,6 +280,8 @@ export class Bot {
       sellStrategy,
       tpslStrategy,
       checkTrend,
+      useTrailingStop,
+      lossTolerance,
       allowPyramiding,
       maxPyramidingAllocation,
       unidirectional,
@@ -399,7 +401,29 @@ export class Bot {
             );
           }
 
-          if (takeProfitPrice) {
+          if (useTrailingStop) {
+            this.binanceClient
+              .futuresOrder({
+                side: OrderSide.SELL,
+                type: OrderType.TRAILING_STOP_MARKET,
+                symbol: pair,
+                callbackRate: lossTolerance * 100,
+                activationPrice:
+                  candles[candles.length - 1].close * (1 + lossTolerance),
+              })
+              .then((order) => {
+                addOpenOrder(
+                  pair,
+                  order.orderId,
+                  order.side,
+                  order.type,
+                  Number(order.stopPrice)
+                );
+              })
+              .catch(error);
+          }
+
+          if (takeProfitPrice && !useTrailingStop) {
             // Take profit order
             this.binanceClient
               .futuresOrder({
@@ -534,7 +558,29 @@ export class Bot {
             );
           }
 
-          if (takeProfitPrice) {
+          if (useTrailingStop) {
+            this.binanceClient
+              .futuresOrder({
+                side: OrderSide.BUY,
+                type: OrderType.TRAILING_STOP_MARKET,
+                symbol: pair,
+                callbackRate: lossTolerance * 100,
+                activationPrice:
+                  candles[candles.length - 1].close * (1 - lossTolerance),
+              })
+              .then((order) => {
+                addOpenOrder(
+                  pair,
+                  order.orderId,
+                  order.side,
+                  order.type,
+                  Number(order.stopPrice)
+                );
+              })
+              .catch(error);
+          }
+
+          if (takeProfitPrice && !useTrailingStop) {
             // Take profit order
             this.binanceClient
               .futuresOrder({

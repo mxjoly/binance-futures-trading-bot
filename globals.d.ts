@@ -1,11 +1,12 @@
 interface TradeConfig {
   asset: string;
   base: string;
+  interval: any; // type of CandleChartInterval from binance api node library
+  leverage?: number;
   allocation: number; // between 0 and 1
   lossTolerance?: number; // between 0 and 1
   profitTarget?: number; // between 0 and 1
-  interval: CandleChartInterval;
-  leverage?: number;
+  useTrailingStop?: boolean;
   allowPyramiding?: boolean; // Allow cumulative longs/shorts
   maxPyramidingAllocation?: number; // Max allocation for a position in pyramiding (between 0 and 1)
   unidirectional?: boolean; // When take the profit, close the position instead of opening new position
@@ -29,8 +30,15 @@ interface ChartCandle {
 
 interface OpenOrder {
   id: number;
-  side: OrderSide_LT;
-  type: OrderType_LT;
+  side: 'BUY' | 'SELL';
+  type:
+    | 'LIMIT'
+    | 'LIMIT_MAKER'
+    | 'MARKET'
+    | 'STOP'
+    | 'STOP_MARKET'
+    | 'TAKE_PROFIT_MARKET'
+    | 'TRAILING_STOP_MARKET';
   stopPrice: number;
 }
 
