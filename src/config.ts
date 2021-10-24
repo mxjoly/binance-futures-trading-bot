@@ -14,10 +14,10 @@ export const tradeConfigs: TradeConfig[] = [
   {
     asset: 'BTC',
     base: 'USDT',
-    allocation: 0.1, // 10%
+    allocation: 0.02,
     leverage: 100,
-    profitTarget: 0.001, // 0,1%
-    lossTolerance: 0.005, // 0,5%
+    lossTolerance: 0.005,
+    profitTarget: 0.015,
     allowPyramiding: false,
     interval: CandleChartInterval.ONE_MINUTE,
     unidirectional: true,

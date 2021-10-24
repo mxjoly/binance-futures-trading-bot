@@ -1,3 +1,4 @@
+import { OrderSide } from 'binance-api-node';
 import { decimalCeil } from '../../utils';
 
 export default ({
@@ -9,14 +10,14 @@ export default ({
   candles: ChartCandle[];
   tradeConfig?: TradeConfig;
   pricePrecision?: number;
-  side: 'BUY' | 'SELL';
+  side: OrderSide;
 }) => {
-  const { profitTarget, lossTolerance, leverage } = tradeConfig;
+  const { profitTarget, lossTolerance } = tradeConfig;
   const currentPrice = candles[candles.length - 1].close;
 
   const takeProfitPrice = profitTarget
     ? decimalCeil(
-        side === 'BUY'
+        side === OrderSide.BUY
           ? currentPrice * (1 + profitTarget)
           : currentPrice * (1 - profitTarget),
         pricePrecision
@@ -24,7 +25,7 @@ export default ({
     : null;
   const stopLossPrice = lossTolerance
     ? decimalCeil(
-        side === 'BUY'
+        side === OrderSide.BUY
           ? currentPrice * (1 - lossTolerance)
           : currentPrice * (1 + lossTolerance),
         pricePrecision

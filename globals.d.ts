@@ -4,7 +4,6 @@ interface TradeConfig {
   allocation: number; // between 0 and 1
   lossTolerance?: number; // between 0 and 1
   profitTarget?: number; // between 0 and 1
-  riskReward?: string; // x:y
   interval: CandleChartInterval;
   leverage?: number;
   allowPyramiding?: boolean; // Allow cumulative longs/shorts

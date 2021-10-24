@@ -97,8 +97,7 @@ export async function calculateAllocationQuantity(
 ) {
   const pair = asset + base;
   const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
-  const allocationQuantity =
-    (availableBalance * allocation) / realtimePrice / leverage;
+  const allocationQuantity = (availableBalance * allocation) / realtimePrice;
 
   const minQuantity =
     BINANCE_MODE === 'spot'
