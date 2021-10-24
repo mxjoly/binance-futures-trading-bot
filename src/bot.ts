@@ -690,12 +690,22 @@ export class Bot {
     const orders = getOpenOrders(symbol);
     if (orders) {
       orders.forEach(({ id, side, type, stopPrice }) => {
-        if (side === 'BUY' && realtimePrice <= stopPrice) {
-          if (type === 'TAKE_PROFIT_MARKET' || type === 'STOP_MARKET') {
+        if (side === OrderSide.BUY && realtimePrice <= stopPrice) {
+          if (
+            type === OrderType.TAKE_PROFIT_MARKET ||
+            type === OrderType.TAKE_PROFIT_LIMIT ||
+            type === OrderType.STOP_MARKET ||
+            type === OrderType.STOP_LOSS_LIMIT
+          ) {
             deleteOpenOrder(symbol, id);
           }
-        } else if (side === 'SELL' && realtimePrice >= stopPrice) {
-          if (type === 'TAKE_PROFIT_MARKET' || type === 'STOP_MARKET') {
+        } else if (side === OrderSide.SELL && realtimePrice >= stopPrice) {
+          if (
+            type === OrderType.TAKE_PROFIT_MARKET ||
+            type === OrderType.TAKE_PROFIT_LIMIT ||
+            type === OrderType.STOP_MARKET ||
+            type === OrderType.STOP_LOSS_LIMIT
+          ) {
             deleteOpenOrder(symbol, id);
           }
         }

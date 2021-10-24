@@ -37,7 +37,9 @@ interface OpenOrder {
     | 'MARKET'
     | 'STOP'
     | 'STOP_MARKET'
+    | 'STOP_LOSS_LIMIT'
     | 'TAKE_PROFIT_MARKET'
+    | 'TAKE_PROFIT_LIMIT'
     | 'TRAILING_STOP_MARKET';
   stopPrice: number;
 }
