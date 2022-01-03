@@ -4,9 +4,11 @@ interface FibonacciRetracementLevels {
   _0500: number;
   _0618: number;
   _0786: number;
+  _1000: number;
 }
 
 interface FibonacciExtensionLevels {
+  _1000: number;
   _1236: number;
   _1618: number;
   _2618: number;
@@ -88,8 +90,10 @@ export function calculate({
         _0500: highest - (highest - lowest) * 0.5,
         _0618: highest - (highest - lowest) * 0.618,
         _0786: highest - (highest - lowest) * 0.786,
+        _1000: highest - (highest - lowest) * 1,
       },
       extensionLevels: {
+        _1000: highest + (highest - lowest) * 1,
         _1236: highest + (highest - lowest) * 1.236,
         _1618: highest + (highest - lowest) * 1.618,
         _2618: highest + (highest - lowest) * 2.618,
@@ -106,8 +110,10 @@ export function calculate({
         _0500: lowest + (highest - lowest) * 0.5,
         _0618: lowest + (highest - lowest) * 0.618,
         _0786: lowest + (highest - lowest) * 0.786,
+        _1000: lowest + (highest - lowest) * 1,
       },
       extensionLevels: {
+        _1000: lowest - (highest - lowest) * 1,
         _1236: lowest - (highest - lowest) * 1.236,
         _1618: lowest - (highest - lowest) * 1.618,
         _2618: lowest - (highest - lowest) * 2.618,
