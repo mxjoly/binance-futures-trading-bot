@@ -1,7 +1,8 @@
 interface TradeConfig {
   asset: string;
   base: string;
-  interval: any; // type of CandleChartInterval from binance api node library
+  loopInterval: any; // type of CandleChartInterval from binance api node library
+  indicatorInterval: any; // type of CandleChartInterval from binance api node library
   leverage?: number;
   allocation: number; // between 0 and 1
   lossTolerance?: number; // between 0 and 1
@@ -12,7 +13,7 @@ interface TradeConfig {
   unidirectional?: boolean; // When take the profit, close the position instead of opening new position
   buyStrategy: BuySellStrategy;
   sellStrategy: BuySellStrategy;
-  tpslStrategy?: TPSLStrategy;
+  tpslStrategy?: TPSLStrategy; // take profit and stop loss strategy
   checkTrend?: CheckTrend; // If the trend is up, only take long, else take only short
 }
 

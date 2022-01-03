@@ -84,13 +84,13 @@ export class Bot {
 
   public async run() {
     log(
-      '====================== 💵 BINANCE BOT TRADING 💵 ======================'
+      '====================== 💵 BINANCE BOT TRADING 💵 ======================'
     );
 
     this.tradeConfigs.forEach((tradeConfig) => {
       const pair = tradeConfig.asset + tradeConfig.base;
 
-      this.loadCandles(pair, tradeConfig.interval)
+      this.loadCandles(pair, tradeConfig.loopInterval)
         .then((candles) => {
           log(`@${BINANCE_MODE} > The bot trades the pair ${pair}`);
 
@@ -100,7 +100,7 @@ export class Bot {
               : // @ts-ignore
                 this.binanceClient.ws.futuresCandles;
 
-          getCandles(pair, tradeConfig.interval, async (candle: Candle) => {
+          getCandles(pair, tradeConfig.loopInterval, async (candle: Candle) => {
             this.checkOpenOrders(pair, Number(candle.close));
 
             if (candle.isFinal) {
@@ -110,12 +110,27 @@ export class Bot {
                   : await this.binanceClient.futuresAccountInfo();
 
               candles.push(buildCandle(candle));
-              candles = candles.slice(1);
+              candles = candles.slice(1); // Work only with closed candles
 
-              if (BINANCE_MODE === 'spot') {
-                this.tradeWithSpot(tradeConfig, candles);
+              if (tradeConfig.indicatorInterval !== tradeConfig.loopInterval) {
+                this.loadCandles(
+                  pair,
+                  tradeConfig.indicatorInterval,
+                  true,
+                  false
+                ).then((candles) => {
+                  if (BINANCE_MODE === 'spot') {
+                    this.tradeWithSpot(tradeConfig, candles);
+                  } else {
+                    this.tradeWithFutures(tradeConfig, candles);
+                  }
+                });
               } else {
-                this.tradeWithFutures(tradeConfig, candles);
+                if (BINANCE_MODE === 'spot') {
+                  this.tradeWithSpot(tradeConfig, candles);
+                } else {
+                  this.tradeWithFutures(tradeConfig, candles);
+                }
               }
             }
           });
@@ -645,7 +660,8 @@ export class Bot {
   private loadCandles(
     symbol: string,
     interval: CandleChartInterval,
-    onlyFinalCandle = true
+    onlyFinalCandle = true,
+    logMessage = true
   ) {
     return new Promise<ChartCandle[]>((resolve, reject) => {
       const getCandles =
@@ -655,9 +671,10 @@ export class Bot {
 
       getCandles({ symbol, interval })
         .then((candles) => {
-          log(
-            `@${BINANCE_MODE} > Load successfully the candles for the pair ${symbol}`
-          );
+          if (logMessage)
+            log(
+              `@${BINANCE_MODE} > Load successfully the candles for the pair ${symbol}`
+            );
           resolve(
             candles
               .slice(0, onlyFinalCandle ? -1 : candles.length)

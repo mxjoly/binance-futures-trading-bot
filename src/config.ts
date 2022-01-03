@@ -14,7 +14,8 @@ export const tradeConfigs: TradeConfig[] = [
   {
     asset: 'BTC',
     base: 'USDT',
-    interval: CandleChartInterval.FIVE_MINUTES,
+    loopInterval: CandleChartInterval.FIVE_MINUTES,
+    indicatorInterval: CandleChartInterval.ONE_WEEK,
     allocation: 0.02,
     leverage: 20,
     lossTolerance: 0.005,
