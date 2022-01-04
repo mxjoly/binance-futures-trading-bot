@@ -145,12 +145,12 @@ export function decimalFloor(x: number, precision: number) {
 
 export function log(message: string, date?: number) {
   const logDate = date ? new Date(date) : dateFormat();
-  logger.info(`${logDate} : ${message}`);
-  console.log(`${chalk.blueBright(logDate)} : ${message}`);
+  logger.info(`${logDate} : @${BINANCE_MODE} > ${message}`);
+  console.log(`${chalk.blueBright(logDate)} : @${BINANCE_MODE} > ${message}`);
 }
 
 export function error(message: string, date?: number) {
   const logDate = date ? new Date(date) : dateFormat();
-  logger.warn(`${logDate} : ${message}`);
-  console.error(`${chalk.blueBright(logDate)} : ${message}`);
+  logger.warn(`${logDate} : @${BINANCE_MODE} > ${message}`);
+  console.error(`${chalk.blueBright(logDate)} : @${BINANCE_MODE} > ${message}`);
 }

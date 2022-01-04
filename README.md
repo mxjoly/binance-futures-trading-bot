@@ -6,5 +6,7 @@ You must use environment variables to set your api keys from your Binance accoun
 
 ## Documentation
 
-- https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md#lot_size
+- https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md
 - https://github.com/Ashlar/binance-api-node/blob/master/README.md
+- https://binance-docs.github.io/apidocs/spot/en/
+- https://binance-docs.github.io/apidocs/futures/en/

@@ -1,9 +1,6 @@
 # Build
 build/
 
-# Database
-db.json
-
 # Logs
 logs
 *.log
