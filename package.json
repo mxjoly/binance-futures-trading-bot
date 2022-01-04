@@ -10,7 +10,7 @@
   "author": "mxjoly <maxime.joly2808@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "binance-api-node": "^0.11.22",
+    "binance-api-node": "^0.11.28",
     "chalk": "^4.1.2",
     "dateformat": "^5.0.2",
     "dotenv": "^10.0.0",

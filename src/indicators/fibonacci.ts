@@ -16,6 +16,11 @@ interface FibonacciExtensionLevels {
   _4618: number;
 }
 
+export interface FibonacciLevels {
+  retracementLevels: FibonacciRetracementLevels;
+  extensionLevels: FibonacciExtensionLevels;
+}
+
 export enum FibonacciTrend {
   UP,
   DOWN,
@@ -75,11 +80,8 @@ export function calculate({
 }: {
   candles: ChartCandle[];
   period?: number;
-  trend: FibonacciTrend;
-}): {
-  retracementLevels: FibonacciRetracementLevels;
-  extensionLevels: FibonacciExtensionLevels;
-} {
+  trend?: FibonacciTrend;
+}): FibonacciLevels {
   const { highest, lowest } = findHighestLowest(candles, trend, period);
 
   if (trend == FibonacciTrend.UP)
@@ -93,12 +95,12 @@ export function calculate({
         _1000: highest - (highest - lowest) * 1,
       },
       extensionLevels: {
-        _1000: highest + (highest - lowest) * 1,
-        _1236: highest + (highest - lowest) * 1.236,
-        _1618: highest + (highest - lowest) * 1.618,
-        _2618: highest + (highest - lowest) * 2.618,
-        _3618: highest + (highest - lowest) * 3.618,
-        _4618: highest + (highest - lowest) * 4.618,
+        _1000: highest + (highest - lowest) * 0,
+        _1236: highest + (highest - lowest) * 0.236,
+        _1618: highest + (highest - lowest) * 0.618,
+        _2618: highest + (highest - lowest) * 1.618,
+        _3618: highest + (highest - lowest) * 2.618,
+        _4618: highest + (highest - lowest) * 3.618,
       },
     };
 
@@ -113,12 +115,12 @@ export function calculate({
         _1000: lowest + (highest - lowest) * 1,
       },
       extensionLevels: {
-        _1000: lowest - (highest - lowest) * 1,
-        _1236: lowest - (highest - lowest) * 1.236,
-        _1618: lowest - (highest - lowest) * 1.618,
-        _2618: lowest - (highest - lowest) * 2.618,
-        _3618: lowest - (highest - lowest) * 3.618,
-        _4618: lowest - (highest - lowest) * 4.618,
+        _1000: lowest - (highest - lowest) * 0,
+        _1236: lowest - (highest - lowest) * 0.236,
+        _1618: lowest - (highest - lowest) * 0.618,
+        _2618: lowest - (highest - lowest) * 1.618,
+        _3618: lowest - (highest - lowest) * 2.618,
+        _4618: lowest - (highest - lowest) * 3.618,
       },
     };
 }

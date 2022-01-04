@@ -20,10 +20,12 @@ import {
 import {
   calculateAllocationQuantity,
   getPricePrecision,
+  getQuantityPrecision,
   isBuySignal,
   isSellSignal,
   isValidQuantity,
   buildCandle,
+  decimalFloor,
   error,
   log,
 } from './utils';
@@ -110,7 +112,7 @@ export class Bot {
                   : await this.binanceClient.futuresAccountInfo();
 
               candles.push(buildCandle(candle));
-              candles = candles.slice(1); // Work only with closed candles
+              candles = candles.slice(1); // Work with the same length
 
               if (tradeConfig.indicatorInterval !== tradeConfig.loopInterval) {
                 this.loadCandles(
@@ -172,6 +174,7 @@ export class Bot {
           baseAvailableBalance * maxPyramidingAllocation);
 
     const pricePrecision = getPricePrecision(pair, this.exchangeInfo);
+    const quantityPrecision = getQuantityPrecision(pair, this.exchangeInfo);
     const currentPrice = candles[candles.length - 1].close;
     const currentTrades = await this.binanceClient.myTrades({ symbol: pair });
 
@@ -182,14 +185,15 @@ export class Bot {
           this.binanceClient
             .order({
               side: OrderSide.SELL,
-              type: OrderType.MARKET,
+              type: OrderType.LIMIT,
               symbol: trade.symbol,
+              price: String(currentPrice),
               quantity: trade.qty,
               recvWindow: 60000,
             })
             .then(() => {
               log(
-                `@spot > Sells ${asset} to ${base}. Gain: ${
+                `@spot > Sells ${asset} to ${base}. Gains: ${
                   currentPrice * Number(trade.qty) -
                   Number(trade.price) * Number(trade.qty)
                 }`
@@ -200,14 +204,14 @@ export class Bot {
       }
     } else if (canBuy) {
       if (isBuySignal(candles, buyStrategy)) {
-        const { takeProfitPrice, stopLossPrice } = tpslStrategy
+        const { takeProfits, stopLosses } = tpslStrategy
           ? tpslStrategy({
               candles,
               tradeConfig,
               pricePrecision,
               side: OrderSide.BUY,
             })
-          : { takeProfitPrice: null, stopLossPrice: null };
+          : { takeProfits: [], stopLosses: [] };
 
         const quantity = await calculateAllocationQuantity(
           asset,
@@ -223,59 +227,84 @@ export class Bot {
         this.binanceClient
           .order({
             side: OrderSide.BUY,
-            type: OrderType.MARKET,
+            type: OrderType.LIMIT,
             symbol: pair,
+            price: String(currentPrice),
             quantity: String(quantity),
             recvWindow: 60000,
           })
           .then(() => {
-            if (takeProfitPrice && stopLossPrice) {
+            if (takeProfits.length === 1 && stopLosses.length === 1) {
               // Sell oco order as TP/SL
               this.binanceClient
                 .orderOco({
                   side: OrderSide.SELL,
                   symbol: pair,
-                  price: String(takeProfitPrice),
-                  stopPrice: String(stopLossPrice),
-                  stopLimitPrice: String(stopLossPrice),
-                  quantity: String(quantity),
+                  price: String(takeProfits[0].price),
+                  stopPrice: String(stopLosses[0].price),
+                  stopLimitPrice: String(stopLosses[0].price),
+                  quantity: String(
+                    decimalFloor(
+                      quantity * takeProfits[0].quantityPercentage,
+                      quantityPrecision
+                    )
+                  ),
                   recvWindow: 60000,
                 })
                 .catch(error);
-            } else {
-              if (takeProfitPrice) {
+            } else if (takeProfits.length > 0 || stopLosses.length > 0) {
+              // Create all the take profit targets
+              takeProfits.forEach(({ price, quantityPercentage }) => {
                 // Sell limit order as TP
                 this.binanceClient
                   .order({
                     side: OrderSide.SELL,
-                    type: OrderType.LIMIT,
+                    type: OrderType.TAKE_PROFIT_LIMIT,
                     symbol: pair,
-                    price: String(takeProfitPrice),
-                    quantity: String(quantity),
+                    price: String(price),
+                    stopPrice: String(price),
+                    quantity: String(
+                      decimalFloor(
+                        quantity * quantityPercentage,
+                        quantityPrecision
+                      )
+                    ),
                     recvWindow: 60000,
                   })
                   .catch(error);
-              }
-              if (stopLossPrice) {
+              });
+
+              // Create all the stop loss targets
+              stopLosses.forEach(({ price, quantityPercentage }) => {
                 // Sell limit order as SL
                 this.binanceClient
                   .order({
                     side: OrderSide.SELL,
-                    type: OrderType.LIMIT,
+                    type: OrderType.STOP_LOSS_LIMIT,
                     symbol: pair,
-                    price: String(stopLossPrice),
-                    quantity: String(quantity),
+                    price: String(price),
+                    stopPrice: String(price),
+                    quantity: String(
+                      decimalFloor(
+                        quantity * quantityPercentage,
+                        quantityPrecision
+                      )
+                    ),
                     recvWindow: 60000,
                   })
                   .catch(error);
-              }
+              });
             }
           })
           .then(() => {
-            log(
-              `@spot > Buys ${asset} with ${base} at the price ${currentPrice}. TP/SL: ${
-                takeProfitPrice ? takeProfitPrice : '----'
-              }/${stopLossPrice ? stopLossPrice : '----'}`
+            this.logBuySellExecutionOrder(
+              OrderSide.BUY,
+              'spot',
+              asset,
+              base,
+              currentPrice,
+              takeProfits,
+              stopLosses
             );
           })
           .catch(error);
@@ -296,7 +325,7 @@ export class Bot {
       tpslStrategy,
       checkTrend,
       useTrailingStop,
-      lossTolerance,
+      trailingStopCallbackRate,
       allowPyramiding,
       maxPyramidingAllocation,
       unidirectional,
@@ -327,6 +356,7 @@ export class Bot {
 
     const currentPrice = candles[candles.length - 1].close;
     const pricePrecision = getPricePrecision(pair, this.exchangeInfo);
+    const quantityPrecision = getQuantityPrecision(pair, this.exchangeInfo);
 
     // Prevent remaining open orders when a stop profit or a stop loss has been activated
     if (
@@ -343,8 +373,9 @@ export class Bot {
         this.binanceClient
           .futuresOrder({
             side: OrderSide.BUY,
-            type: OrderType.MARKET,
+            type: OrderType.LIMIT,
             symbol: pair,
+            price: currentPrice,
             quantity: position.positionAmt,
             recvWindow: 60000,
           })
@@ -363,14 +394,14 @@ export class Bot {
       // Do not add to the current position if the allocation is over the max allocation
       if (allowPyramiding && hasLongPosition && !canAddToPosition) return;
 
-      const { takeProfitPrice, stopLossPrice } = tpslStrategy
+      const { takeProfits, stopLosses } = tpslStrategy
         ? tpslStrategy({
             candles,
             tradeConfig,
             pricePrecision,
             side: OrderSide.BUY,
           })
-        : { takeProfitPrice: null, stopLossPrice: null };
+        : { takeProfits: [], stopLosses: [] };
 
       let quantity = await calculateAllocationQuantity(
         asset,
@@ -403,8 +434,9 @@ export class Bot {
       this.binanceClient
         .futuresOrder({
           side: OrderSide.BUY,
-          type: OrderType.MARKET,
+          type: OrderType.LIMIT,
           symbol: pair,
+          price: currentPrice,
           quantity: String(quantity),
           recvWindow: 60000,
         })
@@ -417,80 +449,108 @@ export class Bot {
           }
 
           if (useTrailingStop) {
-            this.binanceClient
-              .futuresOrder({
-                side: OrderSide.SELL,
-                type: OrderType.TRAILING_STOP_MARKET,
-                symbol: pair,
-                callbackRate: lossTolerance * 100,
-                activationPrice:
-                  candles[candles.length - 1].close * (1 + lossTolerance),
-              })
-              .then((order) => {
-                addOpenOrder(
-                  pair,
-                  order.orderId,
-                  order.side,
-                  order.type,
-                  Number(order.stopPrice)
-                );
-              })
-              .catch(error);
+            if (!trailingStopCallbackRate) {
+              error(
+                '@futures > Cannot use trailing stop because property trailingStopCallbackRate is not defined'
+              );
+            } else {
+              this.binanceClient
+                .futuresOrder({
+                  side: OrderSide.SELL,
+                  type: OrderType.TRAILING_STOP_MARKET,
+                  symbol: pair,
+                  quantity: String(quantity),
+                  callbackRate: trailingStopCallbackRate * 100,
+                  activationPrice:
+                    candles[candles.length - 1].close *
+                    (1 + trailingStopCallbackRate),
+                })
+                .then((order) => {
+                  addOpenOrder(
+                    pair,
+                    order.orderId,
+                    order.side,
+                    order.type,
+                    Number(order.stopPrice)
+                  );
+                })
+                .catch(error);
+            }
           }
 
-          if (takeProfitPrice && !useTrailingStop) {
-            // Take profit order
-            this.binanceClient
-              .futuresOrder({
-                side: OrderSide.SELL,
-                type: OrderType.TAKE_PROFIT_LIMIT,
-                symbol: pair,
-                price: takeProfitPrice,
-                stopPrice: takeProfitPrice,
-                quantity: String(quantity),
-                recvWindow: 60000,
-              })
-              .then((order) => {
-                addOpenOrder(
-                  pair,
-                  order.orderId,
-                  order.side,
-                  order.type,
-                  Number(order.stopPrice)
-                );
-              })
-              .catch(error);
+          if (takeProfits.length > 0 && !useTrailingStop) {
+            // Create the take profit orders
+            takeProfits.forEach(({ price, quantityPercentage }) => {
+              // Take profit order
+              this.binanceClient
+                .futuresOrder({
+                  side: OrderSide.SELL,
+                  type: OrderType.TAKE_PROFIT_LIMIT,
+                  symbol: pair,
+                  price: price,
+                  stopPrice: price,
+                  quantity: String(
+                    decimalFloor(
+                      quantity * quantityPercentage,
+                      quantityPrecision
+                    )
+                  ),
+                  recvWindow: 60000,
+                })
+                .then((order) => {
+                  addOpenOrder(
+                    pair,
+                    order.orderId,
+                    order.side,
+                    order.type,
+                    Number(order.stopPrice)
+                  );
+                })
+                .catch(error);
+            });
           }
 
-          if (stopLossPrice) {
-            // Stop loss order
-            this.binanceClient
-              .futuresOrder({
-                side: OrderSide.SELL,
-                type: OrderType.STOP_LOSS_LIMIT,
-                symbol: pair,
-                price: stopLossPrice,
-                stopPrice: stopLossPrice,
-                quantity: String(quantity),
-                recvWindow: 60000,
-              })
-              .then((order) => {
-                addOpenOrder(
-                  pair,
-                  order.orderId,
-                  order.side,
-                  order.type,
-                  Number(order.stopPrice)
-                );
-              })
-              .catch(error);
+          if (stopLosses.length > 0) {
+            // Create the stop loss orders
+            stopLosses.forEach(({ price, quantityPercentage }) => {
+              // Stop loss order
+              this.binanceClient
+                .futuresOrder({
+                  side: OrderSide.SELL,
+                  type: OrderType.STOP_LOSS_LIMIT,
+                  symbol: pair,
+                  price: price,
+                  stopPrice: price,
+                  quantity: String(
+                    decimalFloor(
+                      quantity * quantityPercentage,
+                      quantityPrecision
+                    )
+                  ),
+                  recvWindow: 60000,
+                })
+                .then((order) => {
+                  addOpenOrder(
+                    pair,
+                    order.orderId,
+                    order.side,
+                    order.type,
+                    Number(order.stopPrice)
+                  );
+                })
+                .catch(error);
+            });
           }
         })
         .then(() => {
-          log(
-            `@futures > Takes a long position for ${pair} at the price ${currentPrice} with TP/SL: ${
-              takeProfitPrice ? takeProfitPrice : '----'
-            }/${stopLossPrice ? stopLossPrice : '----'}`
+          this.logBuySellExecutionOrder(
+            OrderSide.BUY,
+            'futures',
+            asset,
+            base,
+            currentPrice,
+            takeProfits,
+            stopLosses
           );
         })
         .catch(error);
@@ -500,8 +560,9 @@ export class Bot {
         this.binanceClient
           .futuresOrder({
             side: OrderSide.SELL,
-            type: OrderType.MARKET,
+            type: OrderType.LIMIT,
             symbol: pair,
+            price: currentPrice,
             quantity: position.positionAmt,
             recvWindow: 60000,
           })
@@ -520,14 +581,14 @@ export class Bot {
       // Do not add to the current position if the allocation is over the max allocation
       if (allowPyramiding && hasShortPosition && !canAddToPosition) return;
 
-      const { takeProfitPrice, stopLossPrice } = tpslStrategy
+      const { takeProfits, stopLosses } = tpslStrategy
         ? tpslStrategy({
             candles,
             tradeConfig,
             pricePrecision,
             side: OrderSide.SELL,
           })
-        : { takeProfitPrice: null, stopLossPrice: null };
+        : { takeProfits: [], stopLosses: [] };
 
       let quantity = await calculateAllocationQuantity(
         asset,
@@ -560,8 +621,9 @@ export class Bot {
       this.binanceClient
         .futuresOrder({
           side: OrderSide.SELL,
-          type: OrderType.MARKET,
+          type: OrderType.LIMIT,
           symbol: pair,
+          price: currentPrice,
           quantity: String(quantity),
           recvWindow: 60000,
         })
@@ -574,84 +636,157 @@ export class Bot {
           }
 
           if (useTrailingStop) {
-            this.binanceClient
-              .futuresOrder({
-                side: OrderSide.BUY,
-                type: OrderType.TRAILING_STOP_MARKET,
-                symbol: pair,
-                callbackRate: lossTolerance * 100,
-                activationPrice:
-                  candles[candles.length - 1].close * (1 - lossTolerance),
-              })
-              .then((order) => {
-                addOpenOrder(
-                  pair,
-                  order.orderId,
-                  order.side,
-                  order.type,
-                  Number(order.stopPrice)
-                );
-              })
-              .catch(error);
+            if (!trailingStopCallbackRate) {
+              error(
+                '@futures > Cannot use trailing stop because property trailingStopCallbackRate is not defined'
+              );
+            } else {
+              this.binanceClient
+                .futuresOrder({
+                  side: OrderSide.BUY,
+                  type: OrderType.TRAILING_STOP_MARKET,
+                  symbol: pair,
+                  quantity: String(quantity),
+                  callbackRate: trailingStopCallbackRate * 100,
+                  activationPrice:
+                    candles[candles.length - 1].close *
+                    (1 - trailingStopCallbackRate),
+                })
+                .then((order) => {
+                  addOpenOrder(
+                    pair,
+                    order.orderId,
+                    order.side,
+                    order.type,
+                    Number(order.stopPrice)
+                  );
+                })
+                .catch(error);
+            }
           }
 
-          if (takeProfitPrice && !useTrailingStop) {
-            // Take profit order
-            this.binanceClient
-              .futuresOrder({
-                side: OrderSide.BUY,
-                type: OrderType.TAKE_PROFIT_LIMIT,
-                symbol: pair,
-                price: takeProfitPrice,
-                stopPrice: takeProfitPrice,
-                quantity: String(quantity),
-                recvWindow: 60000,
-              })
-              .then((order) => {
-                addOpenOrder(
-                  pair,
-                  order.orderId,
-                  order.side,
-                  order.type,
-                  Number(order.stopPrice)
-                );
-              })
-              .catch(error);
+          if (takeProfits.length > 0 && !useTrailingStop) {
+            // Create the take profit orders
+            takeProfits.forEach(({ price, quantityPercentage }) => {
+              // Take profit order
+              this.binanceClient
+                .futuresOrder({
+                  side: OrderSide.BUY,
+                  type: OrderType.TAKE_PROFIT_LIMIT,
+                  symbol: pair,
+                  price: price,
+                  stopPrice: price,
+                  quantity: String(
+                    decimalFloor(
+                      quantity * quantityPercentage,
+                      quantityPrecision
+                    )
+                  ),
+                  recvWindow: 60000,
+                })
+                .then((order) => {
+                  addOpenOrder(
+                    pair,
+                    order.orderId,
+                    order.side,
+                    order.type,
+                    Number(order.stopPrice)
+                  );
+                })
+                .catch(error);
+            });
           }
 
-          if (stopLossPrice) {
-            // Stop loss order
-            this.binanceClient
-              .futuresOrder({
-                side: OrderSide.BUY,
-                type: OrderType.STOP_LOSS_LIMIT,
-                symbol: pair,
-                price: stopLossPrice,
-                stopPrice: stopLossPrice,
-                quantity: String(quantity),
-                recvWindow: 60000,
-              })
-              .then((order) => {
-                addOpenOrder(
-                  pair,
-                  order.orderId,
-                  order.side,
-                  order.type,
-                  Number(order.stopPrice)
-                );
-              })
-              .catch(error);
+          if (stopLosses.length > 0) {
+            // Create the stop loss orders
+            stopLosses.forEach(({ price, quantityPercentage }) => {
+              // Stop loss order
+              this.binanceClient
+                .futuresOrder({
+                  side: OrderSide.BUY,
+                  type: OrderType.STOP_LOSS_LIMIT,
+                  symbol: pair,
+                  price: price,
+                  stopPrice: price,
+                  quantity: String(
+                    decimalFloor(
+                      quantity * quantityPercentage,
+                      quantityPrecision
+                    )
+                  ),
+                  recvWindow: 60000,
+                })
+                .then((order) => {
+                  addOpenOrder(
+                    pair,
+                    order.orderId,
+                    order.side,
+                    order.type,
+                    Number(order.stopPrice)
+                  );
+                })
+                .catch(error);
+            });
           }
         })
         .then(() => {
-          log(
-            `@futures > Bot takes a short for ${pair} at the price ${currentPrice} with TP/SL: ${
-              takeProfitPrice ? takeProfitPrice : '----'
-            }/${stopLossPrice ? stopLossPrice : '----'}`
+          this.logBuySellExecutionOrder(
+            OrderSide.SELL,
+            'futures',
+            asset,
+            base,
+            currentPrice,
+            takeProfits,
+            stopLosses
           );
         })
         .catch(error);
     }
+  }
+
+  private logBuySellExecutionOrder(
+    orderSide: OrderSide,
+    mode: BinanceMode,
+    asset: string,
+    base: string,
+    price: number,
+    takeProfits: { price: number; quantityPercentage: number }[],
+    stopLosses: { price: number; quantityPercentage: number }[]
+  ) {
+    let introPhrase =
+      mode === 'spot'
+        ? `@spot >  ${
+            orderSide === OrderSide.BUY ? 'Buys' : 'Sells'
+          } ${asset} with ${base} at the price ${price}.`
+        : `@futures > Takes a ${
+            orderSide === OrderSide.BUY ? 'long' : 'short'
+          } position for ${asset + base} at the price ${price} with`;
+
+    let tp = `TP: ${
+      takeProfits.length > 0
+        ? takeProfits
+            .map(
+              (takeProfit) =>
+                `[${takeProfit.price} => ${
+                  takeProfit.quantityPercentage * 100
+                }%]`
+            )
+            .join(' ')
+        : '----'
+    }`;
+
+    let sl = `SL: ${
+      stopLosses.length > 0
+        ? stopLosses
+            .map(
+              (stopLoss) =>
+                `[${stopLoss.price} => ${stopLoss.quantityPercentage * 100}%]`
+            )
+            .join(' ')
+        : '----'
+    }`;
+
+    log([introPhrase, tp, sl].join('\n'));
   }
 
   /**

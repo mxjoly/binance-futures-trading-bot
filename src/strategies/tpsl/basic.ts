@@ -1,5 +1,5 @@
 import { OrderSide } from 'binance-api-node';
-import { decimalCeil } from '../../utils';
+import { decimalFloor } from '../../utils';
 
 export default ({
   candles,
@@ -12,25 +12,38 @@ export default ({
   pricePrecision?: number;
   side: OrderSide;
 }) => {
-  const { profitTarget, lossTolerance } = tradeConfig;
+  const { profitTargets, lossTolerances } = tradeConfig;
   const currentPrice = candles[candles.length - 1].close;
 
-  const takeProfitPrice = profitTarget
-    ? decimalCeil(
-        side === OrderSide.BUY
-          ? currentPrice * (1 + profitTarget)
-          : currentPrice * (1 - profitTarget),
-        pricePrecision
-      )
-    : null;
-  const stopLossPrice = lossTolerance
-    ? decimalCeil(
-        side === OrderSide.BUY
-          ? currentPrice * (1 - lossTolerance)
-          : currentPrice * (1 + lossTolerance),
-        pricePrecision
-      )
-    : null;
+  let takeProfits = profitTargets
+    ? profitTargets.map(({ deltaPercentage, quantityPercentage }) => {
+        if (deltaPercentage)
+          return {
+            price: decimalFloor(
+              side === OrderSide.BUY
+                ? currentPrice * (1 + deltaPercentage)
+                : currentPrice * (1 - deltaPercentage),
+              pricePrecision
+            ),
+            quantityPercentage: quantityPercentage,
+          };
+      })
+    : [];
 
-  return { takeProfitPrice, stopLossPrice };
+  let stopLosses = lossTolerances
+    ? lossTolerances.map(({ deltaPercentage, quantityPercentage }) => {
+        if (deltaPercentage)
+          return {
+            price: decimalFloor(
+              side === OrderSide.BUY
+                ? currentPrice * (1 - deltaPercentage)
+                : currentPrice * (1 + deltaPercentage),
+              pricePrecision
+            ),
+            quantityPercentage: quantityPercentage,
+          };
+      })
+    : [];
+
+  return { takeProfits, stopLosses };
 };
