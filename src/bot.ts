@@ -177,6 +177,14 @@ export class Bot {
     const quantityPrecision = getQuantityPrecision(pair, this.exchangeInfo);
     const currentPrice = candles[candles.length - 1].close;
     const currentTrades = await this.binanceClient.myTrades({ symbol: pair });
+    const currentOpenOrders = await this.binanceClient.openOrders({
+      symbol: pair,
+    });
+
+    // Close remaining open orders while there is no trade on the symbol
+    if (currentTrades.length === 0 && currentOpenOrders.length > 0) {
+      this.binanceClient.cancelOpenOrders({ symbol: pair });
+    }
 
     // If a trade exists, search when to sell
     if (currentTrades.length > 0) {
@@ -185,9 +193,8 @@ export class Bot {
           this.binanceClient
             .order({
               side: OrderSide.SELL,
-              type: OrderType.LIMIT,
+              type: OrderType.MARKET,
               symbol: trade.symbol,
-              price: String(currentPrice),
               quantity: trade.qty,
               recvWindow: 60000,
             })
@@ -218,7 +225,6 @@ export class Bot {
           base,
           baseAvailableBalance,
           allocation,
-          1,
           currentPrice,
           this.exchangeInfo
         );
@@ -227,9 +233,8 @@ export class Bot {
         this.binanceClient
           .order({
             side: OrderSide.BUY,
-            type: OrderType.LIMIT,
+            type: OrderType.MARKET,
             symbol: pair,
-            price: String(currentPrice),
             quantity: String(quantity),
             recvWindow: 60000,
           })
@@ -299,7 +304,6 @@ export class Bot {
           .then(() => {
             this.logBuySellExecutionOrder(
               OrderSide.BUY,
-              'spot',
               asset,
               base,
               currentPrice,
@@ -373,9 +377,8 @@ export class Bot {
         this.binanceClient
           .futuresOrder({
             side: OrderSide.BUY,
-            type: OrderType.LIMIT,
+            type: OrderType.MARKET,
             symbol: pair,
-            price: currentPrice,
             quantity: position.positionAmt,
             recvWindow: 60000,
           })
@@ -408,7 +411,6 @@ export class Bot {
         base,
         allowPyramiding ? Number(balance) : Number(availableBalance),
         allocation * (tradeConfig.leverage || 1),
-        tradeConfig.leverage,
         currentPrice,
         this.exchangeInfo
       );
@@ -434,9 +436,8 @@ export class Bot {
       this.binanceClient
         .futuresOrder({
           side: OrderSide.BUY,
-          type: OrderType.LIMIT,
+          type: OrderType.MARKET,
           symbol: pair,
-          price: currentPrice,
           quantity: String(quantity),
           recvWindow: 60000,
         })
@@ -545,7 +546,6 @@ export class Bot {
         .then(() => {
           this.logBuySellExecutionOrder(
             OrderSide.BUY,
-            'futures',
             asset,
             base,
             currentPrice,
@@ -560,9 +560,8 @@ export class Bot {
         this.binanceClient
           .futuresOrder({
             side: OrderSide.SELL,
-            type: OrderType.LIMIT,
+            type: OrderType.MARKET,
             symbol: pair,
-            price: currentPrice,
             quantity: position.positionAmt,
             recvWindow: 60000,
           })
@@ -595,7 +594,6 @@ export class Bot {
         base,
         allowPyramiding ? Number(balance) : Number(availableBalance),
         allocation * (tradeConfig.leverage || 1),
-        tradeConfig.leverage,
         currentPrice,
         this.exchangeInfo
       );
@@ -621,9 +619,8 @@ export class Bot {
       this.binanceClient
         .futuresOrder({
           side: OrderSide.SELL,
-          type: OrderType.LIMIT,
+          type: OrderType.MARKET,
           symbol: pair,
-          price: currentPrice,
           quantity: String(quantity),
           recvWindow: 60000,
         })
@@ -732,7 +729,6 @@ export class Bot {
         .then(() => {
           this.logBuySellExecutionOrder(
             OrderSide.SELL,
-            'futures',
             asset,
             base,
             currentPrice,
@@ -746,7 +742,6 @@ export class Bot {
 
   private logBuySellExecutionOrder(
     orderSide: OrderSide,
-    mode: BinanceMode,
     asset: string,
     base: string,
     price: number,
@@ -754,7 +749,7 @@ export class Bot {
     stopLosses: { price: number; quantityPercentage: number }[]
   ) {
     let introPhrase =
-      mode === 'spot'
+      BINANCE_MODE === 'spot'
         ? `@spot >  ${
             orderSide === OrderSide.BUY ? 'Buys' : 'Sells'
           } ${asset} with ${base} at the price ${price}.`
