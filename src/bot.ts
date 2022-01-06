@@ -169,6 +169,7 @@ export class Bot {
               recvWindow: 60000,
             })
             .then(() => {
+              this.closeOpenOrders(pair);
               const totalValue = currentPrice * Number(trade.qty);
               const gains =
                 totalValue - Number(trade.price) * Number(trade.qty);
