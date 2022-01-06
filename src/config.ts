@@ -13,8 +13,6 @@ export const BINANCE_MODE: BinanceMode = 'spot';
 // SHAD investment strategy
 // @see https://thecoinacademy.co/altcoins/shad-strategy-a-trading-and-investment-strategy-for-the-crypto-market/
 const shad = {
-  loopInterval: CandleChartInterval.ONE_HOUR,
-  indicatorInterval: CandleChartInterval.ONE_WEEK,
   profitTargets: [
     {
       deltaPercentage: 1, // x2
@@ -46,9 +44,6 @@ const shad = {
     },
   ],
   lossTolerances: [],
-  useTrailingStop: false,
-  allowPyramiding: false,
-  unidirectional: true,
   checkTrend: (candles) => true, // Take only long position, supposing we are in up trend on long term
   tpslStrategy: tpslStrategy,
   buyStrategy: (candles: ChartCandle[]) =>
@@ -90,9 +85,11 @@ const assets = [
   'VET',
 ];
 
-export const tradeConfig: TradeConfig[] = assets.map((asset) => ({
+export const tradeConfigs: TradeConfig[] = assets.map((asset) => ({
   asset,
   base: 'USDT',
-  allocation: 0.02,
+  allocation: 0.02, // Buy/Sell with 1% of the balance
+  loopInterval: CandleChartInterval.ONE_HOUR,
+  indicatorInterval: CandleChartInterval.ONE_WEEK,
   ...shad,
 }));
