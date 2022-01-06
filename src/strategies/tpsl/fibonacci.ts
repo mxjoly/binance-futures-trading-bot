@@ -34,16 +34,12 @@ function getPriceFromFibonacciLevels(
   }
 }
 
-export default ({
+export default <TPSLStrategy>({
+  price,
   candles,
   tradeConfig,
   pricePrecision,
   side,
-}: {
-  candles: ChartCandle[];
-  tradeConfig?: TradeConfig;
-  pricePrecision?: number;
-  side: OrderSide;
 }) => {
   const { profitTargets, lossTolerances } = tradeConfig;
 

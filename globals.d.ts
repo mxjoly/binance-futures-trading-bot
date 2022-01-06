@@ -71,7 +71,8 @@ interface BuySellProperty {
 type BuySellStrategy = (candles: ChartCandle[]) => boolean;
 
 type TPSLStrategy = (options: {
-  candles: ChartCandle[];
+  price?: number;
+  candles?: ChartCandle[];
   tradeConfig?: TradeConfig;
   pricePrecision?: number;
   side: 'BUY' | 'SELL';

@@ -2,19 +2,16 @@ import basicTpslStrategy from './basic';
 import fibonacciTpslStrategy from './fibonacci';
 import { OrderSide } from 'binance-api-node';
 
-export default function ({
+export default <TPSLStrategy>({
+  price,
   candles,
   tradeConfig,
   pricePrecision,
   side,
-}: {
-  candles: ChartCandle[];
-  tradeConfig?: TradeConfig;
-  pricePrecision?: number;
-  side: OrderSide;
-}) {
+}) => {
   let { takeProfits: takeProfitFromBasic, stopLosses: stopLossesFromBasic } =
     basicTpslStrategy({
+      price,
       candles,
       tradeConfig,
       pricePrecision,
@@ -25,6 +22,7 @@ export default function ({
     takeProfits: takeProfitFromFibonacci,
     stopLosses: stopLossesFromFibonacci,
   } = fibonacciTpslStrategy({
+    price,
     candles,
     tradeConfig,
     pricePrecision,
@@ -35,4 +33,4 @@ export default function ({
     takeProfits: takeProfitFromBasic.concat(takeProfitFromFibonacci),
     stopLosses: stopLossesFromBasic.concat(stopLossesFromFibonacci),
   };
-}
+};
