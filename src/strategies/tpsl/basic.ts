@@ -1,7 +1,7 @@
 import { OrderSide } from 'binance-api-node';
 import { decimalFloor } from '../../utils';
 
-export default <TPSLStrategy>({
+const strategy: TPSLStrategy = ({
   price,
   candles,
   tradeConfig,
@@ -42,3 +42,5 @@ export default <TPSLStrategy>({
 
   return { takeProfits, stopLosses };
 };
+
+export default strategy;

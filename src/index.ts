@@ -1,7 +1,7 @@
 import winston from 'winston';
 import Binance from 'binance-api-node';
 import { Bot } from './bot';
-import { tradeConfigs } from './config';
+import { DivergenceConfig } from './configs';
 
 require('dotenv').config();
 
@@ -18,6 +18,6 @@ const binanceClient = Binance({
 
 // ****************************************************************************** //
 
-const TradingBot = new Bot(binanceClient, tradeConfigs);
+const TradingBot = new Bot(binanceClient, DivergenceConfig);
 TradingBot.prepare();
 TradingBot.run();

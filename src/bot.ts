@@ -1,14 +1,11 @@
 import {
-  Account,
   Binance,
   Candle,
   CandleChartInterval,
   ExchangeInfo,
-  FuturesAccountInfoResult,
   OrderSide,
   OrderType,
 } from 'binance-api-node';
-import { BINANCE_MODE } from './config';
 import {
   calculateAllocationQuantity,
   getPricePrecision,
@@ -23,6 +20,9 @@ import {
 } from './utils';
 
 // ====================================================================== //
+
+// The bot will trade with the binance :
+export const BINANCE_MODE: BinanceMode = 'spot';
 
 export class Bot {
   private binanceClient: Binance;
@@ -779,15 +779,18 @@ export class Bot {
   }
 
   private closeOpenOrders(symbol: string) {
-    const cancel =
-      BINANCE_MODE === 'spot'
-        ? this.binanceClient.cancelOpenOrders
-        : this.binanceClient.futuresCancelAllOpenOrders;
+    return new Promise<void>((resolve, reject) => {
+      const cancel =
+        BINANCE_MODE === 'spot'
+          ? this.binanceClient.cancelOpenOrders
+          : this.binanceClient.futuresCancelAllOpenOrders;
 
-    cancel({ symbol })
-      .then(() => {
-        log(`Close all open orders for the pair ${symbol}`);
-      })
-      .catch(error);
+      cancel({ symbol })
+        .then(() => {
+          log(`Close all open orders for the pair ${symbol}`);
+          resolve();
+        })
+        .catch(reject);
+    });
   }
 }

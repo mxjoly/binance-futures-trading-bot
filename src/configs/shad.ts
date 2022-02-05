@@ -1,12 +1,7 @@
 import { CandleChartInterval } from 'binance-api-node';
-import { RELOAD_ZONE } from './strategies/buy_sell';
-import { Fibonacci } from './indicators';
-import tpslStrategy from './strategies/tpsl';
-
-// ============================ CONST =================================== //
-
-// The bot will trade with the binance :
-export const BINANCE_MODE: BinanceMode = 'spot';
+import { RELOAD_ZONE } from '../strategies/buy_sell';
+import { Fibonacci } from '../indicators';
+import tpslStrategy from '../strategies/tpsl';
 
 // =========================== PRESETS ================================== //
 
@@ -85,7 +80,7 @@ const assets = [
   'VET',
 ];
 
-export const tradeConfigs: TradeConfig[] = assets.map((asset) => ({
+const config: TradeConfig[] = assets.map((asset) => ({
   asset,
   base: 'USDT',
   allocation: 0.02, // Buy/Sell with 1% of the balance
@@ -93,3 +88,5 @@ export const tradeConfigs: TradeConfig[] = assets.map((asset) => ({
   indicatorInterval: CandleChartInterval.ONE_WEEK,
   ...shad,
 }));
+
+export default config;

@@ -34,7 +34,7 @@ function getPriceFromFibonacciLevels(
   }
 }
 
-export default <TPSLStrategy>({
+const strategy: TPSLStrategy = ({
   price,
   candles,
   tradeConfig,
@@ -72,3 +72,5 @@ export default <TPSLStrategy>({
 
   return { takeProfits, stopLosses: [] };
 };
+
+export default strategy;

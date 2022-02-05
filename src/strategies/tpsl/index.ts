@@ -1,8 +1,7 @@
 import basicTpslStrategy from './basic';
 import fibonacciTpslStrategy from './fibonacci';
-import { OrderSide } from 'binance-api-node';
 
-export default <TPSLStrategy>({
+const strategy: TPSLStrategy = ({
   price,
   candles,
   tradeConfig,
@@ -34,3 +33,5 @@ export default <TPSLStrategy>({
     stopLosses: stopLossesFromBasic.concat(stopLossesFromFibonacci),
   };
 };
+
+export default strategy;
