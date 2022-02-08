@@ -1,3 +1,4 @@
+import TestConfig from './test';
 import SHADConfig from './shad';
 
-export { SHADConfig };
+export { TestConfig, SHADConfig };

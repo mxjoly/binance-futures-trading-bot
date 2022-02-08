@@ -1,8 +1,5 @@
 import { Candle, CandleChartResult, ExchangeInfo } from 'binance-api-node';
-import dateFormat from 'dateformat';
-import chalk from 'chalk';
 import { BINANCE_MODE } from './bot';
-import { logger } from '.';
 
 export const buildCandle = (
   candle: Candle | CandleChartResult
@@ -141,16 +138,4 @@ export function decimalCeil(x: number, precision: number) {
  */
 export function decimalFloor(x: number, precision: number) {
   return Math.floor(x * Math.pow(10, precision)) / Math.pow(10, precision);
-}
-
-export function log(message: string, date?: number) {
-  const logDate = date ? new Date(date) : dateFormat();
-  logger.info(`${logDate} : @${BINANCE_MODE} > ${message}`);
-  console.log(`${chalk.blueBright(logDate)} : @${BINANCE_MODE} > ${message}`);
-}
-
-export function error(message: string, date?: number) {
-  const logDate = date ? new Date(date) : dateFormat();
-  logger.warn(`${logDate} : @${BINANCE_MODE} > ${message}`);
-  console.error(`${chalk.blueBright(logDate)} : @${BINANCE_MODE} > ${message}`);
 }

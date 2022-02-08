@@ -3,14 +3,15 @@
   "version": "1.0.0",
   "description": "A trading bot",
   "scripts": {
-    "start": "nodemon ./build/start.js",
+    "start": "NODE_ENV=production nodemon ./build/start.js",
+    "test": "NODE_ENV=test nodemon ./build/start.js",
     "build": "tsc"
   },
   "keywords": [],
   "author": "mxjoly <maxime.joly2808@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "binance-api-node": "^0.11.28",
+    "binance-api-node": "^0.11.31",
     "chalk": "^4.1.2",
     "dateformat": "4.5.1",
     "dotenv": "^10.0.0",

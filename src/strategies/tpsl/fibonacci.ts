@@ -35,13 +35,12 @@ function getPriceFromFibonacciLevels(
 }
 
 const strategy: TPSLStrategy = ({
-  price,
   candles,
   tradeConfig,
   pricePrecision,
   side,
 }) => {
-  const { profitTargets, lossTolerances } = tradeConfig;
+  const { profitTargets } = tradeConfig;
 
   const levelsInUpTrend = Fibonacci.calculate({
     candles,
@@ -53,21 +52,20 @@ const strategy: TPSLStrategy = ({
   });
 
   let takeProfits = profitTargets
-    ? profitTargets.map(({ fibonacciLevel, quantityPercentage }) => {
-        if (fibonacciLevel)
-          return {
-            price: decimalFloor(
-              side === OrderSide.BUY
-                ? getPriceFromFibonacciLevels(fibonacciLevel, levelsInUpTrend)
-                : getPriceFromFibonacciLevels(
-                    fibonacciLevel,
-                    levelsInDownTrend
-                  ),
-              pricePrecision
-            ),
-            quantityPercentage: quantityPercentage,
-          };
-      })
+    ? profitTargets
+        .filter(
+          (profitTarget) =>
+            profitTarget.fibonacciLevel && !profitTarget.fibonacciLevel
+        )
+        .map(({ fibonacciLevel, quantityPercentage }) => ({
+          price: decimalFloor(
+            side === OrderSide.BUY
+              ? getPriceFromFibonacciLevels(fibonacciLevel, levelsInUpTrend)
+              : getPriceFromFibonacciLevels(fibonacciLevel, levelsInDownTrend),
+            pricePrecision
+          ),
+          quantityPercentage,
+        }))
     : [];
 
   return { takeProfits, stopLosses: [] };

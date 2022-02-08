@@ -1,5 +1,4 @@
 import {
-  Binance,
   Candle,
   CandleChartInterval,
   ExchangeInfo,
@@ -15,22 +14,19 @@ import {
   isValidQuantity,
   buildCandle,
   decimalFloor,
-  error,
-  log,
 } from './utils';
+import { log, error, logBuySellExecutionOrder } from './log';
+import { binanceClient } from '.';
 
 // ====================================================================== //
 
-// The bot will trade with the binance :
-export const BINANCE_MODE: BinanceMode = 'spot';
+export // The bot will trade with the binance :
+const BINANCE_MODE: BinanceMode = 'futures';
 
 export class Bot {
-  private binanceClient: Binance;
-  private exchangeInfo: ExchangeInfo;
   private tradeConfigs: TradeConfig[];
 
-  constructor(binanceClient: Binance, tradeConfigs: TradeConfig[]) {
-    this.binanceClient = binanceClient;
+  constructor(tradeConfigs: TradeConfig[]) {
     this.tradeConfigs = tradeConfigs;
   }
 
@@ -40,7 +36,7 @@ export class Bot {
       this.tradeConfigs.forEach((tradeConfig) => {
         const pair = tradeConfig.asset + tradeConfig.base;
 
-        this.binanceClient
+        binanceClient
           .futuresLeverage({
             symbol: pair,
             leverage: tradeConfig.leverage || 1,
@@ -50,7 +46,7 @@ export class Bot {
           )
           .catch(error);
 
-        this.binanceClient
+        binanceClient
           .futuresMarginType({
             symbol: pair,
             marginType: 'ISOLATED',
@@ -58,17 +54,17 @@ export class Bot {
           .catch(error);
       });
     }
-
-    this.exchangeInfo =
-      BINANCE_MODE === 'spot'
-        ? await this.binanceClient.exchangeInfo()
-        : await this.binanceClient.futuresExchangeInfo();
   }
 
   public async run() {
     log(
       '====================== 💵 BINANCE BOT TRADING 💵 ======================'
     );
+
+    const exchangeInfo =
+      BINANCE_MODE === 'spot'
+        ? await binanceClient.exchangeInfo()
+        : await binanceClient.futuresExchangeInfo();
 
     this.tradeConfigs.forEach((tradeConfig) => {
       const pair = tradeConfig.asset + tradeConfig.base;
@@ -79,8 +75,8 @@ export class Bot {
 
           const getCandles =
             BINANCE_MODE === 'spot'
-              ? this.binanceClient.ws.candles
-              : this.binanceClient.ws.futuresCandles;
+              ? binanceClient.ws.candles
+              : binanceClient.ws.futuresCandles;
 
           getCandles(pair, tradeConfig.loopInterval, async (candle: Candle) => {
             if (candle.isFinal) {
@@ -92,15 +88,18 @@ export class Bot {
                   ? this.tradeWithSpot
                   : this.tradeWithFutures;
 
-              if (tradeConfig.indicatorInterval !== tradeConfig.loopInterval) {
+              if (
+                tradeConfig.indicatorInterval &&
+                tradeConfig.indicatorInterval !== tradeConfig.loopInterval
+              ) {
                 this.loadCandles(
                   pair,
                   tradeConfig.indicatorInterval,
                   true,
                   false
-                ).then((candles) => trade(tradeConfig, candles));
+                ).then((candles) => trade(tradeConfig, candles, exchangeInfo));
               } else {
-                trade(tradeConfig, candles);
+                trade(tradeConfig, candles, exchangeInfo);
               }
             }
           });
@@ -111,7 +110,8 @@ export class Bot {
 
   private async tradeWithSpot(
     tradeConfig: TradeConfig,
-    candles: ChartCandle[]
+    candles: ChartCandle[],
+    exchangeInfo: ExchangeInfo
   ) {
     const {
       asset,
@@ -126,7 +126,7 @@ export class Bot {
     const pair = `${asset}${base}`;
 
     // Balance information
-    const { balances } = await this.binanceClient.accountInfo();
+    const { balances } = await binanceClient.accountInfo();
     const assetBalance = Number(
       balances.find((balance) => balance.asset === asset).free
     );
@@ -136,8 +136,8 @@ export class Bot {
 
     // Data
     const currentPrice = candles[candles.length - 1].close;
-    const currentTrades = await this.binanceClient.myTrades({ symbol: pair });
-    const currentOpenOrders = await this.binanceClient.openOrders({
+    const currentTrades = await binanceClient.myTrades({ symbol: pair });
+    const currentOpenOrders = await binanceClient.openOrders({
       symbol: pair,
     });
 
@@ -148,8 +148,8 @@ export class Bot {
         assetBalance * currentPrice <= baseBalance * maxPyramidingAllocation);
 
     // Precisions
-    const pricePrecision = getPricePrecision(pair, this.exchangeInfo);
-    const quantityPrecision = getQuantityPrecision(pair, this.exchangeInfo);
+    const pricePrecision = getPricePrecision(pair, exchangeInfo);
+    const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Close remaining open orders while doesn't trade on the symbol
     if (currentTrades.length === 0 && currentOpenOrders.length > 0) {
@@ -160,7 +160,7 @@ export class Bot {
     if (currentTrades.length > 0) {
       if (isSellSignal(candles, sellStrategy)) {
         currentTrades.forEach((trade) => {
-          this.binanceClient
+          binanceClient
             .order({
               side: OrderSide.SELL,
               type: OrderType.MARKET,
@@ -187,11 +187,11 @@ export class Bot {
         baseBalance,
         allocation,
         currentPrice,
-        this.exchangeInfo
+        exchangeInfo
       );
 
       // Buy market order
-      this.binanceClient
+      binanceClient
         .order({
           side: OrderSide.BUY,
           type: OrderType.MARKET,
@@ -230,7 +230,7 @@ export class Bot {
         .then(({ orderPrice, avgPrice, stopLosses, takeProfits }) => {
           if (takeProfits.length === 1 && stopLosses.length === 1) {
             // Sell oco order as TP/SL
-            this.binanceClient
+            binanceClient
               .orderOco({
                 side: OrderSide.SELL,
                 symbol: pair,
@@ -250,13 +250,12 @@ export class Bot {
             // Create all the take profit targets
             takeProfits.forEach(({ price, quantityPercentage }) => {
               // Sell limit order as TP
-              this.binanceClient
+              binanceClient
                 .order({
                   side: OrderSide.SELL,
-                  type: OrderType.TAKE_PROFIT_LIMIT,
+                  type: OrderType.LIMIT,
                   symbol: pair,
                   price: String(price),
-                  stopPrice: String(price),
                   quantity: String(
                     decimalFloor(
                       quantity * quantityPercentage,
@@ -271,13 +270,12 @@ export class Bot {
             // Create all the stop loss targets
             stopLosses.forEach(({ price, quantityPercentage }) => {
               // Sell limit order as SL
-              this.binanceClient
+              binanceClient
                 .order({
                   side: OrderSide.SELL,
-                  type: OrderType.STOP_LOSS_LIMIT,
+                  type: OrderType.LIMIT,
                   symbol: pair,
                   price: String(price),
-                  stopPrice: String(price),
                   quantity: String(
                     decimalFloor(
                       quantity * quantityPercentage,
@@ -290,7 +288,7 @@ export class Bot {
             });
           }
 
-          this.logBuySellExecutionOrder(
+          logBuySellExecutionOrder(
             OrderSide.BUY,
             asset,
             base,
@@ -310,7 +308,8 @@ export class Bot {
 
   private async tradeWithFutures(
     tradeConfig: TradeConfig,
-    candles: ChartCandle[]
+    candles: ChartCandle[],
+    exchangeInfo: ExchangeInfo
   ) {
     const {
       asset,
@@ -332,13 +331,13 @@ export class Bot {
     const useShortPosition = checkTrend ? !useLongPosition : true;
 
     // Balance information
-    const balances = await this.binanceClient.futuresAccountBalance();
+    const balances = await binanceClient.futuresAccountBalance();
     const { balance, availableBalance } = balances.find(
       (balance) => balance.asset === base
     );
 
     // Position information
-    const { positions } = await this.binanceClient.futuresAccountInfo();
+    const { positions } = await binanceClient.futuresAccountInfo();
     const position = positions.find((position) => position.symbol === pair);
     const hasLongPosition = Number(position.positionAmt) > 0;
     const hasShortPosition = Number(position.positionAmt) < 0;
@@ -355,11 +354,11 @@ export class Bot {
 
     // Other data
     const currentPrice = candles[candles.length - 1].close;
-    const currentOpenOrders = await this.binanceClient.futuresOpenOrders({
+    const currentOpenOrders = await binanceClient.futuresOpenOrders({
       symbol: pair,
     });
-    const pricePrecision = getPricePrecision(pair, this.exchangeInfo);
-    const quantityPrecision = getQuantityPrecision(pair, this.exchangeInfo);
+    const pricePrecision = getPricePrecision(pair, exchangeInfo);
+    const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
@@ -369,7 +368,7 @@ export class Bot {
     if (canTakeLongPosition && isBuySignal(candles, buyStrategy)) {
       // Take the profit and not open a new position
       if (hasShortPosition && unidirectional) {
-        this.binanceClient
+        binanceClient
           .futuresOrder({
             side: OrderSide.BUY,
             type: OrderType.MARKET,
@@ -398,7 +397,7 @@ export class Bot {
         allowPyramiding ? Number(balance) : Number(availableBalance),
         allocation * (tradeConfig.leverage || 1),
         currentPrice,
-        this.exchangeInfo
+        exchangeInfo
       );
 
       // Quantity to add to close the previous position
@@ -408,18 +407,14 @@ export class Bot {
 
       // To close the previous short position
       if (
-        isValidQuantity(
-          quantity - previousPositionQuantity,
-          pair,
-          this.exchangeInfo
-        )
+        isValidQuantity(quantity - previousPositionQuantity, pair, exchangeInfo)
       ) {
         quantity -= previousPositionQuantity;
       } else {
         throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
       }
 
-      this.binanceClient
+      binanceClient
         .futuresOrder({
           side: OrderSide.BUY,
           type: OrderType.MARKET,
@@ -435,7 +430,7 @@ export class Bot {
 
           // Get the total size and the entry price on the position updated
           const { positionAmt: positionSize, entryPrice: avgPrice } = (
-            await this.binanceClient.futuresAccountInfo()
+            await binanceClient.futuresAccountInfo()
           ).positions.find((position) => position.symbol === pair);
 
           // Calculate the tp and sl
@@ -455,7 +450,7 @@ export class Bot {
                 'Cannot use trailing stop because property trailingStopCallbackRate is not defined'
               );
             } else {
-              this.binanceClient
+              binanceClient
                 .futuresOrder({
                   side: OrderSide.SELL,
                   type: OrderType.TRAILING_STOP_MARKET,
@@ -474,13 +469,12 @@ export class Bot {
             // Create the take profit orders
             takeProfits.forEach(({ price, quantityPercentage }) => {
               // Take profit order
-              this.binanceClient
+              binanceClient
                 .futuresOrder({
                   side: OrderSide.SELL,
-                  type: OrderType.TAKE_PROFIT_LIMIT,
+                  type: OrderType.LIMIT,
                   symbol: pair,
                   price: price,
-                  stopPrice: price,
                   quantity: String(
                     decimalFloor(
                       Number(positionSize) * quantityPercentage,
@@ -497,13 +491,12 @@ export class Bot {
             // Create the stop loss orders
             stopLosses.forEach(({ price, quantityPercentage }) => {
               // Stop loss order
-              this.binanceClient
+              binanceClient
                 .futuresOrder({
                   side: OrderSide.SELL,
-                  type: OrderType.STOP_LOSS_LIMIT,
+                  type: OrderType.LIMIT,
                   symbol: pair,
                   price: price,
-                  stopPrice: price,
                   quantity: String(
                     decimalFloor(
                       Number(positionSize) * quantityPercentage,
@@ -523,7 +516,7 @@ export class Bot {
               )}${asset} to the size of the long position on ${pair}. The average enter price is now ${avgPrice}${base} and the total size ${positionSize}${asset}`
             );
           } else {
-            this.logBuySellExecutionOrder(
+            logBuySellExecutionOrder(
               OrderSide.BUY,
               asset,
               base,
@@ -538,7 +531,7 @@ export class Bot {
     } else if (canTakeShortPosition && isSellSignal(candles, sellStrategy)) {
       // Take the profit and not open a new position
       if (hasLongPosition && unidirectional) {
-        this.binanceClient
+        binanceClient
           .futuresOrder({
             side: OrderSide.SELL,
             type: OrderType.MARKET,
@@ -567,7 +560,7 @@ export class Bot {
         allowPyramiding ? Number(balance) : Number(availableBalance),
         allocation * (tradeConfig.leverage || 1),
         currentPrice,
-        this.exchangeInfo
+        exchangeInfo
       );
 
       // Quantity to add to close the previous position
@@ -577,18 +570,14 @@ export class Bot {
 
       // To close the previous long position
       if (
-        isValidQuantity(
-          quantity + previousPositionQuantity,
-          pair,
-          this.exchangeInfo
-        )
+        isValidQuantity(quantity + previousPositionQuantity, pair, exchangeInfo)
       ) {
         quantity += previousPositionQuantity;
       } else {
         throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
       }
 
-      this.binanceClient
+      binanceClient
         .futuresOrder({
           side: OrderSide.SELL,
           type: OrderType.MARKET,
@@ -604,7 +593,7 @@ export class Bot {
 
           // Get the total size and the entry price on the position updated
           const { positionAmt: positionSize, entryPrice: avgPrice } = (
-            await this.binanceClient.futuresAccountInfo()
+            await binanceClient.futuresAccountInfo()
           ).positions.find((position) => position.symbol === pair);
 
           // Calculate the tp and sl
@@ -624,7 +613,7 @@ export class Bot {
                 'Cannot use trailing stop because property trailingStopCallbackRate is not defined'
               );
             } else {
-              this.binanceClient
+              binanceClient
                 .futuresOrder({
                   side: OrderSide.BUY,
                   type: OrderType.TRAILING_STOP_MARKET,
@@ -643,10 +632,10 @@ export class Bot {
             // Create the take profit orders
             takeProfits.forEach(({ price, quantityPercentage }) => {
               // Take profit order
-              this.binanceClient
+              binanceClient
                 .futuresOrder({
                   side: OrderSide.BUY,
-                  type: OrderType.TAKE_PROFIT_LIMIT,
+                  type: OrderType.LIMIT,
                   symbol: pair,
                   price: price,
                   stopPrice: price,
@@ -666,10 +655,10 @@ export class Bot {
             // Create the stop loss orders
             stopLosses.forEach(({ price, quantityPercentage }) => {
               // Stop loss order
-              this.binanceClient
+              binanceClient
                 .futuresOrder({
                   side: OrderSide.BUY,
-                  type: OrderType.STOP_LOSS_LIMIT,
+                  type: OrderType.LIMIT,
                   symbol: pair,
                   price: price,
                   stopPrice: price,
@@ -692,7 +681,7 @@ export class Bot {
               )}${asset} to the size of the short position on ${pair}. The average enter price is now ${avgPrice}${base} and the total size ${positionSize}${asset}`
             );
           } else {
-            this.logBuySellExecutionOrder(
+            logBuySellExecutionOrder(
               OrderSide.SELL,
               asset,
               base,
@@ -707,51 +696,6 @@ export class Bot {
     }
   }
 
-  private logBuySellExecutionOrder(
-    orderSide: OrderSide,
-    asset: string,
-    base: string,
-    price: number,
-    quantity: number,
-    takeProfits: { price: number; quantityPercentage: number }[],
-    stopLosses: { price: number; quantityPercentage: number }[]
-  ) {
-    let introPhrase =
-      BINANCE_MODE === 'spot'
-        ? `${
-            orderSide === OrderSide.BUY ? 'Buys' : 'Sells'
-          } ${quantity}${asset} at the price ${price}${base}`
-        : `Opens a ${
-            orderSide === OrderSide.BUY ? 'long' : 'short'
-          } position on ${asset}${base} at the price ${price} with a size of ${quantity}${asset}`;
-
-    let tp = `TP: ${
-      takeProfits.length > 0
-        ? takeProfits
-            .map(
-              (takeProfit) =>
-                `[${takeProfit.price} => ${
-                  takeProfit.quantityPercentage * 100
-                }%]`
-            )
-            .join(' ')
-        : '----'
-    }`;
-
-    let sl = `SL: ${
-      stopLosses.length > 0
-        ? stopLosses
-            .map(
-              (stopLoss) =>
-                `[${stopLoss.price} => ${stopLoss.quantityPercentage * 100}%]`
-            )
-            .join(' ')
-        : '----'
-    }`;
-
-    log([introPhrase, tp, sl].join('\n'));
-  }
-
   private loadCandles(
     symbol: string,
     interval: CandleChartInterval,
@@ -761,8 +705,8 @@ export class Bot {
     return new Promise<ChartCandle[]>((resolve, reject) => {
       const getCandles =
         BINANCE_MODE === 'spot'
-          ? this.binanceClient.candles
-          : this.binanceClient.futuresCandles;
+          ? binanceClient.candles
+          : binanceClient.futuresCandles;
 
       getCandles({ symbol, interval })
         .then((candles) => {
@@ -782,8 +726,8 @@ export class Bot {
     return new Promise<void>((resolve, reject) => {
       const cancel =
         BINANCE_MODE === 'spot'
-          ? this.binanceClient.cancelOpenOrders
-          : this.binanceClient.futuresCancelAllOpenOrders;
+          ? binanceClient.cancelOpenOrders
+          : binanceClient.futuresCancelAllOpenOrders;
 
       cancel({ symbol })
         .then(() => {

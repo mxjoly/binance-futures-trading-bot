@@ -2,7 +2,7 @@ interface TradeConfig {
   asset: string;
   base: string;
   loopInterval: any; // type of CandleChartInterval from binance api node library
-  indicatorInterval: any; // type of CandleChartInterval from binance api node library
+  indicatorInterval?: any; // type of CandleChartInterval from binance api node library
   leverage?: number;
   allocation: number; // Percentage between 0 and 1
   riskRewardRatio?: number; // RR 1:X
@@ -77,9 +77,9 @@ type TPSLStrategy = (options: {
   tradeConfig?: TradeConfig;
   pricePrecision?: number;
   side: 'BUY' | 'SELL';
-  riskRewardRatio?: number;
+  riskRewardRatio?: number; // RR 1:X
 }) => {
-  takeProfits: { price: number; quantityPercentage: number }[];
+  takeProfits: { price: number; quantityPercentage: number }[]; // quantityPercentage = 0.1 => 10%
   stopLosses: { price: number; quantityPercentage: number }[];
 };
 

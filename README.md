@@ -1,8 +1,8 @@
 # Binance trading bot
 
-## Environment
+## Setup
 
-You must use environment variables to set your api keys from your Binance account as `BINANCE_PUBLIC_KEY` and `BINANCE_PRIVATE_KEY`.
+Set your api keys from your Binance account to the environment variables `BINANCE_PUBLIC_KEY` and `BINANCE_PRIVATE_KEY`.
 
 ## Documentation
 
