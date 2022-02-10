@@ -1,17 +1,16 @@
 import { OrderSide } from 'binance-api-node';
 import { decimalFloor } from '../../utils';
 
-const strategy: TPSLStrategy = ({
-  price,
-  candles,
-  tradeConfig,
-  pricePrecision,
-  side,
-}) => {
-  const { profitTargets, lossTolerances } = tradeConfig;
+interface Options {
+  profitTargets?: BuySellProperty[];
+  lossTolerances?: BuySellProperty[];
+}
 
-  let takeProfits = profitTargets
-    ? profitTargets
+const defaultOptions: Options = {};
+
+const strategy = (price, pricePrecision, side, options = defaultOptions) => {
+  let takeProfits = options.profitTargets
+    ? options.profitTargets
         .filter(
           (profitTarget) =>
             profitTarget.deltaPercentage && !profitTarget.fibonacciLevel
@@ -30,8 +29,8 @@ const strategy: TPSLStrategy = ({
         })
     : [];
 
-  let stopLosses = lossTolerances
-    ? lossTolerances
+  let stopLosses = options.lossTolerances
+    ? options.lossTolerances
         .filter(
           (lossTolerance) =>
             lossTolerance.deltaPercentage && !lossTolerance.fibonacciLevel

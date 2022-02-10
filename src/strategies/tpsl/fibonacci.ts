@@ -2,6 +2,12 @@ import { OrderSide } from 'binance-api-node';
 import { Fibonacci } from '../../indicators';
 import { decimalFloor } from '../../utils';
 
+interface Options {
+  profitTargets?: BuySellProperty[];
+}
+
+const defaultOptions: Options = {};
+
 function getPriceFromFibonacciLevels(
   fibonacciLevel: FibonacciRetracementLevel | FibonacciExtensionLevel,
   fibonacciLevels: Fibonacci.FibonacciLevels
@@ -34,14 +40,7 @@ function getPriceFromFibonacciLevels(
   }
 }
 
-const strategy: TPSLStrategy = ({
-  candles,
-  tradeConfig,
-  pricePrecision,
-  side,
-}) => {
-  const { profitTargets } = tradeConfig;
-
+const strategy = (candles, pricePrecision, side, options = defaultOptions) => {
   const levelsInUpTrend = Fibonacci.calculate({
     candles,
     trend: Fibonacci.FibonacciTrend.UP,
@@ -51,8 +50,8 @@ const strategy: TPSLStrategy = ({
     trend: Fibonacci.FibonacciTrend.DOWN,
   });
 
-  let takeProfits = profitTargets
-    ? profitTargets
+  let takeProfits = options.profitTargets
+    ? options.profitTargets
         .filter(
           (profitTarget) =>
             profitTarget.fibonacciLevel && !profitTarget.fibonacciLevel

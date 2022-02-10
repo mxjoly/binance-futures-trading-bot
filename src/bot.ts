@@ -213,13 +213,7 @@ export class Bot {
 
           // Calculate the tp ans sl
           const { takeProfits, stopLosses } = tpslStrategy
-            ? tpslStrategy({
-                price: avgPrice,
-                candles,
-                tradeConfig,
-                pricePrecision,
-                side: OrderSide.BUY,
-              })
+            ? tpslStrategy(avgPrice, candles, pricePrecision, OrderSide.BUY)
             : { takeProfits: [], stopLosses: [] };
 
           // Remove the current open orders to update them
@@ -327,8 +321,8 @@ export class Bot {
     } = tradeConfig;
     const pair = `${asset}${base}`;
 
-    const useLongPosition = checkTrend ? checkTrend(candles) : true;
-    const useShortPosition = checkTrend ? !useLongPosition : true;
+    const useLongPosition = checkTrend ? checkTrend(candles) === 1 : true;
+    const useShortPosition = checkTrend ? checkTrend(candles) === -1 : true;
 
     // Balance information
     const balances = await binanceClient.futuresAccountBalance();
@@ -435,13 +429,12 @@ export class Bot {
 
           // Calculate the tp and sl
           const { takeProfits, stopLosses } = tpslStrategy
-            ? tpslStrategy({
-                price: Number(avgPrice),
+            ? tpslStrategy(
+                Number(avgPrice),
                 candles,
-                tradeConfig,
                 pricePrecision,
-                side: OrderSide.BUY,
-              })
+                OrderSide.BUY
+              )
             : { takeProfits: [], stopLosses: [] };
 
           if (useTrailingStop) {
@@ -598,13 +591,12 @@ export class Bot {
 
           // Calculate the tp and sl
           const { takeProfits, stopLosses } = tpslStrategy
-            ? tpslStrategy({
-                price: Number(avgPrice),
+            ? tpslStrategy(
+                Number(avgPrice),
                 candles,
-                tradeConfig,
                 pricePrecision,
-                side: OrderSide.SELL,
-              })
+                OrderSide.SELL
+              )
             : { takeProfits: [], stopLosses: [] };
 
           if (useTrailingStop) {

@@ -5,9 +5,6 @@ interface TradeConfig {
   indicatorInterval?: any; // type of CandleChartInterval from binance api node library
   leverage?: number;
   allocation: number; // Percentage between 0 and 1
-  riskRewardRatio?: number; // RR 1:X
-  profitTargets?: BuySellProperty[];
-  lossTolerances?: BuySellProperty[];
   useTrailingStop?: boolean;
   trailingStopCallbackRate?: number; // Percentage between 0 and 1
   allowPyramiding?: boolean; // Allow cumulative longs/shorts
@@ -71,16 +68,14 @@ interface BuySellProperty {
 
 type BuySellStrategy = (candles: ChartCandle[]) => boolean;
 
-type TPSLStrategy = (options: {
-  price?: number;
-  candles?: ChartCandle[];
-  tradeConfig?: TradeConfig;
-  pricePrecision?: number;
-  side: 'BUY' | 'SELL';
-  riskRewardRatio?: number; // RR 1:X
-}) => {
+type TPSLStrategy = (
+  price?: number,
+  candles?: ChartCandle[],
+  pricePrecision?: number,
+  side: 'BUY' | 'SELL'
+) => {
   takeProfits: { price: number; quantityPercentage: number }[]; // quantityPercentage = 0.1 => 10%
   stopLosses: { price: number; quantityPercentage: number }[];
 };
 
-type CheckTrend = (candles: ChartCandle[]) => boolean;
+type CheckTrend = (candles: ChartCandle[], options?: any) => number; // 1: up trend, -1: down trend, 0 no trend

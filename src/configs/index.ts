@@ -1,4 +1,4 @@
-import TestConfig from './test';
+import StochasticRsiConfig from './stochasticRsi';
 import SHADConfig from './shad';
 
-export { TestConfig, SHADConfig };
+export { StochasticRsiConfig, SHADConfig };

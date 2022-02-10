@@ -1,7 +1,7 @@
 import winston from 'winston';
 import Binance from 'binance-api-node';
 import { Bot, BINANCE_MODE } from './bot';
-import { TestConfig } from './configs';
+import { StochasticRsiConfig } from './configs';
 
 require('dotenv').config();
 
@@ -35,6 +35,6 @@ export const binanceClient = Binance(
 
 // ****************************************************************************** //
 
-const TradingBot = new Bot(TestConfig);
+const TradingBot = new Bot(StochasticRsiConfig);
 TradingBot.prepare();
 TradingBot.run();
