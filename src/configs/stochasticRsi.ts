@@ -1,8 +1,9 @@
 import { CandleChartInterval } from 'binance-api-node';
-import threeEmaTpslStrategy from '../strategies/tpsl/atr';
+import atrTpslStrategy from '../strategies/tpsl/atr';
 import { STOCHASTIC_RSI } from '../strategies/buy_sell';
 import { threeEma } from '../strategies/trend';
 
+// @see https://www.youtube.com/watch?v=7NM7bR2mL7U&t=69s&ab_channel=TradePro
 const config: TradeConfig[] = [
   {
     asset: 'BTC',
@@ -17,7 +18,7 @@ const config: TradeConfig[] = [
         emaLongPeriod: 50,
       }),
     tpslStrategy: (price, candles, pricePrecision, side) =>
-      threeEmaTpslStrategy(price, candles, pricePrecision, side, {
+      atrTpslStrategy(price, candles, pricePrecision, side, {
         takeProfitAtrRatio: 2,
         stopLossAtrRatio: 3,
       }),

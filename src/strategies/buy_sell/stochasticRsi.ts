@@ -5,6 +5,8 @@ interface Options {
   stochasticPeriod?: number;
   dPeriod?: number;
   kPeriod?: number;
+  oversoldThreshold?: number;
+  overboughtThreshold?: number;
 }
 
 const defaultOptions: Options = {
@@ -12,6 +14,8 @@ const defaultOptions: Options = {
   stochasticPeriod: 14,
   dPeriod: 3,
   kPeriod: 3,
+  oversoldThreshold: 20,
+  overboughtThreshold: 80,
 };
 
 /**
@@ -28,8 +32,11 @@ export const isBuySignal = (
     kPeriod: options.kPeriod,
     values: candles.map((candle) => candle.close),
   });
-  console.log(stochRsi[0].d);
-  return false;
+
+  let { d: dcur, k: kcur } = stochRsi[stochRsi.length - 1];
+  let { d: dprev, k: kprev } = stochRsi[stochRsi.length - 2];
+
+  return kprev < options.oversoldThreshold && kprev < dprev && kcur > dcur;
 };
 
 /**
@@ -46,6 +53,9 @@ export const isSellSignal = (
     kPeriod: options.kPeriod,
     values: candles.map((candle) => candle.close),
   });
-  console.log(stochRsi[0].d);
-  return false;
+
+  let { d: dcur, k: kcur } = stochRsi[stochRsi.length - 1];
+  let { d: dprev, k: kprev } = stochRsi[stochRsi.length - 2];
+
+  return kprev > options.overboughtThreshold && kprev > dprev && kcur < dcur;
 };
