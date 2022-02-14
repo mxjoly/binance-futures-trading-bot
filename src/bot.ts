@@ -312,7 +312,7 @@ export class Bot {
       buyStrategy,
       sellStrategy,
       tpslStrategy,
-      checkTrend,
+      trendFilter,
       useTrailingStop,
       trailingStopCallbackRate,
       allowPyramiding,
@@ -321,8 +321,8 @@ export class Bot {
     } = tradeConfig;
     const pair = `${asset}${base}`;
 
-    const useLongPosition = checkTrend ? checkTrend(candles) === 1 : true;
-    const useShortPosition = checkTrend ? checkTrend(candles) === -1 : true;
+    const useLongPosition = trendFilter ? trendFilter(candles) === 1 : true;
+    const useShortPosition = trendFilter ? trendFilter(candles) === -1 : true;
 
     // Balance information
     const balances = await binanceClient.futuresAccountBalance();

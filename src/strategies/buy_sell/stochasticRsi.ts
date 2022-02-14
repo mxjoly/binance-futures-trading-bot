@@ -33,10 +33,14 @@ export const isBuySignal = (
     values: candles.map((candle) => candle.close),
   });
 
-  let { d: dcur, k: kcur } = stochRsi[stochRsi.length - 1];
-  let { d: dprev, k: kprev } = stochRsi[stochRsi.length - 2];
+  let k = stochRsi.map((stoch) => stoch.k);
+  let d = stochRsi.map((stoch) => stoch.d);
 
-  return kprev < options.oversoldThreshold && kprev < dprev && kcur > dcur;
+  return (
+    k[k.length - 2] < options.oversoldThreshold &&
+    d[d.length - 2] < options.oversoldThreshold &&
+    CrossUp.calculate({ lineA: k, lineB: d })[stochRsi.length - 1]
+  );
 };
 
 /**
@@ -54,8 +58,12 @@ export const isSellSignal = (
     values: candles.map((candle) => candle.close),
   });
 
-  let { d: dcur, k: kcur } = stochRsi[stochRsi.length - 1];
-  let { d: dprev, k: kprev } = stochRsi[stochRsi.length - 2];
+  let k = stochRsi.map((stoch) => stoch.k);
+  let d = stochRsi.map((stoch) => stoch.d);
 
-  return kprev > options.overboughtThreshold && kprev > dprev && kcur < dcur;
+  return (
+    k[k.length - 2] > options.overboughtThreshold &&
+    d[d.length - 2] > options.overboughtThreshold &&
+    CrossDown.calculate({ lineA: k, lineB: d })[stochRsi.length - 1]
+  );
 };

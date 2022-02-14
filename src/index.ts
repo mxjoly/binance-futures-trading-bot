@@ -33,8 +33,6 @@ export const binanceClient = Binance(
       }
 );
 
-// ****************************************************************************** //
-
 const TradingBot = new Bot(StochasticRsiConfig);
 TradingBot.prepare();
 TradingBot.run();

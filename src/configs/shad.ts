@@ -46,7 +46,7 @@ const config: TradeConfig[] = assets.map((asset) => ({
   allocation: 0.02, // Buy/Sell with 1% of the balance
   loopInterval: CandleChartInterval.ONE_HOUR,
   indicatorInterval: CandleChartInterval.ONE_WEEK,
-  checkTrend: (candles) => 1, // Take only long position, supposing we are in up trend on long term
+  trendFilter: (candles) => 1, // Take only long position, supposing we are in up trend on long term
   tpslStrategy: (price, candles, pricePrecision, side) =>
     basicTpslStrategy(price, pricePrecision, side, {
       profitTargets: [

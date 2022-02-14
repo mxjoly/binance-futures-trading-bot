@@ -11,7 +11,7 @@ const config: TradeConfig[] = [
     loopInterval: CandleChartInterval.FIFTEEN_MINUTES,
     allocation: 1,
     leverage: 1,
-    checkTrend: (candles) =>
+    trendFilter: (candles) =>
       threeEma.getTrend(candles, {
         emaShortPeriod: 8,
         emaMediumPeriod: 14,

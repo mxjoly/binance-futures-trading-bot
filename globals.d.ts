@@ -1,3 +1,5 @@
+type BinanceMode = 'spot' | 'futures';
+
 interface TradeConfig {
   asset: string;
   base: string;
@@ -13,10 +15,8 @@ interface TradeConfig {
   buyStrategy: BuySellStrategy;
   sellStrategy: BuySellStrategy;
   tpslStrategy?: TPSLStrategy; // take profit and stop loss strategy
-  checkTrend?: CheckTrend; // Trend filter - If the trend is up, only take long, else take only short
+  trendFilter?: TrendFilter; // Trend filter - If the trend is up, only take long, else take only short
 }
-
-type BinanceMode = 'spot' | 'futures';
 
 interface ChartCandle {
   open: number;
@@ -27,38 +27,6 @@ interface ChartCandle {
   closeTime: number;
   trades: number;
 }
-
-interface OpenOrder {
-  id: number;
-  side: 'BUY' | 'SELL';
-  type:
-    | 'LIMIT'
-    | 'LIMIT_MAKER'
-    | 'MARKET'
-    | 'STOP'
-    | 'STOP_MARKET'
-    | 'STOP_LOSS_LIMIT'
-    | 'TAKE_PROFIT_MARKET'
-    | 'TAKE_PROFIT_LIMIT'
-    | 'TRAILING_STOP_MARKET';
-  stopPrice: number;
-}
-
-type FibonacciRetracementLevel =
-  | 'RET_0236'
-  | 'RET_0382'
-  | 'RET_0500'
-  | 'RET_0618'
-  | 'RET_0786'
-  | 'RET_1000';
-
-type FibonacciExtensionLevel =
-  | 'EXT_1000'
-  | 'EXT_1236'
-  | 'EXT_1618'
-  | 'EXT_2618'
-  | 'EXT_3618'
-  | 'EXT_4618';
 
 interface BuySellProperty {
   deltaPercentage?: number; // Percentage of rise or fall to buy/sell
@@ -78,4 +46,22 @@ type TPSLStrategy = (
   stopLosses: { price: number; quantityPercentage: number }[];
 };
 
-type CheckTrend = (candles: ChartCandle[], options?: any) => number; // 1: up trend, -1: down trend, 0 no trend
+type TrendFilter = (candles: ChartCandle[], options?: any) => Trend; // 1: up trend, -1: down trend, 0 no trend
+
+type Trend = 1 | -1 | 0;
+
+type FibonacciRetracementLevel =
+  | 'RET_0236'
+  | 'RET_0382'
+  | 'RET_0500'
+  | 'RET_0618'
+  | 'RET_0786'
+  | 'RET_1000';
+
+type FibonacciExtensionLevel =
+  | 'EXT_1000'
+  | 'EXT_1236'
+  | 'EXT_1618'
+  | 'EXT_2618'
+  | 'EXT_3618'
+  | 'EXT_4618';
