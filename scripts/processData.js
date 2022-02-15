@@ -124,6 +124,8 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
           let startCandleIndex = i;
           let endCandleIndex = i;
 
+          if (!dateMatchTimeFrame(loadedData[i].date, newTimeFrame)) continue;
+
           // Find the next candles that match the time frame
           for (let j = i - 1; j >= 0; j--) {
             if (dateMatchTimeFrame(loadedData[j].date, newTimeFrame)) {
@@ -131,8 +133,6 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
               break;
             }
           }
-
-          if (!dateMatchTimeFrame(loadedData[i].date, newTimeFrame)) continue;
 
           // To get only final candles
           if (
