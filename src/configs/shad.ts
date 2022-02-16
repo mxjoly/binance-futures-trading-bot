@@ -43,7 +43,7 @@ const assets = [
 const config: TradeConfig[] = assets.map((asset) => ({
   asset,
   base: 'USDT',
-  allocation: 0.02, // Buy/Sell with 1% of the balance
+  risk: 0.02, // Buy/Sell with 1% of the balance
   loopInterval: CandleChartInterval.ONE_HOUR,
   indicatorInterval: CandleChartInterval.ONE_WEEK,
   trendFilter: (candles) => 1, // Take only long position, supposing we are in up trend on long term
@@ -79,7 +79,6 @@ const config: TradeConfig[] = assets.map((asset) => ({
           quantityPercentage: 0.0078125,
         },
       ],
-      lossTolerances: [],
     }),
   buyStrategy: (candles: ChartCandle[]) =>
     RELOAD_ZONE.isBuySignal(candles, {

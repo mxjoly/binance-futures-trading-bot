@@ -6,17 +6,18 @@ import {
   OrderType,
 } from 'binance-api-node';
 import {
-  calculateAllocationQuantity,
   getPricePrecision,
   getQuantityPrecision,
-  isBuySignal,
-  isSellSignal,
   isValidQuantity,
   buildCandle,
   decimalFloor,
 } from './utils';
 import { log, error, logBuySellExecutionOrder } from './log';
 import { binanceClient } from '.';
+import {
+  getPositionSizeByPercent,
+  getPositionSizeByRisk,
+} from './riskManagement';
 
 // ====================================================================== //
 
@@ -116,7 +117,7 @@ export class Bot {
     const {
       asset,
       base,
-      allocation,
+      risk,
       buyStrategy,
       sellStrategy,
       tpslStrategy,
@@ -151,6 +152,10 @@ export class Bot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
+    // Strategies
+    const isSellSignal = (candles: ChartCandle[]) => sellStrategy(candles);
+    const isBuySignal = (candles: ChartCandle[]) => buyStrategy(candles);
+
     // Close remaining open orders while doesn't trade on the symbol
     if (currentTrades.length === 0 && currentOpenOrders.length > 0) {
       this.closeOpenOrders(pair);
@@ -158,7 +163,7 @@ export class Bot {
 
     // If a trade exists, search when to sell
     if (currentTrades.length > 0) {
-      if (isSellSignal(candles, sellStrategy)) {
+      if (isSellSignal(candles)) {
         currentTrades.forEach((trade) => {
           binanceClient
             .order({
@@ -180,13 +185,14 @@ export class Bot {
             .catch(error);
         });
       }
-    } else if (canBuy && isBuySignal(candles, buyStrategy)) {
-      const quantity = await calculateAllocationQuantity(
+    } else if (canBuy && isBuySignal(candles)) {
+      const quantity = getPositionSizeByPercent(
         asset,
         base,
         baseBalance,
-        allocation,
+        risk,
         currentPrice,
+        1,
         exchangeInfo
       );
 
@@ -198,6 +204,7 @@ export class Bot {
           symbol: pair,
           quantity: String(quantity),
           recvWindow: 60000,
+          timeInForce: 'GTC',
         })
         .then(({ executedQty, price: orderPrice }) => {
           // If there is always a trade, get the average price
@@ -211,26 +218,31 @@ export class Bot {
                 (assetBalance + Number(executedQty))
               : currentPrice;
 
-          // Calculate the tp ans sl
-          const { takeProfits, stopLosses } = tpslStrategy
+          // Calculate the tp and sl
+          const { takeProfits, stopLoss } = tpslStrategy
             ? tpslStrategy(avgPrice, candles, pricePrecision, OrderSide.BUY)
-            : { takeProfits: [], stopLosses: [] };
+            : { takeProfits: [], stopLoss: null };
 
           // Remove the current open orders to update them
           if (currentOpenOrders.length > 0) this.closeOpenOrders(pair);
 
-          return { orderPrice, avgPrice, takeProfits, stopLosses };
+          return {
+            orderPrice,
+            avgPrice,
+            takeProfits,
+            stopLoss,
+          };
         })
-        .then(({ orderPrice, avgPrice, stopLosses, takeProfits }) => {
-          if (takeProfits.length === 1 && stopLosses.length === 1) {
+        .then(({ orderPrice, avgPrice, stopLoss, takeProfits }) => {
+          if (takeProfits.length === 1 && stopLoss) {
             // Sell oco order as TP/SL
             binanceClient
               .orderOco({
                 side: OrderSide.SELL,
                 symbol: pair,
                 price: String(takeProfits[0].price),
-                stopPrice: String(stopLosses[0].price),
-                stopLimitPrice: String(stopLosses[0].price),
+                stopPrice: String(stopLoss),
+                stopLimitPrice: String(stopLoss),
                 quantity: String(
                   decimalFloor(
                     quantity * takeProfits[0].quantityPercentage,
@@ -240,46 +252,42 @@ export class Bot {
                 recvWindow: 60000,
               })
               .catch(error);
-          } else if (takeProfits.length > 0 || stopLosses.length > 0) {
-            // Create all the take profit targets
-            takeProfits.forEach(({ price, quantityPercentage }) => {
-              // Sell limit order as TP
-              binanceClient
-                .order({
-                  side: OrderSide.SELL,
-                  type: OrderType.LIMIT,
-                  symbol: pair,
-                  price: String(price),
-                  quantity: String(
-                    decimalFloor(
-                      quantity * quantityPercentage,
-                      quantityPrecision
-                    )
-                  ),
-                  recvWindow: 60000,
-                })
-                .catch(error);
-            });
+          } else {
+            if (takeProfits.length > 0) {
+              // Create all the take profit targets
+              takeProfits.forEach(({ price, quantityPercentage }) => {
+                // Sell limit order as TP
+                binanceClient
+                  .order({
+                    side: OrderSide.SELL,
+                    type: OrderType.LIMIT,
+                    symbol: pair,
+                    price: String(price),
+                    quantity: String(
+                      decimalFloor(
+                        quantity * quantityPercentage,
+                        quantityPrecision
+                      )
+                    ),
+                    recvWindow: 60000,
+                  })
+                  .catch(error);
+              });
+            }
 
-            // Create all the stop loss targets
-            stopLosses.forEach(({ price, quantityPercentage }) => {
+            if (stopLoss) {
               // Sell limit order as SL
               binanceClient
                 .order({
                   side: OrderSide.SELL,
                   type: OrderType.LIMIT,
                   symbol: pair,
-                  price: String(price),
-                  quantity: String(
-                    decimalFloor(
-                      quantity * quantityPercentage,
-                      quantityPrecision
-                    )
-                  ),
+                  price: String(stopLoss),
+                  quantity: String(stopLoss),
                   recvWindow: 60000,
                 })
                 .catch(error);
-            });
+            }
           }
 
           logBuySellExecutionOrder(
@@ -289,7 +297,7 @@ export class Bot {
             Number(orderPrice),
             quantity,
             takeProfits,
-            stopLosses
+            stopLoss
           );
 
           // Display the average price for the asset
@@ -308,7 +316,8 @@ export class Bot {
     const {
       asset,
       base,
-      allocation,
+      risk,
+      leverage,
       buyStrategy,
       sellStrategy,
       tpslStrategy,
@@ -336,9 +345,9 @@ export class Bot {
     const hasLongPosition = Number(position.positionAmt) > 0;
     const hasShortPosition = Number(position.positionAmt) < 0;
 
-    // Conditions
+    // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
-      ? Number(position.initialMargin) + Number(balance) * allocation <=
+      ? Number(position.initialMargin) + Number(balance) * risk <=
         Number(balance) * maxPyramidingAllocation
       : false;
     const canTakeLongPosition =
@@ -354,12 +363,16 @@ export class Bot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
+    // Strategies
+    const isSellSignal = (candles: ChartCandle[]) => sellStrategy(candles);
+    const isBuySignal = (candles: ChartCandle[]) => buyStrategy(candles);
+
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
       this.closeOpenOrders(pair);
     }
 
-    if (canTakeLongPosition && isBuySignal(candles, buyStrategy)) {
+    if (canTakeLongPosition && isBuySignal(candles)) {
       // Take the profit and not open a new position
       if (hasShortPosition && unidirectional) {
         binanceClient
@@ -379,20 +392,42 @@ export class Bot {
         return;
       }
 
-      // Do not trade with long position if the strategy is disabled
+      // Do not trade with long position if the trend is down
       if (!useLongPosition) return;
 
       // Do not add to the current position if the allocation is over the max allocation
       if (allowPyramiding && hasLongPosition && !canAddToPosition) return;
 
-      let quantity = await calculateAllocationQuantity(
-        asset,
-        base,
-        allowPyramiding ? Number(balance) : Number(availableBalance),
-        allocation * (tradeConfig.leverage || 1),
-        currentPrice,
-        exchangeInfo
-      );
+      // Calculate TP and SL
+      const { takeProfits, stopLoss } =
+        !allowPyramiding && tpslStrategy
+          ? tpslStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
+          : { takeProfits: [], stopLoss: null };
+
+      if (allowPyramiding && tpslStrategy) {
+        error('You cannot use take profits and stop loss in pyramiding mode');
+      }
+
+      let quantity = stopLoss
+        ? getPositionSizeByRisk(
+            asset,
+            base,
+            allowPyramiding ? Number(balance) : Number(availableBalance),
+            risk,
+            currentPrice,
+            stopLoss,
+            leverage,
+            exchangeInfo
+          )
+        : getPositionSizeByPercent(
+            asset,
+            base,
+            allowPyramiding ? Number(balance) : Number(availableBalance),
+            risk,
+            currentPrice,
+            leverage,
+            exchangeInfo
+          );
 
       // Quantity to add to close the previous position
       let previousPositionQuantity = hasShortPosition
@@ -426,16 +461,6 @@ export class Bot {
           const { positionAmt: positionSize, entryPrice: avgPrice } = (
             await binanceClient.futuresAccountInfo()
           ).positions.find((position) => position.symbol === pair);
-
-          // Calculate the tp and sl
-          const { takeProfits, stopLosses } = tpslStrategy
-            ? tpslStrategy(
-                Number(avgPrice),
-                candles,
-                pricePrecision,
-                OrderSide.BUY
-              )
-            : { takeProfits: [], stopLosses: [] };
 
           if (useTrailingStop) {
             if (!trailingStopCallbackRate) {
@@ -480,26 +505,18 @@ export class Bot {
             });
           }
 
-          if (stopLosses.length > 0) {
-            // Create the stop loss orders
-            stopLosses.forEach(({ price, quantityPercentage }) => {
-              // Stop loss order
-              binanceClient
-                .futuresOrder({
-                  side: OrderSide.SELL,
-                  type: OrderType.LIMIT,
-                  symbol: pair,
-                  price: price,
-                  quantity: String(
-                    decimalFloor(
-                      Number(positionSize) * quantityPercentage,
-                      quantityPrecision
-                    )
-                  ),
-                  recvWindow: 60000,
-                })
-                .catch(error);
-            });
+          if (stopLoss) {
+            // Stop loss order
+            binanceClient
+              .futuresOrder({
+                side: OrderSide.SELL,
+                type: OrderType.LIMIT,
+                symbol: pair,
+                price: stopLoss,
+                quantity: String(positionSize),
+                recvWindow: 60000,
+              })
+              .catch(error);
           }
 
           if (hasLongPosition) {
@@ -516,12 +533,12 @@ export class Bot {
               currentPrice,
               Number(positionSize),
               takeProfits,
-              stopLosses
+              stopLoss
             );
           }
         })
         .catch(error);
-    } else if (canTakeShortPosition && isSellSignal(candles, sellStrategy)) {
+    } else if (canTakeShortPosition && isSellSignal(candles)) {
       // Take the profit and not open a new position
       if (hasLongPosition && unidirectional) {
         binanceClient
@@ -541,20 +558,43 @@ export class Bot {
         return;
       }
 
-      // Do not trade with short position if the strategy is disabled
+      // Do not trade with short position if the trend is up
       if (!useShortPosition) return;
 
       // Do not add to the current position if the allocation is over the max allocation
       if (allowPyramiding && hasShortPosition && !canAddToPosition) return;
 
-      let quantity = await calculateAllocationQuantity(
-        asset,
-        base,
-        allowPyramiding ? Number(balance) : Number(availableBalance),
-        allocation * (tradeConfig.leverage || 1),
-        currentPrice,
-        exchangeInfo
-      );
+      // Calculate TP and SL
+      const { takeProfits, stopLoss } =
+        !allowPyramiding && tpslStrategy
+          ? tpslStrategy(currentPrice, candles, pricePrecision, OrderSide.SELL)
+          : { takeProfits: [], stopLoss: null };
+
+      if (allowPyramiding && tpslStrategy) {
+        error('You cannot use take profits and stop loss in pyramiding mode');
+      }
+
+      // Risk Management
+      let quantity = stopLoss
+        ? getPositionSizeByRisk(
+            asset,
+            base,
+            allowPyramiding ? Number(balance) : Number(availableBalance),
+            risk * (tradeConfig.leverage || 1),
+            currentPrice,
+            stopLoss,
+            leverage,
+            exchangeInfo
+          )
+        : getPositionSizeByPercent(
+            asset,
+            base,
+            allowPyramiding ? Number(balance) : Number(availableBalance),
+            risk * (tradeConfig.leverage || 1),
+            currentPrice,
+            leverage,
+            exchangeInfo
+          );
 
       // Quantity to add to close the previous position
       let previousPositionQuantity = hasLongPosition
@@ -588,16 +628,6 @@ export class Bot {
           const { positionAmt: positionSize, entryPrice: avgPrice } = (
             await binanceClient.futuresAccountInfo()
           ).positions.find((position) => position.symbol === pair);
-
-          // Calculate the tp and sl
-          const { takeProfits, stopLosses } = tpslStrategy
-            ? tpslStrategy(
-                Number(avgPrice),
-                candles,
-                pricePrecision,
-                OrderSide.SELL
-              )
-            : { takeProfits: [], stopLosses: [] };
 
           if (useTrailingStop) {
             if (!trailingStopCallbackRate) {
@@ -643,27 +673,18 @@ export class Bot {
             });
           }
 
-          if (stopLosses.length > 0) {
-            // Create the stop loss orders
-            stopLosses.forEach(({ price, quantityPercentage }) => {
-              // Stop loss order
-              binanceClient
-                .futuresOrder({
-                  side: OrderSide.BUY,
-                  type: OrderType.LIMIT,
-                  symbol: pair,
-                  price: price,
-                  stopPrice: price,
-                  quantity: String(
-                    decimalFloor(
-                      Number(positionSize) * quantityPercentage,
-                      quantityPrecision
-                    )
-                  ),
-                  recvWindow: 60000,
-                })
-                .catch(error);
-            });
+          if (stopLoss) {
+            // Stop loss order
+            binanceClient
+              .futuresOrder({
+                side: OrderSide.BUY,
+                type: OrderType.LIMIT,
+                symbol: pair,
+                price: stopLoss,
+                quantity: executedQty,
+                recvWindow: 60000,
+              })
+              .catch(error);
           }
 
           if (hasShortPosition) {
@@ -680,7 +701,7 @@ export class Bot {
               currentPrice,
               Number(positionSize),
               takeProfits,
-              stopLosses
+              stopLoss
             );
           }
         })

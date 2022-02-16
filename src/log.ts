@@ -34,7 +34,7 @@ export function error(message: string, date?: number) {
  * @param price
  * @param quantity
  * @param takeProfits
- * @param stopLosses
+ * @param stopLoss
  */
 export function logBuySellExecutionOrder(
   orderSide: OrderSide,
@@ -43,7 +43,7 @@ export function logBuySellExecutionOrder(
   price: number,
   quantity: number,
   takeProfits: { price: number; quantityPercentage: number }[],
-  stopLosses: { price: number; quantityPercentage: number }[]
+  stopLoss: number
 ) {
   let introPhrase =
     BINANCE_MODE === 'spot'
@@ -65,16 +65,7 @@ export function logBuySellExecutionOrder(
       : '----'
   }`;
 
-  let sl = `SL: ${
-    stopLosses.length > 0
-      ? stopLosses
-          .map(
-            (stopLoss) =>
-              `[${stopLoss.price} => ${stopLoss.quantityPercentage * 100}%]`
-          )
-          .join(' ')
-      : '----'
-  }`;
+  let sl = `SL: ${stopLoss ? stopLoss : '----'}`;
 
   log([introPhrase, tp, sl].join(' | '));
 }

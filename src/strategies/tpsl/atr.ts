@@ -27,28 +27,27 @@ const strategy = (
   });
 
   return {
-    takeProfits: [
-      {
-        price: decimalFloor(
-          side === OrderSide.BUY
-            ? price + options.takeProfitAtrRatio * atr[atr.length - 1]
-            : price - options.takeProfitAtrRatio * atr[atr.length - 1],
-          pricePrecision
-        ),
-        quantityPercentage: 1,
-      },
-    ],
-    stopLosses: [
-      {
-        price: decimalFloor(
+    takeProfits: options.takeProfitAtrRatio
+      ? [
+          {
+            price: decimalFloor(
+              side === OrderSide.BUY
+                ? price + options.takeProfitAtrRatio * atr[atr.length - 1]
+                : price - options.takeProfitAtrRatio * atr[atr.length - 1],
+              pricePrecision
+            ),
+            quantityPercentage: 1,
+          },
+        ]
+      : [],
+    stopLoss: options.stopLossAtrRatio
+      ? decimalFloor(
           side === OrderSide.BUY
             ? price - options.stopLossAtrRatio * atr[atr.length - 1]
             : price + options.stopLossAtrRatio * atr[atr.length - 1],
           pricePrecision
-        ),
-        quantityPercentage: 1,
-      },
-    ],
+        )
+      : null,
   };
 };
 

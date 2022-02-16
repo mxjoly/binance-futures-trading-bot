@@ -2,8 +2,12 @@ import { OrderSide } from 'binance-api-node';
 import { decimalFloor } from '../../utils';
 
 interface Options {
-  profitTargets?: BuySellProperty[];
-  lossTolerances?: BuySellProperty[];
+  profitTargets?: {
+    deltaPercentage?: number; // Percentage of rise or fall to buy/sell
+    fibonacciLevel?: FibonacciRetracementLevel | FibonacciExtensionLevel;
+    quantityPercentage: number; // percentage between 0 and 1 for the quantity of tokens to buy/sell
+  }[];
+  lossTolerance?: number;
 }
 
 const defaultOptions: Options = {};
@@ -29,27 +33,14 @@ const strategy = (price, pricePrecision, side, options = defaultOptions) => {
         })
     : [];
 
-  let stopLosses = options.lossTolerances
-    ? options.lossTolerances
-        .filter(
-          (lossTolerance) =>
-            lossTolerance.deltaPercentage && !lossTolerance.fibonacciLevel
-        )
-        .map(({ deltaPercentage, quantityPercentage }) => {
-          if (deltaPercentage)
-            return {
-              price: decimalFloor(
-                side === OrderSide.BUY
-                  ? price * (1 - deltaPercentage)
-                  : price * (1 + deltaPercentage),
-                pricePrecision
-              ),
-              quantityPercentage: quantityPercentage,
-            };
-        })
-    : [];
+  let stopLoss = decimalFloor(
+    side === OrderSide.BUY
+      ? price * (1 - options.lossTolerance)
+      : price * (1 + options.lossTolerance),
+    pricePrecision
+  );
 
-  return { takeProfits, stopLosses };
+  return { takeProfits, stopLoss };
 };
 
 export default strategy;

@@ -1,5 +1,4 @@
 import { Candle, CandleChartResult, ExchangeInfo } from 'binance-api-node';
-import { BINANCE_MODE } from './bot';
 
 export const buildCandle = (
   candle: Candle | CandleChartResult
@@ -12,17 +11,6 @@ export const buildCandle = (
   closeTime: Number(candle.closeTime),
   trades: Number(candle.trades),
 });
-
-export function isBuySignal(candles: ChartCandle[], strategy: BuySellStrategy) {
-  return strategy(candles);
-}
-
-export function isSellSignal(
-  candles: ChartCandle[],
-  strategy: BuySellStrategy
-) {
-  return strategy(candles);
-}
 
 /**
  * @see https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md#lot_size
@@ -70,38 +58,6 @@ export function getLotSizeQuantityRules(
     maxQty: Number(maxQty),
     stepSize: Number(stepSize),
   };
-}
-
-/**
- * Calculate the quantity of crypto to buy according to your available balance,
- * the allocation you want, and the current price of the crypto
- * @param asset
- * @param base
- * @param availableBalance - Your available balance in your wallet
- * @param allocation - The allocation to take from your wallet total balance
- * @param realtimePrice - The current price of the crypto to buy
- * @param exchangeInfo
- */
-export async function calculateAllocationQuantity(
-  asset: string,
-  base: string,
-  availableBalance: number,
-  allocation: number,
-  realtimePrice: number,
-  exchangeInfo: ExchangeInfo
-) {
-  const pair = asset + base;
-  const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
-  const allocationQuantity = (availableBalance * allocation) / realtimePrice;
-
-  const minQuantity =
-    BINANCE_MODE === 'spot'
-      ? getLotSizeQuantityRules(pair, exchangeInfo).minQty
-      : getMinOrderQuantity(asset, realtimePrice, exchangeInfo);
-
-  return allocationQuantity > minQuantity
-    ? decimalCeil(allocationQuantity, quantityPrecision)
-    : minQuantity;
 }
 
 /**

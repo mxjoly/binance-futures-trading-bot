@@ -9,8 +9,8 @@ const config: TradeConfig[] = [
     asset: 'BTC',
     base: 'USDT',
     loopInterval: CandleChartInterval.FIFTEEN_MINUTES,
-    allocation: 1,
-    leverage: 1,
+    risk: 0.1,
+    leverage: 10,
     trendFilter: (candles) =>
       threeEma.getTrend(candles, {
         emaShortPeriod: 8,
