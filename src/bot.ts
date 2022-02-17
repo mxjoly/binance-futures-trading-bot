@@ -21,8 +21,8 @@ import {
 
 // ====================================================================== //
 
-export // The bot will trade with the binance :
-const BINANCE_MODE: BinanceMode = 'futures';
+// The bot will trade with the binance :
+export const BINANCE_MODE: BinanceMode = 'futures';
 
 export class Bot {
   private tradeConfigs: TradeConfig[];

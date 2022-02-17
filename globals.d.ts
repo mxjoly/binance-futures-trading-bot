@@ -24,8 +24,6 @@ interface ChartCandle {
   low: number;
   close: number;
   volume: number;
-  closeTime: number;
-  trades: number;
 }
 
 type BuySellStrategy = (candles: ChartCandle[]) => boolean;

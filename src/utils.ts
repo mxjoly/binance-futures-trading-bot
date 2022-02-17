@@ -8,8 +8,6 @@ export const buildCandle = (
   low: Number(candle.low),
   close: Number(candle.close),
   volume: Number(candle.volume),
-  closeTime: Number(candle.closeTime),
-  trades: Number(candle.trades),
 });
 
 /**

@@ -2,11 +2,7 @@ import { OrderSide } from 'binance-api-node';
 import { decimalFloor } from '../../utils';
 
 interface Options {
-  profitTargets?: {
-    deltaPercentage?: number; // Percentage of rise or fall to buy/sell
-    fibonacciLevel?: FibonacciRetracementLevel | FibonacciExtensionLevel;
-    quantityPercentage: number; // percentage between 0 and 1 for the quantity of tokens to buy/sell
-  }[];
+  profitTargets?: BuySellProperty[];
   lossTolerance?: number;
 }
 

@@ -7,7 +7,7 @@
     "test": "NODE_ENV=test nodemon ./build/start.js",
     "build": "tsc",
     "data": "node ./scripts/processData 1m,15m,1h,4h,1d",
-    "backtest": "node ./build/backtest/start.js"
+    "backtest": "node ./build/backtest/index.js"
   },
   "keywords": [],
   "author": "mxjoly <maxime.joly2808@gmail.com>",

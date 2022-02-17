@@ -74,144 +74,114 @@ function dateMatchTimeFrame(date, timeFrame) {
  * @param {string} newTimeFrame
  */
 function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
-  return new Promise((resolve, reject) => {
-    const loadedData = [];
+  const loadedData = [];
 
-    const newFile = path.join(dataDirectory, symbol, newTimeFrame, 'data.csv');
+  const newFile = path.join(dataDirectory, symbol, `_${newTimeFrame}.csv`);
 
-    if (fs.existsSync(newFile)) {
-      reject(`${filePath} has been already transformed in ${newTimeFrame}`);
-    }
-
-    fs.createReadStream(filePath)
-      .pipe(csv({ separator: ',' }))
-      .on('data', (data) => {
-        loadedData.push(data);
-      })
-      .on('end', () => {
-        // The new candle data in the higher time frame
-        let newCandles = [];
-        // Index to start to construct the candlestick data in the new time frame
-        let startIndex = loadedData.length - 1;
-
-        const highest = (startIndex, endIndex) => {
-          let highest = loadedData[startIndex].high;
-          for (let i = startIndex; i >= endIndex; i--) {
-            if (loadedData[i].high > highest) highest = loadedData[i].high;
-          }
-          return highest;
-        };
-
-        const lowest = (startIndex, endIndex) => {
-          let lowest = loadedData[startIndex].low;
-          for (let i = startIndex - 1; i >= endIndex; i--) {
-            if (loadedData[i].low < lowest) lowest = loadedData[i].low;
-          }
-          return lowest;
-        };
-
-        // Start to use candle at 00:00
-        while (
-          dateTime.format(new Date(loadedData[startIndex].date), 'HH:mm') !==
-          '00:00'
-        ) {
-          loadedData.pop();
-          startIndex--;
-        }
-
-        for (let i = startIndex; i >= 0; i--) {
-          // The new high candle will be construct between these index
-          let startCandleIndex = i;
-          let endCandleIndex = i;
-
-          if (!dateMatchTimeFrame(loadedData[i].date, newTimeFrame)) continue;
-
-          // Find the next candles that match the time frame
-          for (let j = i - 1; j >= 0; j--) {
-            if (dateMatchTimeFrame(loadedData[j].date, newTimeFrame)) {
-              endCandleIndex = j + 1;
-              break;
-            }
-          }
-
-          // To get only final candles
-          if (
-            loadedData.length - (loadedData.length - startCandleIndex) <
-            TimeFrameToMinutes(newTimeFrame)
-          )
-            break;
-
-          if (endCandleIndex >= 0) {
-            newCandles.push({
-              date: loadedData[startCandleIndex].date,
-              symbol: loadedData[startCandleIndex].symbol,
-              open: loadedData[startCandleIndex].open,
-              high: highest(startCandleIndex, endCandleIndex),
-              low: lowest(startCandleIndex, endCandleIndex),
-              close: loadedData[endCandleIndex].close,
-            });
-          }
-        }
-
-        const content =
-          ['date', 'symbol', 'open', 'high', 'low', 'close'].join(',') +
-          '\n' +
-          newCandles
-            .map((candle) => Object.values(candle).join(','))
-            .reverse()
-            .join('\n');
-
-        fs.writeFile(newFile, content, (err) => {
-          if (err) reject(err);
-          console.log(`${newFile} generated`);
-          resolve(newFile);
-        });
-      });
-  });
-}
-
-// ================================================================================= //
-
-/**
- * Group the candlestick data by month into separate files
- * @param {string} symbol
- * @param {string} timeFrame
- * @param {string} filePath
- */
-function partitionDataByMonth(symbol, timeFrame, filePath) {
-  const fileData = {};
+  if (fs.existsSync(newFile)) {
+    reject(`${filePath} has been already transformed in ${newTimeFrame}`);
+  }
 
   fs.createReadStream(filePath)
     .pipe(csv({ separator: ',' }))
     .on('data', (data) => {
-      const date = dateTime.format(new Date(data.date), 'YYYY-MM');
-      if (!fileData[date]) fileData[date] = [];
-      fileData[date].push({
-        date: data.date,
-        symbol: data.symbol,
-        open: data.open,
-        high: data.high,
-        low: data.low,
-        close: data.close,
-      });
+      loadedData.push(data);
     })
     .on('end', () => {
-      Object.keys(fileData).forEach((key) => {
-        const content =
-          Object.keys(fileData[key][0]).join(',') +
-          '\n' +
-          fileData[key].map((data) => Object.values(data).join(',')).join('\n');
-        const newFile = path.join(
-          dataDirectory,
-          symbol,
-          timeFrame,
-          `_${key}.csv`
-        );
+      // The new candle data in the higher time frame
+      let newCandles = [];
+      // Index to start to construct the candlestick data in the new time frame
+      let startIndex = loadedData.length - 1;
 
-        fs.writeFile(newFile, content, (err) => {
-          if (err) throw err;
-          console.log(`${newFile} generated`);
-        });
+      const highest = (startIndex, endIndex) => {
+        let highest = loadedData[startIndex].high;
+        for (let i = startIndex; i >= endIndex; i--) {
+          if (loadedData[i].high > highest) highest = loadedData[i].high;
+        }
+        return highest;
+      };
+
+      const lowest = (startIndex, endIndex) => {
+        let lowest = loadedData[startIndex].low;
+        for (let i = startIndex - 1; i >= endIndex; i--) {
+          if (loadedData[i].low < lowest) lowest = loadedData[i].low;
+        }
+        return lowest;
+      };
+
+      const volume = (startIndex, endIndex) => {
+        let volume = 0;
+        let base = loadedData[0].symbol.split('/')[0];
+        for (let i = startIndex - 1; i >= endIndex; i--) {
+          volume += Number(loadedData[i][`Volume ${base}`]);
+        }
+        return volume.toFixed(3);
+      };
+
+      // Start to use candle at 00:00
+      while (
+        dateTime.format(new Date(loadedData[startIndex].date), 'HH:mm') !==
+        '00:00'
+      ) {
+        loadedData.pop();
+        startIndex--;
+      }
+
+      for (let i = startIndex; i >= 0; i--) {
+        // The new high candle will be construct between these index
+        let startCandleIndex = i;
+        let endCandleIndex = i;
+
+        if (!dateMatchTimeFrame(loadedData[i].date, newTimeFrame)) continue;
+
+        // Find the next candles that match the time frame
+        for (let j = i - 1; j >= 0; j--) {
+          if (dateMatchTimeFrame(loadedData[j].date, newTimeFrame)) {
+            endCandleIndex = j + 1;
+            break;
+          }
+        }
+
+        // To get only final candles
+        if (
+          loadedData.length - (loadedData.length - startCandleIndex) <
+          TimeFrameToMinutes(newTimeFrame)
+        )
+          break;
+
+        if (endCandleIndex >= 0) {
+          newCandles.push({
+            date: loadedData[startCandleIndex].date,
+            symbol: loadedData[startCandleIndex].symbol,
+            open: loadedData[startCandleIndex].open,
+            high: highest(startCandleIndex, endCandleIndex),
+            low: lowest(startCandleIndex, endCandleIndex),
+            close: loadedData[endCandleIndex].close,
+            volume: volume(startCandleIndex, endCandleIndex),
+          });
+        }
+      }
+
+      const headers = [
+        'date',
+        'symbol',
+        'open',
+        'high',
+        'low',
+        'close',
+        'volume',
+      ];
+      const content =
+        headers.join(',') +
+        '\n' +
+        newCandles
+          .map((candle) => Object.values(candle).join(','))
+          .reverse()
+          .join('\n');
+
+      fs.writeFile(newFile, content, (err) => {
+        if (err) throw err;
+        console.log(`${newFile} generated`);
       });
     });
 }
@@ -236,16 +206,12 @@ function run() {
           if (!fs.existsSync(path.join(dataDirectory, symbol)))
             fs.mkdirSync(path.join(dataDirectory, symbol));
 
-          if (!fs.existsSync(path.join(dataDirectory, symbol, timeFrame))) {
-            // Create folder data/SYMBOL/TIME_FRAME
-            if (!fs.existsSync(path.join(dataDirectory, symbol, timeFrame)))
-              fs.mkdirSync(path.join(dataDirectory, symbol, timeFrame));
-
-            transformDataToNewTimeFrame(filePath, symbol, timeFrame)
-              .then((fileCreated) => {
-                partitionDataByMonth(symbol, timeFrame, fileCreated);
-              })
-              .catch(console.log);
+          if (
+            !fs.existsSync(
+              path.join(dataDirectory, symbol, `_${timeFrame}.csv`)
+            )
+          ) {
+            transformDataToNewTimeFrame(filePath, symbol, timeFrame);
           } else {
             console.log(
               `${file} has been already processed for the time frame ${timeFrame}`

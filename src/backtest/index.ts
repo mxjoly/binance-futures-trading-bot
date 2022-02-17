@@ -10,6 +10,8 @@ export const binanceClient = Binance({
   apiSecret: process.env.BINANCE_PRIVATE_KEY,
 });
 
-const TradingBot = new Bot(StochasticRsiConfig);
-TradingBot.prepare();
-TradingBot.run();
+const startDate = new Date('January 01, 2022 00:00:00');
+const endDate = new Date('January 01, 2022 23:59:59');
+
+const BackTestBot = new Bot(StochasticRsiConfig, startDate, endDate);
+BackTestBot.run();
