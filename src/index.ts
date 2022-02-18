@@ -1,6 +1,7 @@
 import winston from 'winston';
 import Binance from 'binance-api-node';
-import { Bot, BINANCE_MODE } from './bot';
+import { Bot } from './bot';
+import { BackTestBot } from './backtest/bot';
 import { StochasticRsiConfig } from './configs';
 
 require('dotenv').config();
@@ -11,19 +12,24 @@ export const logger = winston.createLogger({
   transports: [new winston.transports.File({ filename: 'logs/bot.log' })],
 });
 
+// The bot will trade with the binance :
+export const BINANCE_MODE: BinanceMode = 'futures';
+
 export const binanceClient = Binance(
-  process.env.NODE_ENV === 'production'
+  process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'test'
     ? {
         apiKey: process.env.BINANCE_PUBLIC_KEY,
         apiSecret: process.env.BINANCE_PRIVATE_KEY,
       }
     : {
         apiKey:
-          BINANCE_MODE == 'spot'
+          // @ts-ignore
+          BINANCE_MODE === 'spot'
             ? process.env.BINANCE_SPOT_TESTNET_PUBLIC_KEY
             : process.env.BINANCE_FUTURES_TESTNET_PUBLIC_KEY,
         apiSecret:
-          BINANCE_MODE == 'spot'
+          // @ts-ignore
+          BINANCE_MODE === 'spot'
             ? process.env.BINANCE_SPOT_TESTNET_PRIVATE_KEY
             : process.env.BINANCE_FUTURES_TESTNET_PRIVATE_KEY,
         httpBase: 'https://testnet.binance.vision',
@@ -33,6 +39,16 @@ export const binanceClient = Binance(
       }
 );
 
-const TradingBot = new Bot(StochasticRsiConfig);
-TradingBot.prepare();
-TradingBot.run();
+if (process.env.NODE_ENV !== 'test') {
+  const tradingBot = new Bot(StochasticRsiConfig);
+  tradingBot.prepare();
+  tradingBot.run();
+} else {
+  const startDate = new Date('January 01, 2022 00:00:00');
+  const endDate = new Date('January 01, 2022 23:59:59');
+  const initialCapital = 10000;
+
+  const bot = new BackTestBot(StochasticRsiConfig, startDate, endDate);
+  bot.prepare(initialCapital);
+  bot.run();
+}

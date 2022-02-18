@@ -2,7 +2,7 @@ import dateFormat from 'dateformat';
 import chalk from 'chalk';
 import { OrderSide } from 'binance-api-node';
 import { logger } from '.';
-import { BINANCE_MODE } from './bot';
+import { BINANCE_MODE } from './';
 
 /**
  * Main function add a log

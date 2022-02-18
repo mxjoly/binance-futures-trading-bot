@@ -1,5 +1,8 @@
 import { EMA, RSI } from 'technicalindicators';
-import { isBearEngulfing, isBullEngulfing } from '../../patterns/candles/engulfing';
+import {
+  isBearEngulfing,
+  isBullEngulfing,
+} from '../../patterns/candles/engulfing';
 
 interface Options {
   emaPeriod?: number;

@@ -12,10 +12,12 @@ interface TradeConfig {
   allowPyramiding?: boolean; // Allow cumulative longs/shorts
   maxPyramidingAllocation?: number; // Max allocation for a position in pyramiding (between 0 and 1)
   unidirectional?: boolean; // When take the profit, close the position instead of opening new position in futures
-  buyStrategy: BuySellStrategy;
-  sellStrategy: BuySellStrategy;
+  buySignal: Signal;
+  sellSignal: Signal;
   tpslStrategy?: TPSLStrategy; // take profit and stop loss strategy
   trendFilter?: TrendFilter; // Trend filter - If the trend is up, only take long, else take only short
+  riskManagement: RiskManagement;
+  tradeManagement?: TradeManagement; // Manage the take profits and stop loss during a trade
 }
 
 interface ChartCandle {
@@ -24,9 +26,10 @@ interface ChartCandle {
   low: number;
   close: number;
   volume: number;
+  date: Date;
 }
 
-type BuySellStrategy = (candles: ChartCandle[]) => boolean;
+type Signal = (candles: ChartCandle[]) => boolean;
 
 type TPSLStrategy = (
   price?: number,
@@ -39,8 +42,22 @@ type TPSLStrategy = (
 };
 
 type TrendFilter = (candles: ChartCandle[], options?: any) => Trend; // 1: up trend, -1: down trend, 0 no trend
+type Trend = 1 | -1 | 0; // 1: up trend, -1: down trend, 0: no trend
 
-type Trend = 1 | -1 | 0;
+interface RiskManagementOptions {
+  asset: string;
+  base: string;
+  balance: number;
+  risk: number;
+  enterPrice: number;
+  stopLossPrice?: number;
+  leverage: number;
+  exchangeInfo: ExchangeInfo;
+}
+type RiskManagement = (options: RiskManagementOptions) => number; // Return the size of the position
+
+// type QueryOrderResult from the library binance-api-node
+type TradeManagement = (orderInfos: QueryOrderResult[]) => void;
 
 type FibonacciRetracementLevel =
   | 'RET_0236'

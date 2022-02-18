@@ -9,20 +9,12 @@ import {
   getPricePrecision,
   getQuantityPrecision,
   isValidQuantity,
-  buildCandle,
   decimalFloor,
 } from './utils';
 import { log, error, logBuySellExecutionOrder } from './log';
-import { binanceClient } from '.';
-import {
-  getPositionSizeByPercent,
-  getPositionSizeByRisk,
-} from './riskManagement';
+import { binanceClient, BINANCE_MODE } from '.';
 
 // ====================================================================== //
-
-// The bot will trade with the binance :
-export const BINANCE_MODE: BinanceMode = 'futures';
 
 export class Bot {
   private tradeConfigs: TradeConfig[];
@@ -81,7 +73,14 @@ export class Bot {
 
           getCandles(pair, tradeConfig.loopInterval, async (candle: Candle) => {
             if (candle.isFinal) {
-              candles.push(buildCandle(candle));
+              candles.push({
+                open: Number(candle.open),
+                high: Number(candle.high),
+                low: Number(candle.low),
+                close: Number(candle.close),
+                volume: Number(candle.volume),
+                date: new Date(candle.startTime),
+              });
               candles = candles.slice(1); // Work with the same length
 
               const trade =
@@ -118,9 +117,10 @@ export class Bot {
       asset,
       base,
       risk,
-      buyStrategy,
-      sellStrategy,
+      buySignal,
+      sellSignal,
       tpslStrategy,
+      riskManagement,
       allowPyramiding,
       maxPyramidingAllocation,
     } = tradeConfig;
@@ -152,10 +152,6 @@ export class Bot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    // Strategies
-    const isSellSignal = (candles: ChartCandle[]) => sellStrategy(candles);
-    const isBuySignal = (candles: ChartCandle[]) => buyStrategy(candles);
-
     // Close remaining open orders while doesn't trade on the symbol
     if (currentTrades.length === 0 && currentOpenOrders.length > 0) {
       this.closeOpenOrders(pair);
@@ -163,7 +159,7 @@ export class Bot {
 
     // If a trade exists, search when to sell
     if (currentTrades.length > 0) {
-      if (isSellSignal(candles)) {
+      if (sellSignal(candles)) {
         currentTrades.forEach((trade) => {
           binanceClient
             .order({
@@ -185,16 +181,16 @@ export class Bot {
             .catch(error);
         });
       }
-    } else if (canBuy && isBuySignal(candles)) {
-      const quantity = getPositionSizeByPercent(
+    } else if (canBuy && buySignal(candles)) {
+      const quantity = riskManagement({
         asset,
         base,
-        baseBalance,
+        balance: baseBalance,
         risk,
-        currentPrice,
-        1,
-        exchangeInfo
-      );
+        enterPrice: currentPrice,
+        leverage: 1,
+        exchangeInfo,
+      });
 
       // Buy market order
       binanceClient
@@ -318,10 +314,11 @@ export class Bot {
       base,
       risk,
       leverage,
-      buyStrategy,
-      sellStrategy,
+      buySignal,
+      sellSignal,
       tpslStrategy,
       trendFilter,
+      riskManagement,
       useTrailingStop,
       trailingStopCallbackRate,
       allowPyramiding,
@@ -363,16 +360,12 @@ export class Bot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    // Strategies
-    const isSellSignal = (candles: ChartCandle[]) => sellStrategy(candles);
-    const isBuySignal = (candles: ChartCandle[]) => buyStrategy(candles);
-
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
       this.closeOpenOrders(pair);
     }
 
-    if (canTakeLongPosition && isBuySignal(candles)) {
+    if (canTakeLongPosition && buySignal(candles)) {
       // Take the profit and not open a new position
       if (hasShortPosition && unidirectional) {
         binanceClient
@@ -408,26 +401,16 @@ export class Bot {
         error('You cannot use take profits and stop loss in pyramiding mode');
       }
 
-      let quantity = stopLoss
-        ? getPositionSizeByRisk(
-            asset,
-            base,
-            allowPyramiding ? Number(balance) : Number(availableBalance),
-            risk,
-            currentPrice,
-            stopLoss,
-            leverage,
-            exchangeInfo
-          )
-        : getPositionSizeByPercent(
-            asset,
-            base,
-            allowPyramiding ? Number(balance) : Number(availableBalance),
-            risk,
-            currentPrice,
-            leverage,
-            exchangeInfo
-          );
+      let quantity = riskManagement({
+        asset,
+        base,
+        balance: allowPyramiding ? Number(balance) : Number(availableBalance),
+        risk,
+        enterPrice: currentPrice,
+        stopLossPrice: stopLoss,
+        leverage,
+        exchangeInfo,
+      });
 
       // Quantity to add to close the previous position
       let previousPositionQuantity = hasShortPosition
@@ -538,7 +521,7 @@ export class Bot {
           }
         })
         .catch(error);
-    } else if (canTakeShortPosition && isSellSignal(candles)) {
+    } else if (canTakeShortPosition && sellSignal(candles)) {
       // Take the profit and not open a new position
       if (hasLongPosition && unidirectional) {
         binanceClient
@@ -575,26 +558,16 @@ export class Bot {
       }
 
       // Risk Management
-      let quantity = stopLoss
-        ? getPositionSizeByRisk(
-            asset,
-            base,
-            allowPyramiding ? Number(balance) : Number(availableBalance),
-            risk * (tradeConfig.leverage || 1),
-            currentPrice,
-            stopLoss,
-            leverage,
-            exchangeInfo
-          )
-        : getPositionSizeByPercent(
-            asset,
-            base,
-            allowPyramiding ? Number(balance) : Number(availableBalance),
-            risk * (tradeConfig.leverage || 1),
-            currentPrice,
-            leverage,
-            exchangeInfo
-          );
+      let quantity = riskManagement({
+        asset,
+        base,
+        balance: allowPyramiding ? Number(balance) : Number(availableBalance),
+        risk,
+        enterPrice: currentPrice,
+        stopLossPrice: stopLoss,
+        leverage,
+        exchangeInfo,
+      });
 
       // Quantity to add to close the previous position
       let previousPositionQuantity = hasLongPosition
@@ -728,7 +701,14 @@ export class Bot {
           resolve(
             candles
               .slice(0, onlyFinalCandle ? -1 : candles.length)
-              .map((candle) => buildCandle(candle))
+              .map((candle) => ({
+                open: Number(candle.open),
+                high: Number(candle.high),
+                low: Number(candle.low),
+                close: Number(candle.close),
+                volume: Number(candle.volume),
+                date: new Date(candle.openTime),
+              }))
           );
         })
         .catch(reject);

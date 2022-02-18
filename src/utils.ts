@@ -1,14 +1,4 @@
-import { Candle, CandleChartResult, ExchangeInfo } from 'binance-api-node';
-
-export const buildCandle = (
-  candle: Candle | CandleChartResult
-): ChartCandle => ({
-  open: Number(candle.open),
-  high: Number(candle.high),
-  low: Number(candle.low),
-  close: Number(candle.close),
-  volume: Number(candle.volume),
-});
+import { ExchangeInfo } from 'binance-api-node';
 
 /**
  * @see https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md#lot_size

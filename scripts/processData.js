@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const chalk = require('chalk');
 const csv = require('csv-parser');
 const dateTime = require('date-and-time');
 
@@ -79,7 +80,9 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
   const newFile = path.join(dataDirectory, symbol, `_${newTimeFrame}.csv`);
 
   if (fs.existsSync(newFile)) {
-    reject(`${filePath} has been already transformed in ${newTimeFrame}`);
+    console.log(
+      chalk.red(`${filePath} has been already transformed in ${newTimeFrame}`)
+    );
   }
 
   fs.createReadStream(filePath)
@@ -181,7 +184,7 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
 
       fs.writeFile(newFile, content, (err) => {
         if (err) throw err;
-        console.log(`${newFile} generated`);
+        console.log(chalk.green(`${newFile} generated`));
       });
     });
 }
@@ -192,7 +195,7 @@ function run() {
 
   fs.readdir(pathToProcess, (err, files) => {
     if (err) {
-      return console.error('Unable to scan directory: ' + err);
+      return console.log(chalk.red('Unable to scan directory: ' + err));
     }
 
     timeFrames.forEach((timeFrame) => {
@@ -214,7 +217,9 @@ function run() {
             transformDataToNewTimeFrame(filePath, symbol, timeFrame);
           } else {
             console.log(
-              `${file} has been already processed for the time frame ${timeFrame}`
+              chalk.blue(
+                `${file} has been already processed for the time frame ${timeFrame}`
+              )
             );
           }
         }
