@@ -81,3 +81,56 @@ export function compareTimeFrame(
     ? -1
     : 0;
 }
+
+/**
+ * Get the number of minutes between two dates
+ * @param startDate
+ * @param endDate
+ * @param unit
+ */
+export function durationBetweenDates(
+  startDate: Date,
+  endDate: Date,
+  unit: CandleChartInterval
+) {
+  switch (unit) {
+    case CandleChartInterval.ONE_MINUTE:
+      return Math.round((endDate.getTime() - startDate.getTime()) / 60000);
+    case CandleChartInterval.FIVE_MINUTES:
+      return Math.round(
+        ((endDate.getTime() - startDate.getTime()) / 60000) * 5
+      );
+    case CandleChartInterval.FIFTEEN_MINUTES:
+      return Math.round(
+        ((endDate.getTime() - startDate.getTime()) / 60000) * 15
+      );
+    case CandleChartInterval.THIRTY_MINUTES:
+      return Math.round(
+        ((endDate.getTime() - startDate.getTime()) / 60000) * 30
+      );
+    case CandleChartInterval.ONE_HOUR:
+      return Math.round(
+        ((endDate.getTime() - startDate.getTime()) / 60000) * 60
+      );
+    case CandleChartInterval.TWO_HOURS:
+      return Math.round(
+        ((endDate.getTime() - startDate.getTime()) / 60000) * 60 * 2
+      );
+    case CandleChartInterval.FOUR_HOURS:
+      return Math.round(
+        ((endDate.getTime() - startDate.getTime()) / 60000) * 60 * 4
+      );
+    case CandleChartInterval.SIX_HOURS:
+      return Math.round(
+        ((endDate.getTime() - startDate.getTime()) / 60000) * 60 * 6
+      );
+    case CandleChartInterval.TWELVE_HOURS:
+      return Math.round(
+        ((endDate.getTime() - startDate.getTime()) / 60000) * 60 * 12
+      );
+    case CandleChartInterval.ONE_DAY:
+      return Math.round(
+        ((endDate.getTime() - startDate.getTime()) / 60000) * 60 * 12
+      );
+  }
+}

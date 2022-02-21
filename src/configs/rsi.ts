@@ -8,16 +8,16 @@ const config: TradeConfig[] = [
   {
     asset: 'BTC',
     base: 'USDT',
-    loopInterval: CandleChartInterval.ONE_MINUTE,
-    risk: 0.1,
+    loopInterval: CandleChartInterval.FIFTEEN_MINUTES,
+    risk: 0.01,
     leverage: 10,
     tpslStrategy: (price, candles, pricePrecision, side) =>
       atrTpslStrategy(price, candles, pricePrecision, side, {
         takeProfitAtrRatio: 2,
         stopLossAtrRatio: 2,
       }),
-    buySignal: (candles) => RSI.isBuySignal(candles, { rsiPeriod: 14 }),
-    sellSignal: (candles) => RSI.isSellSignal(candles, { rsiPeriod: 14 }),
+    buySignal: (candles) => RSI.isBuySignal(candles),
+    sellSignal: (candles) => RSI.isSellSignal(candles),
     riskManagement: getPositionSizeByRisk,
   },
 ];

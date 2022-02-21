@@ -3,17 +3,39 @@ import path from 'path';
 import chalk from 'chalk';
 import csv from 'csv-parser';
 import dayjs from 'dayjs';
+import cliProgress from 'cli-progress';
+import colors from 'ansi-colors';
 import { CandleChartInterval, ExchangeInfo, OrderSide } from 'binance-api-node';
 import { binanceClient, BINANCE_MODE } from '..';
 import { createDatabase, saveState, saveFuturesState } from './db';
+import { decimalFloor } from '../utils/math';
+import {
+  durationBetweenDates,
+  dateMatchTimeFrame,
+  timeFrameToMinutes,
+  compareTimeFrame,
+} from '../utils/time';
 import {
   getPricePrecision,
   getQuantityPrecision,
   isValidQuantity,
 } from '../utils/rules';
-import { decimalFloor } from '../utils/math';
 
-const WRITE_STATE_TO_JSON = false;
+// ====================================================================== //
+
+const bar = new cliProgress.SingleBar(
+  {
+    format:
+      'Progress: |' + colors.blue('{bar}') + '| {percentage}% | date: {date}',
+  },
+  cliProgress.Presets.shades_classic
+);
+
+// ====================================================================== //
+
+const DEBUG = process.argv[2].split('=')[1] === 'true' ? true : false;
+const SAVE_HISTORY = false;
+const MAX_LENGTH_CANDLES = 15;
 
 const supportedTimeFrames = [
   CandleChartInterval.ONE_MINUTE,
@@ -27,6 +49,82 @@ const supportedTimeFrames = [
   CandleChartInterval.TWELVE_HOURS,
   CandleChartInterval.ONE_DAY,
 ];
+
+// ====================================================================== //
+
+function log(message: string, chalk: any) {
+  if (DEBUG) {
+    console.log(chalk(`> ${message}`));
+  }
+}
+
+function printDateBanner(date: Date) {
+  log(
+    `------------------------------- ${dayjs(date).format(
+      'YYYY-MM-DD HH:mm:ss'
+    )} -----------------------------------`,
+    chalk.white
+  );
+}
+
+function debugLastCandle(lastCandle: CandleData) {
+  let { close, open, high, low } = lastCandle;
+  log(
+    `candle: [ open: ${open} | high: ${high} | low: ${low} | close: ${close} ]`,
+    chalk.yellow
+  );
+}
+
+function debugWallet(wallet: Wallet, futuresWallet: FuturesWallet) {
+  if (BINANCE_MODE === 'spot') {
+    let balance = wallet.balance;
+    let balanceString =
+      'balances: ' +
+      balance.map(
+        (bal) => `[ symbol: ${bal.symbol} | quantity: ${bal.quantity} ]`
+      );
+    log(balanceString, chalk.grey);
+  } else {
+    let {
+      availableBalance,
+      totalWalletBalance,
+      totalUnrealizedProfit,
+      positions,
+    } = futuresWallet;
+    let walletString = `wallet: { availableBalance: ${decimalFloor(
+      availableBalance,
+      2
+    )} | totalBalance: ${decimalFloor(
+      totalWalletBalance,
+      2
+    )} | unrealizedProfit: ${decimalFloor(totalUnrealizedProfit, 2)} }`;
+    log(walletString, chalk.grey);
+    let positionsString =
+      'positions: ' +
+      positions.map(
+        (pos) =>
+          `[ pair: ${pos.pair} | leverage: ${pos.leverage} | positionSide: ${
+            pos.positionSide
+          } | size: ${pos.size} | margin: ${decimalFloor(
+            pos.margin,
+            2
+          )} | entryPrice: ${pos.entryPrice} | pnl: ${decimalFloor(
+            pos.unrealizedProfit,
+            2
+          )} ]`
+      );
+    log(positionsString, chalk.grey);
+  }
+}
+
+function clone(obj) {
+  if (obj === null || typeof obj !== 'object') return obj;
+  let props = Object.getOwnPropertyDescriptors(obj);
+  for (let prop in props) {
+    props[prop].value = clone(props[prop].value);
+  }
+  return Object.create(Object.getPrototypeOf(obj), props);
+}
 
 // ====================================================================== //
 
@@ -48,8 +146,8 @@ export class BackTestBot {
     this.historicCandles = {};
   }
 
-  public async prepare(initialCapital: number) {
-    createDatabase();
+  public prepare(initialCapital: number) {
+    if (SAVE_HISTORY) createDatabase();
 
     if (BINANCE_MODE === 'spot') {
       const balance = this.wallet.balance;
@@ -92,6 +190,11 @@ export class BackTestBot {
   }
 
   public async run() {
+    log(
+      '====================== 💵 BINANCE TRADING BOT (BACKTEST) 💵 ======================',
+      chalk.white
+    );
+
     // Get exchange info
     const exchangeInfo =
       BINANCE_MODE === 'spot'
@@ -99,25 +202,48 @@ export class BackTestBot {
         : await binanceClient.futuresExchangeInfo();
 
     // Save all candle data
-    let saveCandles = [];
-    this.tradeConfigs.forEach(({ base, asset, loopInterval }) => {
-      saveCandles.push(
-        new Promise<void>((resolve, reject) => {
-          const pair = asset + base;
-          this.loadCandles(pair, loopInterval)
-            .then((candles) => {
-              this.historicCandles[pair] = candles;
-              resolve();
-            })
-            .catch(reject);
-        })
-      );
-    });
-    await Promise.all(saveCandles);
+    await Promise.all(
+      this.tradeConfigs.map(
+        ({ base, asset, loopInterval }) =>
+          new Promise<void>((resolve, reject) => {
+            const pair = asset + base;
+            this.loadCandles(pair, loopInterval)
+              .then((candles) => {
+                this.historicCandles[pair] = candles;
+                resolve();
+              })
+              .catch(reject);
+          })
+      )
+    );
+
+    // Duration of the backtest period in minutes
+    const duration = durationBetweenDates(
+      this.startDate,
+      this.endDate,
+      CandleChartInterval.ONE_MINUTE
+    );
+
+    const smallerTimeFrame = this.tradeConfigs
+      .map(({ loopInterval, indicatorInterval }) => {
+        if (!indicatorInterval) return loopInterval;
+        else
+          return timeFrameToMinutes(indicatorInterval) >
+            timeFrameToMinutes(loopInterval)
+            ? loopInterval
+            : indicatorInterval;
+      })
+      .sort((tf1, tf2) => compareTimeFrame(tf1, tf2))[0];
+
+    // Initiation of CLI Progress bar
+    if (!DEBUG) bar.start(duration, 0);
 
     // Time loop
     let currentDate = this.startDate;
+
     while (dayjs(currentDate).isSameOrBefore(this.endDate)) {
+      printDateBanner(currentDate);
+
       this.tradeConfigs.forEach((config) => {
         let { base, asset } = config;
 
@@ -128,50 +254,82 @@ export class BackTestBot {
           )
           .sort((a, b) => a.openTime.getTime() - b.openTime.getTime());
 
-        // Don't overcharge the memory
-        const maximumLength = 500;
-        if (currentCandles.length > maximumLength) currentCandles.shift();
+        if (DEBUG && currentCandles.length > 0) {
+          debugLastCandle(currentCandles[currentCandles.length - 1]);
+        }
 
-        if (currentCandles.length > 0) {
+        if (currentCandles.length > MAX_LENGTH_CANDLES) {
+          // Check if an open order has been activated
           if (BINANCE_MODE === 'spot') {
             this.checkSpotOpenOrders(asset, base, currentCandles);
-            this.tradeWithSpot(config, currentCandles, exchangeInfo);
           } else {
             this.checkFuturesOpenOrders(asset, base, currentCandles);
-            this.tradeWithFutures(config, currentCandles, exchangeInfo);
-            this.updatePNL(
-              asset,
-              base,
-              currentCandles[currentCandles.length - 1].close
-            );
+          }
+          this.updatePNL(
+            asset,
+            base,
+            currentCandles[currentCandles.length - 1].close
+          );
+
+          if (
+            dateMatchTimeFrame(
+              currentDate,
+              config.indicatorInterval || config.loopInterval
+            )
+          ) {
+            // Don't overcharge the memory
+            if (currentCandles.length > MAX_LENGTH_CANDLES)
+              currentCandles.shift();
+
+            if (BINANCE_MODE === 'spot') {
+              this.tradeWithSpot(config, currentCandles, exchangeInfo);
+            } else {
+              this.tradeWithFutures(config, currentCandles, exchangeInfo);
+              this.updatePNL(
+                asset,
+                base,
+                currentCandles[currentCandles.length - 1].close
+              );
+            }
           }
         }
       });
 
       if (BINANCE_MODE === 'spot') {
-        if (WRITE_STATE_TO_JSON)
+        if (SAVE_HISTORY) {
           saveState(
-            dayjs(currentDate).format('YYYY-MM-DD HH:mm:ss'),
-            this.wallet,
-            this.openOrders
+            dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
+            clone(this.wallet),
+            clone(this.openOrders)
           );
+        }
       } else {
         this.updateTotalPNL();
-        if (WRITE_STATE_TO_JSON)
+        if (SAVE_HISTORY) {
           saveFuturesState(
-            dayjs(currentDate).format('YYYY-MM-DD HH:mm:ss'),
-            this.futuresWallet,
-            this.futuresOpenOrders
+            dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
+            clone(this.futuresWallet),
+            clone(this.futuresOpenOrders)
           );
+        }
       }
 
-      currentDate = dayjs(currentDate).add(1, 'minute').toDate();
+      if (DEBUG) debugWallet(this.wallet, this.futuresWallet);
+
+      if (!DEBUG)
+        bar.increment(1, {
+          date: dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
+        });
+
+      currentDate = dayjs(currentDate)
+        .add(timeFrameToMinutes(smallerTimeFrame), 'minute')
+        .toDate();
     }
 
-    console.log(this.futuresWallet.totalWalletBalance);
+    if (!DEBUG) bar.stop();
   }
 
-  private async tradeWithSpot(
+  private tradeWithSpot(
     tradeConfig: TradeConfig,
     candles: CandleData[],
     exchangeInfo: ExchangeInfo
@@ -193,8 +351,6 @@ export class BackTestBot {
     const balance = this.wallet.balance;
     const indexBase = balance.findIndex((bal) => bal.symbol === base);
     const indexAsset = balance.findIndex((bal) => bal.symbol === asset);
-
-    const { balances } = await binanceClient.accountInfo();
     const assetBalance = balance[indexAsset].quantity;
     const baseBalance = balance[indexBase].quantity;
 
@@ -217,15 +373,13 @@ export class BackTestBot {
     // If a trade exists, search when to sell
     if (assetBalance > 0) {
       if (sellSignal(candles)) {
-        this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL')
-          .then(() => {
-            this.closeOpenOrders(pair);
-            const totalValue = currentPrice * Number(assetBalance);
-            console.log(
-              `Sells ${assetBalance}${asset} for ${totalValue}${base}.`
-            );
-          })
-          .catch(console.error);
+        this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
+        this.closeOpenOrders(pair);
+        const totalValue = currentPrice * Number(assetBalance);
+        log(
+          `Sells ${assetBalance}${asset} for ${totalValue}${base}.`,
+          chalk.red
+        );
       }
     } else if (canBuy && buySignal(candles)) {
       const quantity = riskManagement({
@@ -234,52 +388,43 @@ export class BackTestBot {
         balance: baseBalance,
         risk,
         enterPrice: currentPrice,
-        leverage: 1,
         exchangeInfo,
       });
 
       // Buy market order
-      this.spotOrderMarket(asset, base, currentPrice, quantity, 'BUY')
-        .then(({ price: orderPrice }) => {
-          // @NOTES => calculate the average price
+      this.spotOrderMarket(asset, base, currentPrice, quantity, 'BUY');
+      // @NOTES => calculate the average price
 
-          // Calculate the tp and sl
-          const { takeProfits, stopLoss } = tpslStrategy
-            ? tpslStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
-            : { takeProfits: [], stopLoss: null };
+      // Calculate the tp and sl
+      const { takeProfits, stopLoss } = tpslStrategy
+        ? tpslStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
+        : { takeProfits: [], stopLoss: null };
 
-          // Remove the current open orders to update them
-          if (currentOpenOrders.length > 0) this.closeOpenOrders(pair);
+      // Remove the current open orders to update them
+      if (currentOpenOrders.length > 0) this.closeOpenOrders(pair);
 
-          return { orderPrice, takeProfits, stopLoss };
-        })
-        .then(({ orderPrice, stopLoss, takeProfits }) => {
-          if (takeProfits.length > 0) {
-            // Create all the take profit targets
-            takeProfits.forEach(({ price, quantityPercentage }) => {
-              // Sell limit order as TP
-              this.spotOrderLimit(
-                asset,
-                base,
-                price,
-                decimalFloor(quantity * quantityPercentage, quantityPrecision),
-                'SELL'
-              ).catch(console.error);
-            });
-          }
+      if (takeProfits.length > 0) {
+        // Create all the take profit targets
+        takeProfits.forEach(({ price, quantityPercentage }) => {
+          // Sell limit order as TP
+          this.spotOrderLimit(
+            asset,
+            base,
+            price,
+            decimalFloor(quantity * quantityPercentage, quantityPrecision),
+            'SELL'
+          );
+        });
+      }
 
-          if (stopLoss) {
-            // Sell limit order as SL
-            this.spotOrderLimit(asset, base, stopLoss, quantity, 'SELL').catch(
-              console.error
-            );
-          }
-        })
-        .catch(console.error);
+      if (stopLoss) {
+        // Sell limit order as SL
+        this.spotOrderLimit(asset, base, stopLoss, quantity, 'SELL');
+      }
     }
   }
 
-  private async tradeWithFutures(
+  private tradeWithFutures(
     tradeConfig: TradeConfig,
     candles: CandleData[],
     exchangeInfo: ExchangeInfo
@@ -288,7 +433,6 @@ export class BackTestBot {
       asset,
       base,
       risk,
-      leverage,
       buySignal,
       sellSignal,
       tpslStrategy,
@@ -332,21 +476,14 @@ export class BackTestBot {
 
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
-      this.closeOpenOrders(pair);
+      this.closeFuturesOpenOrders(pair);
     }
 
     if (canTakeLongPosition && buySignal(candles)) {
       // Take the profit and not open a new position
       if (hasShortPosition && unidirectional) {
-        this.futuresOrderMarket(
-          asset,
-          base,
-          currentPrice,
-          position.size,
-          'BUY'
-        ).then(() => {
-          this.closeOpenOrders(pair);
-        });
+        this.futuresOrderMarket(pair, currentPrice, position.size, 'BUY');
+        this.closeFuturesOpenOrders(pair);
         return;
       }
 
@@ -371,7 +508,6 @@ export class BackTestBot {
         risk,
         enterPrice: currentPrice,
         stopLossPrice: stopLoss,
-        leverage,
         exchangeInfo,
       });
 
@@ -387,76 +523,57 @@ export class BackTestBot {
         throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
       }
 
-      this.futuresOrderMarket(asset, base, currentPrice, quantity, 'BUY')
-        .then(async ({ executedQty }) => {
-          // Cancel the previous orders to update them
-          if (currentOpenOrders.length > 0) {
-            this.closeOpenOrders(pair);
-          }
+      this.futuresOrderMarket(pair, currentPrice, quantity, 'BUY');
 
-          if (trailingStopConfig) {
-            let { percentageToTP, changePercentage } =
-              trailingStopConfig.activation;
+      // Cancel the previous orders to update them
+      if (currentOpenOrders.length > 0) {
+        this.closeFuturesOpenOrders(pair);
+      }
 
-            const activationPrice = changePercentage
-              ? currentPrice * (1 + changePercentage)
-              : percentageToTP && takeProfits.length > 0
-              ? currentPrice +
-                (takeProfits[0].price - currentPrice) * percentageToTP
-              : currentPrice;
+      if (trailingStopConfig) {
+        let { percentageToTP, changePercentage } =
+          trailingStopConfig.activation;
 
-            this.futuresOrderTrailingStop(
-              asset,
-              base,
-              activationPrice,
-              position.size,
-              'SHORT',
-              trailingStopConfig.callbackRate,
-              { changePercentage, percentageToTP }
-            ).catch(console.error);
-          }
+        const activationPrice = changePercentage
+          ? currentPrice * (1 + changePercentage)
+          : percentageToTP && takeProfits.length > 0
+          ? currentPrice +
+            (takeProfits[0].price - currentPrice) * percentageToTP
+          : currentPrice;
 
-          if (takeProfits.length > 0) {
-            // Create the take profit orders
-            takeProfits.forEach(({ price, quantityPercentage }) => {
-              // Take profit order
-              this.futuresOrderLimit(
-                asset,
-                base,
-                price,
-                decimalFloor(
-                  position.size * quantityPercentage,
-                  quantityPrecision
-                ),
-                'SHORT'
-              ).catch(console.error);
-            });
-          }
+        this.futuresOrderTrailingStop(
+          asset,
+          base,
+          activationPrice,
+          position.size,
+          'SHORT',
+          trailingStopConfig.callbackRate,
+          { changePercentage, percentageToTP }
+        );
+      }
 
-          if (stopLoss) {
-            // Stop loss order
-            this.futuresOrderLimit(
-              asset,
-              base,
-              stopLoss,
-              position.size,
-              'SHORT'
-            ).catch(console.error);
-          }
-        })
-        .catch(console.error);
+      if (takeProfits.length > 0) {
+        // Create the take profit orders
+        takeProfits.forEach(({ price, quantityPercentage }) => {
+          // Take profit order
+          this.futuresOrderLimit(
+            pair,
+            price,
+            decimalFloor(position.size * quantityPercentage, quantityPrecision),
+            'SHORT'
+          );
+        });
+      }
+
+      if (stopLoss) {
+        // Stop loss order
+        this.futuresOrderLimit(pair, stopLoss, position.size, 'SHORT');
+      }
     } else if (canTakeShortPosition && sellSignal(candles)) {
       // Take the profit and not open a new position
       if (hasLongPosition && unidirectional) {
-        this.futuresOrderMarket(
-          asset,
-          base,
-          currentPrice,
-          position.size,
-          'SELL'
-        ).then(() => {
-          this.closeOpenOrders(pair);
-        });
+        this.futuresOrderMarket(pair, currentPrice, position.size, 'SELL');
+        this.closeFuturesOpenOrders(pair);
         return;
       }
 
@@ -482,7 +599,6 @@ export class BackTestBot {
         risk,
         enterPrice: currentPrice,
         stopLossPrice: stopLoss,
-        leverage,
         exchangeInfo,
       });
 
@@ -500,319 +616,53 @@ export class BackTestBot {
         throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
       }
 
-      this.futuresOrderMarket(asset, base, currentPrice, quantity, 'SELL')
-        .then(() => {
-          // Cancel the previous orders to update them
-          if (currentOpenOrders.length > 0) {
-            this.closeOpenOrders(pair);
-          }
+      this.futuresOrderMarket(pair, currentPrice, quantity, 'SELL');
 
-          if (trailingStopConfig) {
-            let { percentageToTP, changePercentage } =
-              trailingStopConfig.activation;
-
-            const activationPrice = changePercentage
-              ? currentPrice * (1 - changePercentage)
-              : percentageToTP && takeProfits.length > 0
-              ? currentPrice -
-                (currentPrice - takeProfits[0].price) * percentageToTP
-              : currentPrice;
-
-            this.futuresOrderTrailingStop(
-              asset,
-              base,
-              activationPrice,
-              position.size,
-              'LONG',
-              trailingStopConfig.callbackRate,
-              { changePercentage, percentageToTP }
-            ).catch(console.error);
-          }
-
-          if (takeProfits.length > 0) {
-            // Create the take profit orders
-            takeProfits.forEach(({ price, quantityPercentage }) => {
-              // Take profit order
-              this.futuresOrderLimit(
-                asset,
-                base,
-                price,
-                decimalFloor(
-                  position.size * quantityPercentage,
-                  quantityPrecision
-                ),
-                'LONG'
-              ).catch(console.error);
-            });
-          }
-
-          if (stopLoss) {
-            // Stop loss order
-            this.futuresOrderLimit(
-              asset,
-              base,
-              stopLoss,
-              position.size,
-              'LONG'
-            ).catch(console.error);
-          }
-        })
-        .catch(console.error);
-    }
-  }
-
-  private checkSpotOpenOrders(
-    asset: string,
-    base: string,
-    candles: CandleData[]
-  ) {
-    const lastCandle = candles[candles.length - 1];
-
-    if (this.openOrders.length > 0) {
-      const pair = asset + base;
-      const pairOrders = this.openOrders.filter((order) => order.pair === pair);
-      const buyOrders = pairOrders.filter((order) => order.side === 'BUY');
-      const sellOrders = pairOrders.filter((order) => order.side === 'SELL');
-      const balance = this.wallet.balance;
-      const indexBase = balance.findIndex((bal) => bal.symbol === base);
-      const indexAsset = balance.findIndex((bal) => bal.symbol === asset);
-
-      // Check if a buy order has been activated on the last candle
-      buyOrders.forEach(({ id, price, quantity }) => {
-        // Price crossed the buy limit order
-        if (lastCandle.high > price && lastCandle.low < price) {
-          let cost = quantity * price;
-          // Convert base to asset
-          if (balance[indexBase].quantity >= cost) {
-            balance[indexBase].quantity -= cost;
-            balance[indexAsset].quantity += quantity;
-            // Close the order
-            this.closeOpenOrder(id);
-          }
-        }
-      });
-
-      // Check if a sell order has been activated on the last candle
-      sellOrders.forEach(({ id, price, quantity }) => {
-        // Price crossed the sell limit order
-        if (lastCandle.high > price && lastCandle.low < price) {
-          let profit = quantity * price;
-          // Convert asset to base
-          if (balance[indexAsset].quantity >= quantity) {
-            balance[indexAsset].quantity -= quantity;
-            balance[indexBase].quantity += profit;
-            // Close the order
-            this.closeOpenOrder(id);
-          }
-        }
-      });
-    }
-  }
-
-  private checkFuturesOpenOrders(
-    asset: string,
-    base: string,
-    candles: CandleData[]
-  ) {
-    const lastCandle = candles[candles.length - 1];
-
-    if (this.futuresOpenOrders.length > 0) {
-      const pair = asset + base;
-      const pairOrders = this.futuresOpenOrders.filter(
-        (order) => order.pair === pair
-      );
-      const longOrders = pairOrders.filter(
-        (order) => order.positionSide === 'LONG'
-      );
-      const shortOrders = pairOrders.filter(
-        (order) => order.positionSide === 'SHORT'
-      );
-      const indexAsset = this.futuresWallet.positions.findIndex(
-        (position) => position.pair === asset + base
-      );
-
-      const wallet = this.futuresWallet;
-      const position = wallet.positions[indexAsset];
-
-      // Check if a long order has been activated on the last candle
-      longOrders.forEach(({ id, price, quantity, type, trailingStop }) => {
-        let { entryPrice, size } = position;
-
-        // Price crossed the buy limit order
-        if (lastCandle.high > price && lastCandle.low < price) {
-          if (type === 'LIMIT') {
-            // Average the position
-            if (position.positionSide === 'LONG') {
-              let baseCost = price * quantity;
-              // If there is enough available base
-              if (wallet.availableBalance >= baseCost) {
-                let avgEntryPrice =
-                  (price * quantity + entryPrice * Math.abs(size)) /
-                  (quantity + Math.abs(size));
-                position.margin += baseCost;
-                position.size += quantity;
-                position.entryPrice = avgEntryPrice;
-                wallet.availableBalance -= baseCost;
-                this.closeOpenOrder(id);
-              }
-            } else if (position.positionSide === 'SHORT') {
-              // Update wallet
-              let pnl = this.getPositionPNL(position, price);
-              wallet.availableBalance += quantity * price;
-              wallet.totalWalletBalance += pnl;
-
-              // Update position
-              position.size += quantity;
-              position.margin = Math.abs((quantity + position.size) * price);
-
-              if (position.size === 0) {
-                position.entryPrice = 0;
-                position.unrealizedProfit = 0;
-              }
-
-              if (position.size > 0) {
-                position.entryPrice = price;
-                position.positionSide = 'LONG';
-                let newPnl = this.getPositionPNL(position, price);
-                position.unrealizedProfit = newPnl;
-                wallet.availableBalance -= (quantity + position.size) * price;
-              }
-
-              this.closeOpenOrder(id);
-            }
-          } else if (type === 'TRAILING_STOP_MARKET') {
-            let { status, callbackRate, activation } = trailingStop;
-            if (status === 'PENDING') {
-              if (
-                (activation.changePercentage &&
-                  lastCandle.low < price * (1 - activation.changePercentage)) ||
-                (activation.percentageToTP &&
-                  lastCandle.low < price * (1 - activation.percentageToTP)) ||
-                (!activation.changePercentage && !activation.percentageToTP)
-              )
-                status = 'ACTIVE';
-            } else if (status === 'ACTIVE') {
-              let prevCandle = candles[candles.length - 2];
-              let stopLoss = prevCandle.close * (1 + callbackRate);
-              // Trailing stop loss is activated
-              if (lastCandle.high >= stopLoss) {
-                let pnl = this.getPositionPNL(position, price);
-                wallet.availableBalance += quantity * price;
-                wallet.totalWalletBalance += pnl;
-                this.closeOpenOrders(asset + base);
-              }
-            }
-          }
-        }
-      });
-
-      shortOrders.forEach(({ id, price, quantity, type, trailingStop }) => {
-        let { entryPrice, size } = position;
-
-        // Price crossed the sell limit order
-        if (lastCandle.high > price && lastCandle.low < price) {
-          // If there is enough available base
-          if (type === 'LIMIT') {
-            // Average the position
-            if (position.positionSide === 'SHORT') {
-              let baseCost = price * quantity;
-              // If there is enough available base
-              if (wallet.availableBalance >= baseCost) {
-                let avgEntryPrice =
-                  (price * quantity + entryPrice * Math.abs(size)) /
-                  (quantity + Math.abs(size));
-                position.margin += baseCost;
-                position.size -= quantity;
-                position.entryPrice = avgEntryPrice;
-                wallet.availableBalance -= baseCost;
-                this.closeOpenOrder(id);
-              }
-            } else if (position.positionSide === 'LONG') {
-              // Update wallet
-              let pnl = this.getPositionPNL(position, price);
-              wallet.availableBalance += quantity * price;
-              wallet.totalWalletBalance += pnl;
-
-              // Update position
-              position.size -= quantity;
-              position.margin = Math.abs((position.size - quantity) * price);
-
-              if (position.size === 0) {
-                position.entryPrice = 0;
-                position.unrealizedProfit = 0;
-              }
-
-              if (position.size < 0) {
-                position.entryPrice = price;
-                position.positionSide = 'SHORT';
-                let newPnl = this.getPositionPNL(position, price);
-                position.unrealizedProfit = newPnl;
-                wallet.availableBalance -= (position.size - quantity) * price;
-              }
-
-              this.closeOpenOrder(id);
-            }
-          } else if (type === 'TRAILING_STOP_MARKET') {
-            let { status, callbackRate, activation } = trailingStop;
-            if (status === 'PENDING') {
-              if (
-                (activation.changePercentage &&
-                  lastCandle.low < price * (1 + activation.changePercentage)) ||
-                (activation.percentageToTP &&
-                  lastCandle.low < price * (1 + activation.percentageToTP)) ||
-                (!activation.changePercentage && !activation.percentageToTP)
-              )
-                status = 'ACTIVE';
-            } else if (status === 'ACTIVE') {
-              let prevCandle = candles[candles.length - 2];
-              let stopLoss = prevCandle.close * (1 - callbackRate);
-              // Trailing stop loss is activated
-              if (lastCandle.low <= stopLoss) {
-                let pnl = this.getPositionPNL(position, price);
-                wallet.availableBalance += quantity * price;
-                wallet.totalWalletBalance += pnl;
-                this.closeOpenOrders(asset + base);
-              }
-            }
-          }
-        }
-      });
-    }
-  }
-
-  private getPositionPNL(position: Position, currentPrice: number) {
-    const entryPrice = position.entryPrice;
-    const delta = (currentPrice - entryPrice) / entryPrice;
-
-    if (position.size !== 0 && position.margin > 0 && position.entryPrice > 0) {
-      if (position.positionSide === 'LONG') {
-        return delta * position.margin * position.leverage;
-      } else {
-        return -delta * position.margin * position.leverage;
+      // Cancel the previous orders to update them
+      if (currentOpenOrders.length > 0) {
+        this.closeFuturesOpenOrders(pair);
       }
-    } else {
-      return 0;
+
+      if (trailingStopConfig) {
+        let { percentageToTP, changePercentage } =
+          trailingStopConfig.activation;
+
+        const activationPrice = changePercentage
+          ? currentPrice * (1 - changePercentage)
+          : percentageToTP && takeProfits.length > 0
+          ? currentPrice -
+            (currentPrice - takeProfits[0].price) * percentageToTP
+          : currentPrice;
+
+        this.futuresOrderTrailingStop(
+          asset,
+          base,
+          activationPrice,
+          position.size,
+          'LONG',
+          trailingStopConfig.callbackRate,
+          { changePercentage, percentageToTP }
+        );
+      }
+
+      if (takeProfits.length > 0) {
+        // Create the take profit orders
+        takeProfits.forEach(({ price, quantityPercentage }) => {
+          // Take profit order
+          this.futuresOrderLimit(
+            pair,
+            price,
+            decimalFloor(position.size * quantityPercentage, quantityPrecision),
+            'LONG'
+          );
+        });
+      }
+
+      if (stopLoss) {
+        // Stop loss order
+        this.futuresOrderLimit(pair, stopLoss, position.size, 'LONG');
+      }
     }
-  }
-
-  private updatePNL(asset: string, base: string, currentPrice: number) {
-    let positions = this.futuresWallet.positions;
-    let indexAsset = positions.findIndex((pos) => pos.pair === asset + base);
-    let position = positions[indexAsset];
-    position.unrealizedProfit = this.getPositionPNL(position, currentPrice);
-  }
-
-  private updateTotalPNL() {
-    let totalPNL = 0;
-    this.futuresWallet.positions
-      .filter(
-        (position) =>
-          position.size !== 0 && position.margin > 0 && position.entryPrice > 0
-      )
-      .forEach((position) => {
-        totalPNL += position.unrealizedProfit;
-      });
-    return totalPNL;
   }
 
   private loadCandles(
@@ -886,24 +736,310 @@ export class BackTestBot {
     });
   }
 
-  private closeOpenOrder(orderId: number) {
-    if (BINANCE_MODE === 'spot') {
-      this.openOrders = this.openOrders.filter((order) => order.id !== orderId);
-    } else {
-      this.futuresOpenOrders = this.futuresOpenOrders.filter(
-        (order) => order.id !== orderId
-      );
+  private checkSpotOpenOrders(
+    asset: string,
+    base: string,
+    candles: CandleData[]
+  ) {
+    const lastCandle = candles[candles.length - 1];
+
+    if (this.openOrders.length > 0) {
+      const pair = asset + base;
+      const pairOrders = this.openOrders.filter((order) => order.pair === pair);
+      const buyOrders = pairOrders.filter((order) => order.side === 'BUY');
+      const sellOrders = pairOrders.filter((order) => order.side === 'SELL');
+      const balance = this.wallet.balance;
+      const baseBalance = balance.find((bal) => bal.symbol === base);
+      const assetBalance = balance.find((bal) => bal.symbol === asset);
+
+      // Check if a buy order has been activated on the last candle
+      buyOrders.forEach(({ id, price, quantity }) => {
+        // Price crossed the buy limit order
+        if (lastCandle.high > price && lastCandle.low < price) {
+          let cost = quantity * price;
+          // Convert base to asset
+          if (baseBalance.quantity >= cost) {
+            baseBalance.quantity -= cost;
+            assetBalance.quantity += quantity;
+            log(`Buy order #${id} has been activated`, chalk.magenta);
+            // Close the order
+            this.closeOpenOrder(id);
+          }
+        }
+      });
+
+      // Check if a sell order has been activated on the last candle
+      sellOrders.forEach(({ id, price, quantity }) => {
+        // Price crossed the sell limit order
+        if (lastCandle.high > price && lastCandle.low < price) {
+          let profit = quantity * price;
+          // Convert asset to base
+          if (assetBalance.quantity >= quantity) {
+            assetBalance.quantity -= quantity;
+            baseBalance.quantity += profit;
+            log(`Sell order #${id} has been activated`, chalk.magenta);
+            // Close the order
+            this.closeOpenOrder(id);
+          }
+        }
+      });
     }
   }
 
-  private closeOpenOrders(pair: string) {
-    if (BINANCE_MODE === 'spot') {
-      this.openOrders = this.openOrders.filter((order) => order.pair !== pair);
-    } else {
-      this.futuresOpenOrders = this.futuresOpenOrders.filter(
-        (order) => order.pair !== pair
+  private checkFuturesOpenOrders(
+    asset: string,
+    base: string,
+    candles: CandleData[]
+  ) {
+    const lastCandle = candles[candles.length - 1];
+
+    if (this.futuresOpenOrders.length > 0) {
+      const pair = asset + base;
+      const pairOrders = this.futuresOpenOrders.filter(
+        (order) => order.pair === pair
       );
+      const longOrders = pairOrders.filter(
+        (order) => order.positionSide === 'LONG'
+      );
+      const shortOrders = pairOrders.filter(
+        (order) => order.positionSide === 'SHORT'
+      );
+      const position = this.futuresWallet.positions.find(
+        (position) => position.pair === pair
+      );
+      const wallet = this.futuresWallet;
+
+      // Prevent remaining open orders when all the take profit or a stop loss has been filled
+      if (position.size === 0 && this.futuresOpenOrders.length > 0) {
+        this.closeFuturesOpenOrders(pair);
+      }
+
+      // Check if a long order has been activated on the last candle
+      longOrders.forEach(({ id, price, quantity, type, trailingStop }) => {
+        let { entryPrice, size, leverage } = position;
+
+        // Price crossed the buy limit order
+        if (lastCandle.high > price && lastCandle.low < price) {
+          if (type === 'LIMIT') {
+            // Average the position
+            if (position.positionSide === 'LONG') {
+              let baseCost = (price * quantity) / leverage;
+              // If there is enough available base
+              if (wallet.availableBalance >= baseCost) {
+                let avgEntryPrice =
+                  (price * quantity + entryPrice * Math.abs(size)) /
+                  (quantity + Math.abs(size));
+                position.margin += baseCost;
+                position.size += quantity;
+                position.entryPrice = avgEntryPrice;
+                wallet.availableBalance -= baseCost;
+              }
+            } else if (position.positionSide === 'SHORT') {
+              // Update wallet
+              let pnl = this.getPositionPNL(position, price);
+              wallet.availableBalance += position.margin + pnl;
+              wallet.totalWalletBalance += pnl;
+
+              // Update position
+              let sizeTamp = clone(position).size;
+              position.size -= quantity;
+              position.margin =
+                Math.abs((quantity + sizeTamp) * price) / leverage;
+
+              if (position.size === 0) {
+                position.entryPrice = 0;
+                position.unrealizedProfit = 0;
+              }
+
+              if (position.size > 0) {
+                position.entryPrice = price;
+                position.positionSide = 'LONG';
+                let newPnl = this.getPositionPNL(position, price);
+                position.unrealizedProfit = newPnl;
+                wallet.availableBalance -=
+                  Math.abs((sizeTamp - quantity) * price) / leverage;
+              }
+            }
+
+            log(
+              `Long order #${id} has been activated for ${quantity} ${asset} at $${price}`,
+              chalk.magenta
+            );
+            this.closeFutureOpenOrder(id);
+          } else if (type === 'TRAILING_STOP_MARKET') {
+            let { status, callbackRate, activation } = trailingStop;
+            if (status === 'PENDING') {
+              if (
+                (activation.changePercentage &&
+                  lastCandle.low < price * (1 - activation.changePercentage)) ||
+                (activation.percentageToTP &&
+                  lastCandle.low < price * (1 - activation.percentageToTP)) ||
+                (!activation.changePercentage && !activation.percentageToTP)
+              )
+                status = 'ACTIVE';
+            } else if (status === 'ACTIVE') {
+              let prevCandle = candles[candles.length - 2];
+              let stopLoss = prevCandle.close * (1 + callbackRate);
+              // Trailing stop loss is activated
+              if (lastCandle.high >= stopLoss) {
+                let pnl = this.getPositionPNL(position, price);
+                wallet.availableBalance += position.margin + pnl;
+                wallet.totalWalletBalance += pnl;
+
+                log(
+                  `Trailing stop buy order #${id} has been activated for ${quantity} ${asset} at $${price}`,
+                  chalk.magenta
+                );
+              }
+            }
+          }
+        }
+      });
+
+      shortOrders.forEach(({ id, price, quantity, type, trailingStop }) => {
+        let { entryPrice, size, leverage } = position;
+
+        // Price crossed the sell limit order
+        if (lastCandle.high > price && lastCandle.low < price) {
+          // If there is enough available base
+          if (type === 'LIMIT') {
+            // Average the position
+            if (position.positionSide === 'SHORT') {
+              let baseCost = (price * quantity) / leverage;
+              // If there is enough available base
+              if (wallet.availableBalance >= baseCost) {
+                let avgEntryPrice =
+                  (price * quantity + entryPrice * Math.abs(size)) /
+                  (quantity + Math.abs(size));
+                position.margin += baseCost;
+                position.size -= quantity;
+                position.entryPrice = avgEntryPrice;
+                wallet.availableBalance -= baseCost;
+              }
+            } else if (position.positionSide === 'LONG') {
+              // Update wallet
+              let pnl = this.getPositionPNL(position, price);
+              wallet.availableBalance += position.margin + pnl;
+              wallet.totalWalletBalance += pnl;
+
+              // Update position
+              position.size -= quantity;
+              position.margin =
+                Math.abs((position.size - quantity) * price) / leverage;
+
+              if (position.size === 0) {
+                position.entryPrice = 0;
+                position.unrealizedProfit = 0;
+              }
+
+              if (position.size < 0) {
+                position.entryPrice = price;
+                position.positionSide = 'SHORT';
+                let newPnl = this.getPositionPNL(position, price);
+                position.unrealizedProfit = newPnl;
+                wallet.availableBalance -=
+                  Math.abs((position.size - quantity) * price) / leverage;
+              }
+            }
+
+            log(
+              `Sell order #${id} has been activated for ${Math.abs(
+                quantity
+              )} ${asset} at $${price}`,
+              chalk.magenta
+            );
+            this.closeFutureOpenOrder(id);
+          } else if (type === 'TRAILING_STOP_MARKET') {
+            let { status, callbackRate, activation } = trailingStop;
+            if (status === 'PENDING') {
+              if (
+                (activation.changePercentage &&
+                  lastCandle.low < price * (1 + activation.changePercentage)) ||
+                (activation.percentageToTP &&
+                  lastCandle.low < price * (1 + activation.percentageToTP)) ||
+                (!activation.changePercentage && !activation.percentageToTP)
+              )
+                status = 'ACTIVE';
+            } else if (status === 'ACTIVE') {
+              let prevCandle = candles[candles.length - 2];
+              let stopLoss = prevCandle.close * (1 - callbackRate);
+              // Trailing stop loss is activated
+              if (lastCandle.low <= stopLoss) {
+                let pnl = this.getPositionPNL(position, price);
+                wallet.availableBalance += position.margin + pnl;
+                wallet.totalWalletBalance += pnl;
+
+                log(
+                  `Trailing stop sell order #${id} has been activated for ${Math.abs(
+                    quantity
+                  )} ${asset} at $${price}`,
+                  chalk.magenta
+                );
+              }
+            }
+          }
+        }
+      });
     }
+  }
+
+  private getPositionPNL(position: Position, currentPrice: number) {
+    const entryPrice = position.entryPrice;
+    const delta = (currentPrice - entryPrice) / entryPrice;
+
+    if (position.size !== 0 && position.margin > 0 && position.entryPrice > 0) {
+      if (position.positionSide === 'LONG') {
+        return delta * position.margin * position.leverage;
+      } else {
+        return -delta * position.margin * position.leverage;
+      }
+    } else {
+      return 0;
+    }
+  }
+
+  private updatePNL(asset: string, base: string, currentPrice: number) {
+    let positions = this.futuresWallet.positions;
+    let indexAsset = positions.findIndex((pos) => pos.pair === asset + base);
+    let position = positions[indexAsset];
+    position.unrealizedProfit = this.getPositionPNL(position, currentPrice);
+  }
+
+  private updateTotalPNL() {
+    let totalPNL = 0;
+    this.futuresWallet.positions
+      .filter(
+        (position) =>
+          position.size !== 0 && position.margin > 0 && position.entryPrice > 0
+      )
+      .forEach((position) => {
+        totalPNL += position.unrealizedProfit;
+      });
+    this.futuresWallet.totalUnrealizedProfit = totalPNL;
+  }
+
+  private closeOpenOrder(orderId: string) {
+    this.openOrders = this.openOrders.filter((order) => order.id !== orderId);
+    log(`Close the open order #${orderId}`, chalk.cyan);
+  }
+
+  private closeFutureOpenOrder(orderId: string) {
+    this.futuresOpenOrders = this.futuresOpenOrders.filter(
+      (order) => order.id !== orderId
+    );
+    log(`Close the open order #${orderId}`, chalk.cyan);
+  }
+
+  private closeOpenOrders(pair: string) {
+    this.openOrders = this.openOrders.filter((order) => order.pair !== pair);
+    log(`Close all the open orders for the pair ${pair}`, chalk.cyan);
+  }
+
+  private closeFuturesOpenOrders(pair: string) {
+    this.futuresOpenOrders = this.futuresOpenOrders.filter(
+      (order) => order.pair !== pair
+    );
+    log(`Close all the open orders for the pair ${pair}`, chalk.cyan);
   }
 
   private spotOrderMarket(
@@ -913,39 +1049,45 @@ export class BackTestBot {
     quantity: number,
     side: 'BUY' | 'SELL'
   ) {
-    return new Promise<{ executedQty: number; price: number }>(
-      (resolve, reject) => {
-        const balance = this.wallet.balance;
-        const indexBase = balance.findIndex((bal) => bal.symbol === base);
-        const indexAsset = balance.findIndex((bal) => bal.symbol === asset);
+    (resolve, reject) => {
+      const balance = this.wallet.balance;
+      const indexBase = balance.findIndex((bal) => bal.symbol === base);
+      const indexAsset = balance.findIndex((bal) => bal.symbol === asset);
 
-        if (side === 'BUY') {
-          let baseCost = quantity * price;
-          // If have enough base to buy
-          if (balance[indexBase].quantity >= baseCost) {
-            balance[indexBase].quantity -= baseCost;
-            balance[indexAsset].quantity += quantity;
+      if (side === 'BUY') {
+        let baseCost = quantity * price;
+        // If have enough base to buy
+        if (balance[indexBase].quantity >= baseCost) {
+          balance[indexBase].quantity -= baseCost;
+          balance[indexAsset].quantity += quantity;
 
-            resolve({ executedQty: quantity, price });
-          } else {
-            reject(`Not enough ${base} to buy ${asset}`);
-          }
-        }
-
-        if (side === 'SELL') {
-          // If have enough asset to sell
-          if (balance[indexAsset].quantity >= quantity) {
-            let profit = price * quantity;
-            balance[indexAsset].quantity -= quantity;
-            balance[indexBase].quantity += profit;
-
-            resolve({ executedQty: quantity, price });
-          } else {
-            reject(`Not enough ${asset} to sell for ${base}`);
-          }
+          log(
+            `Buy ${quantity} ${asset} at $${price} for $${baseCost}`,
+            chalk.green
+          );
+          resolve({ executedQty: quantity, price });
+        } else {
+          reject(`Not enough ${base} to buy ${asset}`);
         }
       }
-    );
+
+      if (side === 'SELL') {
+        // If have enough asset to sell
+        if (balance[indexAsset].quantity >= quantity) {
+          let profit = price * quantity;
+          balance[indexAsset].quantity -= quantity;
+          balance[indexBase].quantity += profit;
+
+          log(
+            `Sell ${quantity} ${asset} at $${price} for $${profit}`,
+            chalk.red
+          );
+          resolve({ executedQty: quantity, price });
+        } else {
+          reject(`Not enough ${asset} to sell for ${base}`);
+        }
+      }
+    };
   }
 
   private spotOrderLimit(
@@ -955,101 +1097,101 @@ export class BackTestBot {
     quantity: number,
     side: 'BUY' | 'SELL'
   ) {
-    return new Promise<OpenOrder>((resolve, reject) => {
-      const balance = this.wallet.balance;
-      const indexBase = balance.findIndex((bal) => bal.symbol === base);
-      const indexAsset = balance.findIndex((bal) => bal.symbol === asset);
+    const balance = this.wallet.balance;
+    const indexBase = balance.findIndex((bal) => bal.symbol === base);
+    const indexAsset = balance.findIndex((bal) => bal.symbol === asset);
 
-      let canOrder =
-        side === 'BUY'
-          ? balance[indexBase].quantity >= quantity * price
-          : balance[indexAsset].quantity >= quantity;
-      if (canOrder) {
-        let order: OpenOrder = {
-          id: new Date().getTime(),
-          pair: asset + base,
-          type: 'LIMIT',
-          side,
-          price,
-          quantity,
-        };
-        this.openOrders.push(order);
-        resolve(order);
-      } else {
-        reject(`Order for the pair ${asset + base} cannot be record`);
-      }
-    });
+    let canOrder =
+      side === 'BUY'
+        ? balance[indexBase].quantity >= quantity * price
+        : balance[indexAsset].quantity >= quantity;
+    if (canOrder) {
+      let order: OpenOrder = {
+        id: Math.random().toString(16).slice(2),
+        pair: asset + base,
+        type: 'LIMIT',
+        side,
+        price,
+        quantity,
+      };
+      this.openOrders.push(order);
+      log(
+        `Create a ${side.toLowerCase()} limit order #${
+          order.id
+        } for ${quantity} ${asset} at $${price}`,
+        chalk.magenta
+      );
+    } else {
+      console.error(
+        `Limit order for the pair ${asset + base} cannot be placed`
+      );
+    }
   }
 
   private futuresOrderMarket(
-    asset: string,
-    base: string,
+    pair: string,
     price: number,
     quantity: number,
     side: 'BUY' | 'SELL'
   ) {
-    return new Promise<{ executedQty: number }>((resolve, reject) => {
-      const wallet = this.futuresWallet;
-      const positions = wallet.positions;
-      const indexAsset = positions.findIndex(
-        (pos) => pos.pair === asset + base
-      );
-      const position = positions[indexAsset];
-      const { entryPrice, size } = position;
+    const wallet = this.futuresWallet;
+    const positions = wallet.positions;
+    const position = positions.find((pos) => pos.pair === pair);
+    const { entryPrice, size, leverage } = position;
 
-      if (side === 'BUY') {
-        if (position.positionSide === 'LONG') {
-          // Average the position
-          let baseCost = price * quantity;
-          // If there is enough available base
-          if (wallet.availableBalance >= baseCost) {
-            let avgEntryPrice =
-              (price * quantity + entryPrice * Math.abs(size)) /
-              (quantity + Math.abs(size));
-            position.margin += baseCost;
-            position.size += quantity;
-            position.entryPrice = avgEntryPrice;
-            wallet.availableBalance -= baseCost;
-
-            console.log(
-              chalk.green(
-                `> Take long position on ${asset + base} with size ${quantity}`
-              )
-            );
-            resolve({ executedQty: quantity });
-          }
-        } else if (position.positionSide === 'SHORT') {
-          // Update wallet
-          let pnl = this.getPositionPNL(position, price);
-          wallet.availableBalance += quantity * price;
-          wallet.totalWalletBalance += pnl;
-
-          // Update position
+    if (side === 'BUY') {
+      if (position.positionSide === 'LONG') {
+        // Average the position
+        let baseCost = (price * quantity) / leverage;
+        // If there is enough available base
+        if (wallet.availableBalance >= baseCost) {
+          let avgEntryPrice =
+            (price * quantity + entryPrice * Math.abs(size)) /
+            (quantity + Math.abs(size));
+          position.margin += baseCost;
           position.size += quantity;
-          position.margin = Math.abs((quantity + position.size) * price);
+          position.entryPrice = avgEntryPrice;
+          wallet.availableBalance -= baseCost;
 
-          if (position.size === 0) {
-            position.entryPrice = 0;
-            position.unrealizedProfit = 0;
-          }
-
-          if (position.size > 0) {
-            position.entryPrice = price;
-            position.positionSide = 'LONG';
-            let newPnl = this.getPositionPNL(position, price);
-            position.unrealizedProfit = newPnl;
-            wallet.availableBalance -= (quantity + position.size) * price;
-          }
-
-          console.log(
-            chalk.green(
-              `> Take long position on ${asset + base} with size ${quantity}`
-            )
+          log(
+            `Take a long position on ${pair} with a size of ${quantity} at $${price}`,
+            chalk.green
           );
-          resolve({ executedQty: quantity });
         }
       } else if (position.positionSide === 'SHORT') {
-        let baseCost = price * quantity;
+        // Update wallet
+        let pnl = this.getPositionPNL(position, price);
+        wallet.availableBalance += position.margin + pnl;
+        wallet.totalWalletBalance += pnl;
+
+        // Update position
+        let sizeTamp = clone(position).size;
+        position.margin =
+          Math.abs((quantity + position.size) * price) / leverage;
+        position.size += quantity;
+
+        if (position.size === 0) {
+          position.entryPrice = 0;
+          position.unrealizedProfit = 0;
+        }
+
+        if (position.size > 0) {
+          position.entryPrice = price;
+          position.positionSide = 'LONG';
+          let newPnl = this.getPositionPNL(position, price);
+          position.unrealizedProfit = newPnl;
+          wallet.availableBalance -=
+            Math.abs((quantity + sizeTamp) * price) / leverage;
+        }
+
+        log(
+          `Take a long position on ${pair} with a size of ${quantity} at $${price}`,
+          chalk.green
+        );
+      }
+    } else if (side === 'SELL') {
+      let baseCost = (price * quantity) / leverage;
+      if (position.positionSide === 'SHORT') {
         // If there is enough available base
         if (wallet.availableBalance >= baseCost) {
           let avgEntryPrice =
@@ -1060,22 +1202,22 @@ export class BackTestBot {
           position.entryPrice = avgEntryPrice;
           wallet.availableBalance -= baseCost;
 
-          console.log(
-            chalk.red(
-              `> Take short position on ${asset + base} with size ${quantity}`
-            )
+          log(
+            `Take a short position on ${pair} with a size of ${quantity} at $${price}`,
+            chalk.red
           );
-          resolve({ executedQty: quantity });
         }
       } else if (position.positionSide === 'LONG') {
         // Update wallet
         let pnl = this.getPositionPNL(position, price);
-        wallet.availableBalance += quantity * price;
+        wallet.availableBalance += position.margin + pnl;
         wallet.totalWalletBalance += pnl;
 
         // Update position
+        let sizeTamp = clone(position).size;
+        position.margin =
+          Math.abs((position.size - quantity) * price) / leverage;
         position.size -= quantity;
-        position.margin = Math.abs((position.size - quantity) * price);
 
         if (position.size === 0) {
           position.entryPrice = 0;
@@ -1087,50 +1229,50 @@ export class BackTestBot {
           position.positionSide = 'SHORT';
           let newPnl = this.getPositionPNL(position, price);
           position.unrealizedProfit = newPnl;
-          wallet.availableBalance -= (position.size - quantity) * price;
+          wallet.availableBalance -=
+            Math.abs((sizeTamp - quantity) * price) / leverage;
         }
 
-        console.log(
-          chalk.red(
-            `> Take short position on ${asset + base} with size ${quantity}`
-          )
+        log(
+          `Take a short position on ${pair} with a size of ${quantity} at $${price}`,
+          chalk.red
         );
-        resolve({ executedQty: quantity });
       }
-    });
+    }
   }
 
   private futuresOrderLimit(
-    asset: string,
-    base: string,
+    pair: string,
     price: number,
     quantity: number,
     positionSide: 'LONG' | 'SHORT'
   ) {
-    return new Promise<FuturesOpenOrder>((resolve, reject) => {
-      let canOrder = this.futuresWallet.availableBalance >= price * quantity;
-      if (canOrder) {
-        let order: FuturesOpenOrder = {
-          id: new Date().getTime(),
-          pair: asset + base,
-          type: 'LIMIT',
-          positionSide,
-          price,
-          quantity,
-        };
-        this.futuresOpenOrders.push(order);
-        console.log(
-          chalk.white(
-            `Create a new order ${
-              positionSide === 'LONG' ? 'buy' : 'sell'
-            } on ${asset + base} with size ${quantity}`
-          )
-        );
-        resolve(order);
-      } else {
-        reject(`Order for the pair ${asset + base} cannot be record`);
-      }
-    });
+    let position = this.futuresWallet.positions.find(
+      (pos) => pos.pair === pair
+    );
+    let baseCost = (price * quantity) / position.leverage;
+    let canOrder = this.futuresWallet.availableBalance >= baseCost;
+    if (canOrder) {
+      let order: FuturesOpenOrder = {
+        id: Math.random().toString(16).slice(2),
+        pair,
+        type: 'LIMIT',
+        positionSide,
+        price,
+        quantity,
+      };
+      this.futuresOpenOrders.push(order);
+      log(
+        `Create a new ${
+          positionSide === 'LONG' ? 'buy' : 'sell'
+        } limit order #${order.id} on ${pair} with size ${Math.abs(
+          quantity
+        )} at $${price}`,
+        chalk.magenta
+      );
+    } else {
+      console.error(`Limit order for the pair ${pair} cannot be placed`);
+    }
   }
 
   private futuresOrderTrailingStop(
@@ -1142,34 +1284,37 @@ export class BackTestBot {
     callbackRate: number,
     activation: { changePercentage?: number; percentageToTP: number }
   ) {
-    return new Promise<FuturesOpenOrder>((resolve, reject) => {
-      const wallet = this.futuresWallet;
-      const positions = wallet.positions;
-      const indexAsset = positions.findIndex((pos) => pos.pair === asset);
-      const position = positions[indexAsset];
+    const wallet = this.futuresWallet;
+    const positions = wallet.positions;
+    const position = positions.find((pos) => pos.pair === asset);
 
-      let canOrder = quantity <= position[indexAsset].size;
-      if (canOrder) {
-        let order: FuturesOpenOrder = {
-          id: new Date().getTime(),
-          pair: asset + base,
-          type: 'TRAILING_STOP_MARKET',
-          positionSide,
-          price,
-          quantity,
-          trailingStop: {
-            status: 'PENDING',
-            callbackRate,
-            activation: {
-              changePercentage: activation.changePercentage,
-              percentageToTP: activation.changePercentage,
-            },
+    let canOrder = quantity <= position.size;
+    if (canOrder) {
+      let order: FuturesOpenOrder = {
+        id: Math.random().toString(16).slice(2),
+        pair: asset + base,
+        type: 'TRAILING_STOP_MARKET',
+        positionSide,
+        price,
+        quantity,
+        trailingStop: {
+          status: 'PENDING',
+          callbackRate,
+          activation: {
+            changePercentage: activation.changePercentage,
+            percentageToTP: activation.changePercentage,
           },
-        };
-        this.futuresOpenOrders.push(order);
-        console.log(chalk.yellow(`Create trailing stop on ${asset + base}`));
-        resolve(order);
-      }
-    });
+        },
+      };
+      this.futuresOpenOrders.push(order);
+      log(
+        `Create a trailing stop order #${order.id} on ${asset + base}`,
+        chalk.magenta
+      );
+    } else {
+      console.error(
+        `Trailing stop order for the pair ${asset + base} cannot be placed`
+      );
+    }
   }
 }

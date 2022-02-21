@@ -16,7 +16,6 @@ export function getPositionSizeByPercent({
   balance,
   risk,
   enterPrice,
-  leverage,
   exchangeInfo,
 }: RiskManagementOptions) {
   let pair = asset + base;
@@ -29,8 +28,8 @@ export function getPositionSizeByPercent({
       : getMinOrderQuantity(asset, enterPrice, exchangeInfo);
 
   return quantity > minQuantity
-    ? decimalCeil(quantity / leverage, quantityPrecision)
-    : decimalCeil(minQuantity / leverage, quantityPrecision);
+    ? decimalCeil(quantity, quantityPrecision)
+    : decimalCeil(minQuantity, quantityPrecision);
 }
 
 /**
@@ -43,7 +42,6 @@ export function getPositionSizeByRisk({
   risk,
   enterPrice,
   stopLossPrice,
-  leverage,
   exchangeInfo,
 }: RiskManagementOptions) {
   if (!stopLossPrice) {
@@ -54,7 +52,6 @@ export function getPositionSizeByRisk({
       risk,
       enterPrice,
       stopLossPrice,
-      leverage,
       exchangeInfo,
     });
   }
@@ -71,6 +68,6 @@ export function getPositionSizeByRisk({
       : getMinOrderQuantity(asset, enterPrice, exchangeInfo);
 
   return quantity > minQuantity
-    ? decimalCeil(quantity / leverage, quantityPrecision)
-    : decimalCeil(minQuantity / leverage, quantityPrecision);
+    ? decimalCeil(quantity, quantityPrecision)
+    : decimalCeil(minQuantity, quantityPrecision);
 }

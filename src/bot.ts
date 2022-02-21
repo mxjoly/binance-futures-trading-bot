@@ -177,7 +177,6 @@ export class Bot {
         balance: baseBalance,
         risk,
         enterPrice: currentPrice,
-        leverage: 1,
         exchangeInfo,
       });
 
@@ -380,7 +379,6 @@ export class Bot {
         risk,
         enterPrice: currentPrice,
         stopLossPrice: stopLoss,
-        leverage,
         exchangeInfo,
       });
 
@@ -541,7 +539,6 @@ export class Bot {
         risk,
         enterPrice: currentPrice,
         stopLossPrice: stopLoss,
-        leverage,
         exchangeInfo,
       });
 

@@ -5,18 +5,22 @@
   "scripts": {
     "start": "cross-env NODE_ENV=production nodemon ./build/start.js",
     "dev": "cross-env NODE_ENV=development nodemon ./build/start.js",
-    "test": "cross-env NODE_ENV=test node ./build/index.js",
     "build:prod": "cross-env NODE_ENV=production tsc",
     "build:dev": "cross-env NODE_ENV=development tsc",
     "build:test": "cross-env NODE_ENV=test tsc",
-    "data": "node ./scripts/processData 1m,15m,1h,4h,1d"
+    "generate-data": "node ./scripts/processData 1m,15m,1h,4h,1d",
+    "test": "cross-env NODE_ENV=test node ./build/index.js TRACE=false",
+    "test:debug": "cross-env NODE_ENV=test node ./build/index.js DEBUG=true",
+    "test:delete": "rm -dr ./backtests"
   },
   "keywords": [],
   "author": "mxjoly <maxime.joly2808@gmail.com>",
   "license": "MIT",
   "dependencies": {
+    "ansi-colors": "^4.1.1",
     "binance-api-node": "^0.11.31",
     "chalk": "^4.1.2",
+    "cli-progress": "^3.10.0",
     "csv-parser": "^3.0.0",
     "dayjs": "^1.10.7",
     "dotenv": "^16.0.0",

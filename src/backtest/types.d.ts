@@ -41,7 +41,7 @@ interface Position {
 }
 
 interface OpenOrder {
-  id: number;
+  id: string;
   pair: string;
   price: number;
   quantity: number;
@@ -50,7 +50,7 @@ interface OpenOrder {
 }
 
 interface FuturesOpenOrder {
-  id: number;
+  id: string;
   pair: string;
   price: number;
   quantity: number;

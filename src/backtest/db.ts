@@ -1,6 +1,8 @@
 import { JsonDB } from 'node-json-db';
 import { Config } from 'node-json-db/dist/lib/JsonDBConfig';
 import dayjs from 'dayjs';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * See the declaration file types.ts to see the scheme of database
@@ -10,7 +12,7 @@ export let db: JsonDB;
 export const createDatabase = () => {
   db = new JsonDB(
     new Config(
-      `backtests/backtest-${dayjs(new Date()).format('YYYY-MM-DD')}`,
+      `backtests/backtest-${dayjs(new Date()).format('YYYY-MM-DD_HH-mm-ss')}`,
       true,
       true,
       '/'

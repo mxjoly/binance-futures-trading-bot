@@ -50,8 +50,8 @@ if (process.env.NODE_ENV !== 'test') {
   tradingBot.prepare();
   tradingBot.run();
 } else {
-  const startDate = new Date('January 01, 2022 00:00:00');
-  const endDate = new Date('January 01, 2022 10:00:00');
+  const startDate = new Date('2022-01-02 13:00:00');
+  const endDate = new Date('2022-01-04 00:00:00');
   const initialCapital = 10000;
 
   const bot = new BackTestBot(Config, startDate, endDate);

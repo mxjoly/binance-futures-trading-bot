@@ -3,6 +3,7 @@ build/
 
 # Data
 data/
+backtests/
 
 # Logs
 logs
