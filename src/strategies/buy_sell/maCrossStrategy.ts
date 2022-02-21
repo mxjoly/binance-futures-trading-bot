@@ -20,39 +20,37 @@ const getMAClass = (type: MAType) =>
 /**
  * Return true if the first MA crosses up the second MA
  */
-export const isBuySignal = (
-  candles: ChartCandle[],
-  options = defaultOption
-) => {
-  if (candles.length >= options.longPeriod) {
-    const ma1 = getMAClass(options.smallMAType);
-    const ma2 = getMAClass(options.longMAType);
+export const isBuySignal = (candles: CandleData[], options = defaultOption) => {
+  if (candles.length < Math.max(options.smallPeriod, options.longPeriod))
+    return false;
 
-    const valuesForSmallPeriod = ma1.calculate({
-      values: candles.map((candle) => candle.close),
-      period: options.smallPeriod,
-    });
+  const ma1 = getMAClass(options.smallMAType);
+  const ma2 = getMAClass(options.longMAType);
 
-    const valuesForLongPeriod = ma2.calculate({
-      values: candles.map((candle) => candle.close),
-      period: options.longPeriod,
-    });
+  const valuesForSmallPeriod = ma1.calculate({
+    values: candles.map((candle) => candle.close),
+    period: options.smallPeriod,
+  });
 
-    const input = {
-      lineA: valuesForSmallPeriod.slice(-2),
-      lineB: valuesForLongPeriod.slice(-2),
-    };
+  const valuesForLongPeriod = ma2.calculate({
+    values: candles.map((candle) => candle.close),
+    period: options.longPeriod,
+  });
 
-    const results = CrossUp.calculate(input);
-    return results[results.length - 1] === true;
-  }
+  const input = {
+    lineA: valuesForSmallPeriod.slice(-2),
+    lineB: valuesForLongPeriod.slice(-2),
+  };
+
+  const results = CrossUp.calculate(input);
+  return results[results.length - 1] === true;
 };
 
 /**
  * Return true if the first MA crosses down the second MA
  */
 export const isSellSignal = (
-  candles: ChartCandle[],
+  candles: CandleData[],
   options = defaultOption
 ) => {
   if (candles.length >= options.longPeriod) {

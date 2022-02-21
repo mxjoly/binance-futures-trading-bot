@@ -17,52 +17,50 @@ const getMAClass = (type: MAType) =>
  * Return true if the last candle crosses up the MA
  */
 export const isBuySignal = (
-  candles: ChartCandle[],
+  candles: CandleData[],
   options = defaultOptions
 ) => {
-  if (candles.length >= options.maPeriod) {
-    const ma = getMAClass(options.maType);
+  if (candles.length < options.maPeriod) return false;
 
-    const candleValues = candles.map((candle) => candle.close);
+  const ma = getMAClass(options.maType);
+  const candleValues = candles.map((candle) => candle.close);
 
-    const values = ma.calculate({
-      values: candleValues,
-      period: options.maPeriod,
-    });
+  const values = ma.calculate({
+    values: candleValues,
+    period: options.maPeriod,
+  });
 
-    const input = {
-      lineA: candleValues.slice(-2),
-      lineB: values.slice(-2),
-    };
+  const input = {
+    lineA: candleValues.slice(-2),
+    lineB: values.slice(-2),
+  };
 
-    const results = CrossUp.calculate(input);
-    return results[results.length - 1];
-  }
+  const results = CrossUp.calculate(input);
+  return results[results.length - 1];
 };
 
 /**
  * Return true if the last candle crosses down the MA
  */
 export const isSellSignal = (
-  candles: ChartCandle[],
+  candles: CandleData[],
   options = defaultOptions
 ) => {
-  if (candles.length >= options.maPeriod) {
-    const ma = getMAClass(options.maType);
+  if (candles.length < options.maPeriod) return false;
 
-    const candleValues = candles.map((candle) => candle.close);
+  const ma = getMAClass(options.maType);
+  const candleValues = candles.map((candle) => candle.close);
 
-    const values = ma.calculate({
-      values: candleValues,
-      period: options.maPeriod,
-    });
+  const values = ma.calculate({
+    values: candleValues,
+    period: options.maPeriod,
+  });
 
-    const input = {
-      lineA: candleValues.slice(-2),
-      lineB: values.slice(-2),
-    };
+  const input = {
+    lineA: candleValues.slice(-2),
+    lineB: values.slice(-2),
+  };
 
-    const results = CrossDown.calculate(input);
-    return results[results.length - 1];
-  }
+  const results = CrossDown.calculate(input);
+  return results[results.length - 1];
 };

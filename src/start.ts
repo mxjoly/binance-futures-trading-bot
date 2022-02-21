@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
 import nodemon from 'nodemon';
-import dateFormat from 'dateformat';
+import dayjs from 'dayjs';
 
 const appDirectory = fs.realpathSync(process.cwd());
 const resolveApp = (relativePath: string) =>
@@ -13,21 +13,31 @@ const server = nodemon({ script: `${resolveApp('build')}/index.js` });
 server
   .on('start', () => {
     console.log(
-      `${chalk.blueBright(dateFormat())} : The trading bot has started`
+      `${chalk.blueBright(
+        dayjs().format('YYYY-MM-DD HH:mm:ss')
+      )} : The trading bot has started`
     );
   })
   .on('restart', () => {
     console.log(
-      `${chalk.blueBright(dateFormat())} : The trading bot has restarted`
+      `${chalk.blueBright(
+        dayjs().format('YYYY-MM-DD HH:mm:ss')
+      )} : The trading bot has restarted`
     );
   })
   .on('quit', () => {
     console.log(
-      `${chalk.blueBright(dateFormat())} : The trading bot stops to trade`
+      `${chalk.blueBright(
+        dayjs().format('YYYY-MM-DD HH:mm:ss')
+      )} : The trading bot stops to trade`
     );
     process.exit();
   })
   .on('error', () => {
-    console.error(`${chalk.blueBright(dateFormat())} : An error occurred`);
+    console.error(
+      `${chalk.blueBright(
+        dayjs().format('YYYY-MM-DD HH:mm:ss')
+      )} : An error occurred`
+    );
     process.exit(1);
   });

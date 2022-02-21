@@ -1,4 +1,5 @@
 import { ExchangeInfo } from 'binance-api-node';
+import { decimalCeil } from './math';
 
 /**
  * @see https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md#lot_size
@@ -64,22 +65,4 @@ export function getPricePrecision(pair: string, exchangeInfo: ExchangeInfo) {
   const symbol = exchangeInfo.symbols.find((symbol) => symbol.symbol === pair);
   // @ts-ignore
   return symbol.pricePrecision as number;
-}
-
-/**
- * Math.ceil with decimals
- * @param a
- * @param precision - The number of decimals after the comma
- */
-export function decimalCeil(x: number, precision: number) {
-  return Math.ceil(x * Math.pow(10, precision)) / Math.pow(10, precision);
-}
-
-/**
- * Math.floor with decimals
- * @param a
- * @param precision - The number of decimals after the comma
- */
-export function decimalFloor(x: number, precision: number) {
-  return Math.floor(x * Math.pow(10, precision)) / Math.pow(10, precision);
 }

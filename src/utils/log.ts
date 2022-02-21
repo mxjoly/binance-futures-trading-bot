@@ -1,18 +1,18 @@
-import dateFormat from 'dateformat';
+import dayjs from 'dayjs';
 import chalk from 'chalk';
 import { OrderSide } from 'binance-api-node';
-import { logger } from '.';
-import { BINANCE_MODE } from './';
+import { logger } from '..';
+import { BINANCE_MODE } from '..';
 
 /**
  * Main function add a log
  * @param message
  * @param date
  */
-export function log(message: string, date?: number) {
-  const logDate = date ? new Date(date) : dateFormat();
+export function log(message: string, date = new Date()) {
+  const logDate = dayjs(date).format('YYYY-MM-DD HH:mm:ss');
   logger.info(`${logDate} : @${BINANCE_MODE} > ${message}`);
-  console.log(`${chalk.blueBright(logDate)} : @${BINANCE_MODE} > ${message}`);
+  console.log(`${chalk.blue(logDate)} : @${BINANCE_MODE} > ${message}`);
 }
 
 /**
@@ -20,10 +20,10 @@ export function log(message: string, date?: number) {
  * @param message
  * @param date
  */
-export function error(message: string, date?: number) {
-  const logDate = date ? new Date(date) : dateFormat();
+export function error(message: string, date = new Date()) {
+  const logDate = dayjs(date).format('YYYY-MM-DD HH:mm:ss');
   logger.warn(`${logDate} : @${BINANCE_MODE} > ${message}`);
-  console.error(`${chalk.blueBright(logDate)} : @${BINANCE_MODE} > ${message}`);
+  console.log(`${chalk.blue(logDate)} : @${BINANCE_MODE} > ${message}`);
 }
 
 /**

@@ -18,7 +18,7 @@ export function calculate({
   atrPeriod = defaultOptions.atrPeriod,
   atrMultiplier = defaultOptions.atrMultiplier,
 }: {
-  candles: ChartCandle[];
+  candles: CandleData[];
   atrPeriod?: number;
   atrMultiplier?: number;
 }) {

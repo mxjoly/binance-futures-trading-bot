@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
+const dayjs = require('dayjs');
 const csv = require('csv-parser');
-const dateTime = require('date-and-time');
 
 const dataDirectory = path.resolve(process.cwd(), 'data');
 
@@ -21,15 +21,15 @@ function TimeFrameToMinutes(timeFrame) {
     case '1h':
       return 60;
     case '2h':
-      return 120;
+      return 2 * 60;
     case '4h':
-      return 240;
+      return 4 * 60;
     case '6h':
-      return 360;
+      return 6 * 60;
     case '12h':
-      return 720;
+      return 12 * 60;
     case '1d':
-      return 1440;
+      return 24 * 60;
     default:
       return 1;
   }
@@ -41,7 +41,7 @@ function TimeFrameToMinutes(timeFrame) {
  * @param {string} timeFrame
  */
 function dateMatchTimeFrame(date, timeFrame) {
-  let dateFormat = dateTime.format(new Date(date), 'HH:mm');
+  let dateFormat = dayjs(new Date(date)).format('HH:mm');
   switch (timeFrame) {
     case '1m':
       return /^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/.test(dateFormat);
@@ -106,7 +106,7 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
 
       const lowest = (startIndex, endIndex) => {
         let lowest = loadedData[startIndex].low;
-        for (let i = startIndex - 1; i >= endIndex; i--) {
+        for (let i = startIndex; i >= endIndex; i--) {
           if (loadedData[i].low < lowest) lowest = loadedData[i].low;
         }
         return lowest;
@@ -114,17 +114,16 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
 
       const volume = (startIndex, endIndex) => {
         let volume = 0;
-        let base = loadedData[0].symbol.split('/')[0];
-        for (let i = startIndex - 1; i >= endIndex; i--) {
-          volume += Number(loadedData[i][`Volume ${base}`]);
+        let asset = loadedData[0].symbol.split('/')[0];
+        for (let i = startIndex; i >= endIndex; i--) {
+          volume += Number(loadedData[i][`Volume ${asset}`]);
         }
-        return volume.toFixed(3);
+        return volume;
       };
 
       // Start to use candle at 00:00
       while (
-        dateTime.format(new Date(loadedData[startIndex].date), 'HH:mm') !==
-        '00:00'
+        dayjs(new Date(loadedData[startIndex].date)).format('HH:mm') !== '00:00'
       ) {
         loadedData.pop();
         startIndex--;
@@ -152,10 +151,19 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
         )
           break;
 
+        let openTime = dayjs(loadedData[startCandleIndex].date).format(
+          'YYYY-MM-DD HH:mm:ss'
+        );
+        let closeTime = dayjs(loadedData[startCandleIndex].date)
+          .add(TimeFrameToMinutes(newTimeFrame), 'minute')
+          .subtract(1, 'second')
+          .format('YYYY-MM-DD HH:mm:ss');
+
         if (endCandleIndex >= 0) {
           newCandles.push({
-            date: loadedData[startCandleIndex].date,
             symbol: loadedData[startCandleIndex].symbol,
+            openTime: openTime,
+            closeTime: closeTime,
             open: loadedData[startCandleIndex].open,
             high: highest(startCandleIndex, endCandleIndex),
             low: lowest(startCandleIndex, endCandleIndex),
@@ -166,8 +174,9 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
       }
 
       const headers = [
-        'date',
         'symbol',
+        'openTime',
+        'closeTime',
         'open',
         'high',
         'low',

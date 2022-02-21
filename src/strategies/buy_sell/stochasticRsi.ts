@@ -19,12 +19,15 @@ const defaultOptions: Options = {
 };
 
 /**
- * Return true if the macd crosses up the signal and we are in uptrend
+ * Return true if the k signal crosses up the d signal and we are in uptrend
  */
 export const isBuySignal = (
-  candles: ChartCandle[],
+  candles: CandleData[],
   options = defaultOptions
 ) => {
+  if (candles.length < Math.max(options.rsiPeriod, options.stochasticPeriod))
+    return false;
+
   const stochRsi = StochasticRSI.calculate({
     rsiPeriod: options.rsiPeriod,
     stochasticPeriod: options.stochasticPeriod,
@@ -44,12 +47,15 @@ export const isBuySignal = (
 };
 
 /**
- * Return true if the macd crosses down the signal and we are in downtrend
+ * Return true if k signal crosses down the d signal and we are in downtrend
  */
 export const isSellSignal = (
-  candles: ChartCandle[],
+  candles: CandleData[],
   options = defaultOptions
 ) => {
+  if (candles.length < Math.max(options.rsiPeriod, options.stochasticPeriod))
+    return false;
+
   const stochRsi = StochasticRSI.calculate({
     rsiPeriod: options.rsiPeriod,
     stochasticPeriod: options.stochasticPeriod,

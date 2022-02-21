@@ -18,23 +18,23 @@ const defaultOptions: Options = {
  * Return true if the RSI crosses up the oversold threshold
  */
 export const isBuySignal = (
-  candles: ChartCandle[],
+  candles: CandleData[],
   options = defaultOptions
 ) => {
-  if (candles.length >= options.rsiPeriod) {
-    const values = RSI.calculate({
-      values: candles.map((candle) => candle.close),
-      period: options.rsiPeriod,
-    });
+  if (candles.length < options.rsiPeriod) return false;
 
-    const last = values[values.length - 2];
-    const current = values[values.length - 1];
+  const values = RSI.calculate({
+    values: candles.map((candle) => candle.close),
+    period: options.rsiPeriod,
+  });
 
-    if (options.signalAtBreakout) {
-      return last < options.rsiOversold && current > options.rsiOversold;
-    } else {
-      return last > options.rsiOversold && current < options.rsiOversold;
-    }
+  const last = values[values.length - 2];
+  const current = values[values.length - 1];
+
+  if (options.signalAtBreakout) {
+    return last < options.rsiOversold && current > options.rsiOversold;
+  } else {
+    return last > options.rsiOversold && current < options.rsiOversold;
   }
 };
 
@@ -42,22 +42,22 @@ export const isBuySignal = (
  * Return true if the RSI crosses down the overbought threshold
  */
 export const isSellSignal = (
-  candles: ChartCandle[],
+  candles: CandleData[],
   options = defaultOptions
 ) => {
-  if (candles.length >= options.rsiPeriod) {
-    const values = RSI.calculate({
-      values: candles.map((candle) => candle.close),
-      period: options.rsiPeriod,
-    });
+  if (candles.length < options.rsiPeriod) return false;
 
-    const last = values[values.length - 2];
-    const current = values[values.length - 1];
+  const values = RSI.calculate({
+    values: candles.map((candle) => candle.close),
+    period: options.rsiPeriod,
+  });
 
-    if (options.signalAtBreakout) {
-      return last > options.rsiOverbought && current < options.rsiOverbought;
-    } else {
-      return last < options.rsiOverbought && current > options.rsiOverbought;
-    }
+  const last = values[values.length - 2];
+  const current = values[values.length - 1];
+
+  if (options.signalAtBreakout) {
+    return last > options.rsiOverbought && current < options.rsiOverbought;
+  } else {
+    return last < options.rsiOverbought && current > options.rsiOverbought;
   }
 };

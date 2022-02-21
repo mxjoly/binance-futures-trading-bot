@@ -1,5 +1,5 @@
 import { OrderSide } from 'binance-api-node';
-import { decimalFloor } from '../../utils';
+import { decimalFloor } from '../../utils/math';
 import { ATR } from 'technicalindicators';
 
 interface Options {

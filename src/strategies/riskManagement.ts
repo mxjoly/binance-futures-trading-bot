@@ -3,8 +3,8 @@ import {
   getQuantityPrecision,
   getLotSizeQuantityRules,
   getMinOrderQuantity,
-  decimalCeil,
-} from '../utils';
+} from '../utils/rules';
+import { decimalCeil } from '../utils/math';
 
 /**
  * Calculate the quantity of crypto to buy according to your available balance,
@@ -16,13 +16,12 @@ export function getPositionSizeByPercent({
   balance,
   risk,
   enterPrice,
-  stopLossPrice,
   leverage,
   exchangeInfo,
 }: RiskManagementOptions) {
   let pair = asset + base;
   let quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
-  let quantity = (balance * risk) / enterPrice / leverage;
+  let quantity = (balance * risk) / enterPrice;
 
   let minQuantity =
     BINANCE_MODE === 'spot'
@@ -30,7 +29,7 @@ export function getPositionSizeByPercent({
       : getMinOrderQuantity(asset, enterPrice, exchangeInfo);
 
   return quantity > minQuantity
-    ? decimalCeil(quantity, quantityPrecision)
+    ? decimalCeil(quantity / leverage, quantityPrecision)
     : decimalCeil(minQuantity / leverage, quantityPrecision);
 }
 
@@ -72,6 +71,6 @@ export function getPositionSizeByRisk({
       : getMinOrderQuantity(asset, enterPrice, exchangeInfo);
 
   return quantity > minQuantity
-    ? decimalCeil(quantity, quantityPrecision)
+    ? decimalCeil(quantity / leverage, quantityPrecision)
     : decimalCeil(minQuantity / leverage, quantityPrecision);
 }

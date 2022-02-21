@@ -2,10 +2,16 @@ import winston from 'winston';
 import Binance from 'binance-api-node';
 import { Bot } from './bot';
 import { BackTestBot } from './backtest/bot';
-import { StochasticRsiConfig } from './configs';
+import Config from './configs/rsi';
+import { initializePlugins } from './utils/plugins';
 
+// Initialize environment variables
 require('dotenv').config();
 
+// Initialize the plugins of dayjs
+initializePlugins();
+
+// Log
 export const logger = winston.createLogger({
   level: 'info',
   format: winston.format.simple(),
@@ -40,15 +46,15 @@ export const binanceClient = Binance(
 );
 
 if (process.env.NODE_ENV !== 'test') {
-  const tradingBot = new Bot(StochasticRsiConfig);
+  const tradingBot = new Bot(Config);
   tradingBot.prepare();
   tradingBot.run();
 } else {
   const startDate = new Date('January 01, 2022 00:00:00');
-  const endDate = new Date('January 01, 2022 23:59:59');
+  const endDate = new Date('January 01, 2022 10:00:00');
   const initialCapital = 10000;
 
-  const bot = new BackTestBot(StochasticRsiConfig, startDate, endDate);
+  const bot = new BackTestBot(Config, startDate, endDate);
   bot.prepare(initialCapital);
   bot.run();
 }

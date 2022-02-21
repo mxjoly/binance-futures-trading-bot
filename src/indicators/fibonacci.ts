@@ -37,7 +37,7 @@ const defaultOptions: Options = {
 };
 
 function findHighestLowest(
-  candles: ChartCandle[],
+  candles: CandleData[],
   trend: FibonacciTrend,
   period?: number
 ) {
@@ -78,7 +78,7 @@ export function calculate({
   period = defaultOptions.period,
   trend = defaultOptions.trend,
 }: {
-  candles: ChartCandle[];
+  candles: CandleData[];
   period?: number;
   trend?: FibonacciTrend;
 }): FibonacciLevels {

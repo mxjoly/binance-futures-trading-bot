@@ -1,12 +1,3 @@
-interface CSVCandleData {
-  date: Date;
-  open: number;
-  close: number;
-  high: number;
-  low: number;
-  volume: number;
-}
-
 // Database Scheme
 
 interface DB {
@@ -25,18 +16,11 @@ interface MockAccount {
 
 interface Wallet {
   balance: Balance[];
-  trades: Trade[];
 }
 
 interface Balance {
   symbol: string;
   quantity: number;
-}
-
-interface Trade {
-  symbol: string;
-  quantity: number;
-  avgPrice: number;
 }
 
 interface FuturesWallet {
@@ -47,7 +31,7 @@ interface FuturesWallet {
 }
 
 interface Position {
-  symbol: string;
+  pair: string;
   size: number; // Asset size
   margin: number; // Base margin
   entryPrice: number;
@@ -57,19 +41,26 @@ interface Position {
 }
 
 interface OpenOrder {
-  symbol: string;
+  id: number;
+  pair: string;
   price: number;
   quantity: number;
   side: 'BUY' | 'SELL';
-  type: 'MARKET' | 'LIMIT' | 'TRAILING_STOP_MARKET';
+  type: 'MARKET' | 'LIMIT';
 }
 
 interface FuturesOpenOrder {
-  symbol: string;
+  id: number;
+  pair: string;
   price: number;
   quantity: number;
   positionSide: 'LONG' | 'SHORT';
   type: 'MARKET' | 'LIMIT' | 'TRAILING_STOP_MARKET';
+  trailingStop?: {
+    callbackRate: number; // % between 0-1
+    activation: { changePercentage?: number; percentageToTP: number }; // % between 0-1
+    status: 'PENDING' | 'ACTIVE';
+  };
 }
 
 /**

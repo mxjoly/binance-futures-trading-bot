@@ -4,7 +4,7 @@
  * @param rightBars
  */
 export function pivotHighs(
-  candles: ChartCandle[],
+  candles: CandleData[],
   leftBars: number,
   rightBars: number
 ) {
@@ -17,7 +17,7 @@ export function pivotHighs(
  * @param rightBars
  */
 export function pivotLows(
-  candles: ChartCandle[],
+  candles: CandleData[],
   leftBars: number,
   rightBars: number
 ) {

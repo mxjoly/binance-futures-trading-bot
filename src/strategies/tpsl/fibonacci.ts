@@ -1,6 +1,6 @@
 import { OrderSide } from 'binance-api-node';
 import { Fibonacci } from '../../indicators';
-import { decimalFloor } from '../../utils';
+import { decimalFloor } from '../../utils/math';
 
 interface Options {
   profitTargets?: BuySellProperty[];

@@ -9,9 +9,9 @@ import {
   getPricePrecision,
   getQuantityPrecision,
   isValidQuantity,
-  decimalFloor,
-} from './utils';
-import { log, error, logBuySellExecutionOrder } from './log';
+} from './utils/rules';
+import { decimalFloor } from './utils/math';
+import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient, BINANCE_MODE } from '.';
 
 // ====================================================================== //
@@ -79,9 +79,10 @@ export class Bot {
                 low: Number(candle.low),
                 close: Number(candle.close),
                 volume: Number(candle.volume),
-                date: new Date(candle.startTime),
+                openTime: new Date(candle.startTime),
+                closeTime: new Date(candle.closeTime),
               });
-              candles = candles.slice(1); // Work with the same length
+              candles.shift(); // Remove the first candle to work with the same length
 
               const trade =
                 BINANCE_MODE === 'spot'
@@ -110,7 +111,7 @@ export class Bot {
 
   private async tradeWithSpot(
     tradeConfig: TradeConfig,
-    candles: ChartCandle[],
+    candles: CandleData[],
     exchangeInfo: ExchangeInfo
   ) {
     const {
@@ -124,7 +125,7 @@ export class Bot {
       allowPyramiding,
       maxPyramidingAllocation,
     } = tradeConfig;
-    const pair = `${asset}${base}`;
+    const pair = asset + base;
 
     // Balance information
     const { balances } = await binanceClient.accountInfo();
@@ -137,7 +138,6 @@ export class Bot {
 
     // Data
     const currentPrice = candles[candles.length - 1].close;
-    const currentTrades = await binanceClient.myTrades({ symbol: pair });
     const currentOpenOrders = await binanceClient.openOrders({
       symbol: pair,
     });
@@ -152,34 +152,23 @@ export class Bot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    // Close remaining open orders while doesn't trade on the symbol
-    if (currentTrades.length === 0 && currentOpenOrders.length > 0) {
-      this.closeOpenOrders(pair);
-    }
-
     // If a trade exists, search when to sell
-    if (currentTrades.length > 0) {
+    if (assetBalance > 0) {
       if (sellSignal(candles)) {
-        currentTrades.forEach((trade) => {
-          binanceClient
-            .order({
-              side: OrderSide.SELL,
-              type: OrderType.MARKET,
-              symbol: trade.symbol,
-              quantity: trade.qty,
-              recvWindow: 60000,
-            })
-            .then(() => {
-              this.closeOpenOrders(pair);
-              const totalValue = currentPrice * Number(trade.qty);
-              const gains =
-                totalValue - Number(trade.price) * Number(trade.qty);
-              log(
-                `Sells ${trade.qty}${asset} for ${totalValue}${base}. Gains: ${gains}${base}`
-              );
-            })
-            .catch(error);
-        });
+        binanceClient
+          .order({
+            side: OrderSide.SELL,
+            type: OrderType.MARKET,
+            symbol: pair,
+            quantity: String(assetBalance),
+            recvWindow: 60000,
+          })
+          .then(() => {
+            this.closeOpenOrders(pair);
+            const totalValue = currentPrice * Number(assetBalance);
+            log(`Sells ${assetBalance}${asset} for ${totalValue}${base}.`);
+          })
+          .catch(error);
       }
     } else if (canBuy && buySignal(candles)) {
       const quantity = riskManagement({
@@ -202,34 +191,20 @@ export class Bot {
           recvWindow: 60000,
           timeInForce: 'GTC',
         })
-        .then(({ executedQty, price: orderPrice }) => {
-          // If there is always a trade, get the average price
-          let avgPrice =
-            currentTrades.length > 0
-              ? currentTrades.reduce(
-                  (previous, current) =>
-                    (previous += Number(current.price) * Number(current.qty)),
-                  Number(executedQty) * Number(orderPrice)
-                ) /
-                (assetBalance + Number(executedQty))
-              : currentPrice;
+        .then(({ price: orderPrice }) => {
+          // @NOTES => calculate the average price
 
           // Calculate the tp and sl
           const { takeProfits, stopLoss } = tpslStrategy
-            ? tpslStrategy(avgPrice, candles, pricePrecision, OrderSide.BUY)
+            ? tpslStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
             : { takeProfits: [], stopLoss: null };
 
           // Remove the current open orders to update them
           if (currentOpenOrders.length > 0) this.closeOpenOrders(pair);
 
-          return {
-            orderPrice,
-            avgPrice,
-            takeProfits,
-            stopLoss,
-          };
+          return { orderPrice, takeProfits, stopLoss };
         })
-        .then(({ orderPrice, avgPrice, stopLoss, takeProfits }) => {
+        .then(({ orderPrice, stopLoss, takeProfits }) => {
           if (takeProfits.length === 1 && stopLoss) {
             // Sell oco order as TP/SL
             binanceClient
@@ -279,7 +254,7 @@ export class Bot {
                   type: OrderType.LIMIT,
                   symbol: pair,
                   price: String(stopLoss),
-                  quantity: String(stopLoss),
+                  quantity: String(quantity),
                   recvWindow: 60000,
                 })
                 .catch(error);
@@ -295,10 +270,6 @@ export class Bot {
             takeProfits,
             stopLoss
           );
-
-          // Display the average price for the asset
-          if (currentTrades.length > 0)
-            log(`Your average price for ${asset} is now at ${avgPrice}${base}`);
         })
         .catch(error);
     }
@@ -306,7 +277,7 @@ export class Bot {
 
   private async tradeWithFutures(
     tradeConfig: TradeConfig,
-    candles: ChartCandle[],
+    candles: CandleData[],
     exchangeInfo: ExchangeInfo
   ) {
     const {
@@ -319,20 +290,19 @@ export class Bot {
       tpslStrategy,
       trendFilter,
       riskManagement,
-      useTrailingStop,
-      trailingStopCallbackRate,
+      trailingStopConfig,
       allowPyramiding,
       maxPyramidingAllocation,
       unidirectional,
     } = tradeConfig;
-    const pair = `${asset}${base}`;
+    const pair = asset + base;
 
     const useLongPosition = trendFilter ? trendFilter(candles) === 1 : true;
     const useShortPosition = trendFilter ? trendFilter(candles) === -1 : true;
 
     // Balance information
     const balances = await binanceClient.futuresAccountBalance();
-    const { balance, availableBalance } = balances.find(
+    const { balance: assetBalance, availableBalance } = balances.find(
       (balance) => balance.asset === base
     );
 
@@ -344,8 +314,8 @@ export class Bot {
 
     // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
-      ? Number(position.initialMargin) + Number(balance) * risk <=
-        Number(balance) * maxPyramidingAllocation
+      ? Number(position.initialMargin) + Number(assetBalance) * risk <=
+        Number(assetBalance) * maxPyramidingAllocation
       : false;
     const canTakeLongPosition =
       (!allowPyramiding && !hasLongPosition) || allowPyramiding;
@@ -404,7 +374,9 @@ export class Bot {
       let quantity = riskManagement({
         asset,
         base,
-        balance: allowPyramiding ? Number(balance) : Number(availableBalance),
+        balance: allowPyramiding
+          ? Number(assetBalance)
+          : Number(availableBalance),
         risk,
         enterPrice: currentPrice,
         stopLossPrice: stopLoss,
@@ -445,28 +417,30 @@ export class Bot {
             await binanceClient.futuresAccountInfo()
           ).positions.find((position) => position.symbol === pair);
 
-          if (useTrailingStop) {
-            if (!trailingStopCallbackRate) {
-              error(
-                'Cannot use trailing stop because property trailingStopCallbackRate is not defined'
-              );
-            } else {
-              binanceClient
-                .futuresOrder({
-                  side: OrderSide.SELL,
-                  type: OrderType.TRAILING_STOP_MARKET,
-                  symbol: pair,
-                  quantity: positionSize,
-                  callbackRate: trailingStopCallbackRate * 100,
-                  activationPrice:
-                    candles[candles.length - 1].close *
-                    (1 + trailingStopCallbackRate),
-                })
-                .catch(error);
-            }
+          if (trailingStopConfig) {
+            let { percentageToTP, changePercentage } =
+              trailingStopConfig.activation;
+
+            const activationPrice = changePercentage
+              ? currentPrice * (1 + changePercentage)
+              : percentageToTP && takeProfits.length > 0
+              ? currentPrice +
+                (takeProfits[0].price - currentPrice) * percentageToTP
+              : currentPrice;
+
+            binanceClient
+              .futuresOrder({
+                side: OrderSide.SELL,
+                type: OrderType.TRAILING_STOP_MARKET,
+                symbol: pair,
+                quantity: positionSize,
+                callbackRate: trailingStopConfig.callbackRate * 100,
+                activationPrice,
+              })
+              .catch(error);
           }
 
-          if (takeProfits.length > 0 && !useTrailingStop) {
+          if (takeProfits.length > 0) {
             // Create the take profit orders
             takeProfits.forEach(({ price, quantityPercentage }) => {
               // Take profit order
@@ -561,7 +535,9 @@ export class Bot {
       let quantity = riskManagement({
         asset,
         base,
-        balance: allowPyramiding ? Number(balance) : Number(availableBalance),
+        balance: allowPyramiding
+          ? Number(assetBalance)
+          : Number(availableBalance),
         risk,
         enterPrice: currentPrice,
         stopLossPrice: stopLoss,
@@ -602,28 +578,30 @@ export class Bot {
             await binanceClient.futuresAccountInfo()
           ).positions.find((position) => position.symbol === pair);
 
-          if (useTrailingStop) {
-            if (!trailingStopCallbackRate) {
-              error(
-                'Cannot use trailing stop because property trailingStopCallbackRate is not defined'
-              );
-            } else {
-              binanceClient
-                .futuresOrder({
-                  side: OrderSide.BUY,
-                  type: OrderType.TRAILING_STOP_MARKET,
-                  symbol: pair,
-                  quantity: positionSize,
-                  callbackRate: trailingStopCallbackRate * 100,
-                  activationPrice:
-                    candles[candles.length - 1].close *
-                    (1 - trailingStopCallbackRate),
-                })
-                .catch(error);
-            }
+          if (trailingStopConfig) {
+            let { percentageToTP, changePercentage } =
+              trailingStopConfig.activation;
+
+            const activationPrice = changePercentage
+              ? currentPrice * (1 - changePercentage)
+              : percentageToTP && takeProfits.length > 0
+              ? currentPrice -
+                (currentPrice - takeProfits[0].price) * percentageToTP
+              : currentPrice;
+
+            binanceClient
+              .futuresOrder({
+                side: OrderSide.BUY,
+                type: OrderType.TRAILING_STOP_MARKET,
+                symbol: pair,
+                quantity: positionSize,
+                callbackRate: trailingStopConfig.callbackRate * 100,
+                activationPrice,
+              })
+              .catch(error);
           }
 
-          if (takeProfits.length > 0 && !useTrailingStop) {
+          if (takeProfits.length > 0) {
             // Create the take profit orders
             takeProfits.forEach(({ price, quantityPercentage }) => {
               // Take profit order
@@ -654,7 +632,7 @@ export class Bot {
                 type: OrderType.LIMIT,
                 symbol: pair,
                 price: stopLoss,
-                quantity: executedQty,
+                quantity: String(positionSize),
                 recvWindow: 60000,
               })
               .catch(error);
@@ -688,7 +666,7 @@ export class Bot {
     onlyFinalCandle = true,
     displayLog = true
   ) {
-    return new Promise<ChartCandle[]>((resolve, reject) => {
+    return new Promise<CandleData[]>((resolve, reject) => {
       const getCandles =
         BINANCE_MODE === 'spot'
           ? binanceClient.candles
@@ -707,7 +685,8 @@ export class Bot {
                 low: Number(candle.low),
                 close: Number(candle.close),
                 volume: Number(candle.volume),
-                date: new Date(candle.openTime),
+                openTime: new Date(candle.openTime),
+                closeTime: new Date(candle.closeTime),
               }))
           );
         })

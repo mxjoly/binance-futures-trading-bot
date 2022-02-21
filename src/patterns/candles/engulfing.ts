@@ -8,19 +8,18 @@ const defaultDetection: Detection = {
   rsiPeriod: 14,
 };
 
-const getBodyHigh = (candle: ChartCandle) =>
-  Math.max(candle.close, candle.open);
+const getBodyHigh = (candle: CandleData) => Math.max(candle.close, candle.open);
 
-const getBodyLow = (candle: ChartCandle) => Math.min(candle.close, candle.open);
+const getBodyLow = (candle: CandleData) => Math.min(candle.close, candle.open);
 
-const getBody = (candle: ChartCandle) =>
+const getBody = (candle: CandleData) =>
   getBodyHigh(candle) - getBodyLow(candle);
 
-const hasWhiteBody = (candle: ChartCandle) => candle.open < candle.close;
-const hasBlackBody = (candle: ChartCandle) => candle.open > candle.close;
+const hasWhiteBody = (candle: CandleData) => candle.open < candle.close;
+const hasBlackBody = (candle: CandleData) => candle.open > candle.close;
 
 export const isBullEngulfing = (
-  candles: ChartCandle[],
+  candles: CandleData[],
   index = candles.length - 1,
   options = defaultDetection
 ) => {
@@ -34,12 +33,12 @@ export const isBullEngulfing = (
       period: options.rsiPeriod,
     });
 
-    const getIndex = (candle: ChartCandle) =>
+    const getIndex = (candle: CandleData) =>
       candles.findIndex((c) => c === candle);
-    const getBodyAvg = (candle: ChartCandle) => emaBody[getIndex(candle)];
-    const hasSmallBody = (candle: ChartCandle) =>
+    const getBodyAvg = (candle: CandleData) => emaBody[getIndex(candle)];
+    const hasSmallBody = (candle: CandleData) =>
       getBody(candle) < getBodyAvg(candle);
-    const hasLongBody = (candle: ChartCandle) =>
+    const hasLongBody = (candle: CandleData) =>
       getBody(candle) > getBodyAvg(candle);
 
     return (
@@ -55,7 +54,7 @@ export const isBullEngulfing = (
 };
 
 export const isBearEngulfing = (
-  candles: ChartCandle[],
+  candles: CandleData[],
   index = candles.length - 1,
   options = defaultDetection
 ) => {
@@ -69,12 +68,12 @@ export const isBearEngulfing = (
       period: options.rsiPeriod,
     });
 
-    const getIndex = (candle: ChartCandle) =>
+    const getIndex = (candle: CandleData) =>
       candles.findIndex((c) => c === candle);
-    const getBodyAvg = (candle: ChartCandle) => emaBody[getIndex(candle)];
-    const hasSmallBody = (candle: ChartCandle) =>
+    const getBodyAvg = (candle: CandleData) => emaBody[getIndex(candle)];
+    const hasSmallBody = (candle: CandleData) =>
       getBody(candle) < getBodyAvg(candle);
-    const hasLongBody = (candle: ChartCandle) =>
+    const hasLongBody = (candle: CandleData) =>
       getBody(candle) > getBodyAvg(candle);
 
     return (
