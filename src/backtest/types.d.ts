@@ -68,17 +68,24 @@ interface FuturesOpenOrder {
  */
 interface StrategyResults {
   initialDeposit: number;
+  numberSymbol: number;
   totalNetProfit: number;
   totalBars: number;
   totalTrades: number;
+  totalLongTrades: number;
+  totalShortTrades: number;
   profitFactor: number;
-  grossProfit: number;
-  grossDrawdown: number;
+  totalProfit: number;
+  totalLoss: number;
   maxDrawdownAbsolute: number;
   maxDrawdownRelative: number;
   totalWinRate: number;
   longWinRate: number;
   shortWinRate: number;
+  longWinningTrade: number;
+  longLostTrade: number;
+  shortWinningTrade: number;
+  shortLostTrade: number;
   avgProfit: number;
   avgLoss: number;
   maxProfit: number;

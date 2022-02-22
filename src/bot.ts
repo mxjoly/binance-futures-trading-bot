@@ -10,7 +10,7 @@ import {
   getQuantityPrecision,
   isValidQuantity,
 } from './utils/rules';
-import { decimalFloor } from './utils/math';
+import { decimalCeil, decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient, BINANCE_MODE } from '.';
 
@@ -403,7 +403,7 @@ export class Bot {
           quantity: String(quantity),
           recvWindow: 60000,
         })
-        .then(async () => {
+        .then(() => {
           // Cancel the previous orders to update them
           if (currentOpenOrders.length > 0) {
             this.closeOpenOrders(pair);
@@ -414,29 +414,6 @@ export class Bot {
           const avgPrice =
             (positionSize * positionEntryPrice + quantity * currentPrice) /
             (positionSize + quantity);
-
-          if (trailingStopConfig) {
-            let { percentageToTP, changePercentage } =
-              trailingStopConfig.activation;
-
-            const activationPrice = changePercentage
-              ? currentPrice * (1 + changePercentage)
-              : percentageToTP && takeProfits.length > 0
-              ? currentPrice +
-                (takeProfits[0].price - currentPrice) * percentageToTP
-              : currentPrice;
-
-            binanceClient
-              .futuresOrder({
-                side: OrderSide.SELL,
-                type: OrderType.TRAILING_STOP_MARKET,
-                symbol: pair,
-                quantity: String(positionTotalSize),
-                callbackRate: trailingStopConfig.callbackRate * 100,
-                activationPrice,
-              })
-              .catch(error);
-          }
 
           if (takeProfits.length > 0) {
             // Create the take profit orders
@@ -470,6 +447,42 @@ export class Bot {
                 price: stopLoss,
                 quantity: String(positionTotalSize),
                 recvWindow: 60000,
+              })
+              .catch(error);
+          }
+
+          if (trailingStopConfig) {
+            const calculateActivationPrice = (currentPrice: number) => {
+              let { percentageToTP, changePercentage } =
+                trailingStopConfig.activation;
+
+              if (takeProfits.length > 0 && percentageToTP) {
+                const nearestTakeProfitPrice = Math.min(
+                  ...takeProfits.map((tp) => tp.price)
+                );
+                let delta = Math.abs(nearestTakeProfitPrice - currentPrice);
+                return decimalFloor(
+                  currentPrice + delta * percentageToTP,
+                  pricePrecision
+                );
+              } else if (changePercentage) {
+                return decimalFloor(
+                  currentPrice * (1 + changePercentage),
+                  pricePrecision
+                );
+              } else {
+                return currentPrice;
+              }
+            };
+
+            binanceClient
+              .futuresOrder({
+                side: OrderSide.SELL,
+                type: OrderType.TRAILING_STOP_MARKET,
+                symbol: pair,
+                quantity: String(positionTotalSize),
+                callbackRate: trailingStopConfig.callbackRate * 100,
+                activationPrice: calculateActivationPrice(currentPrice),
               })
               .catch(error);
           }
@@ -572,29 +585,6 @@ export class Bot {
             (positionSize * positionEntryPrice + quantity * currentPrice) /
             (positionSize + quantity);
 
-          if (trailingStopConfig) {
-            let { percentageToTP, changePercentage } =
-              trailingStopConfig.activation;
-
-            const activationPrice = changePercentage
-              ? currentPrice * (1 - changePercentage)
-              : percentageToTP && takeProfits.length > 0
-              ? currentPrice -
-                (currentPrice - takeProfits[0].price) * percentageToTP
-              : currentPrice;
-
-            binanceClient
-              .futuresOrder({
-                side: OrderSide.BUY,
-                type: OrderType.TRAILING_STOP_MARKET,
-                symbol: pair,
-                quantity: String(positionTotalSize),
-                callbackRate: trailingStopConfig.callbackRate * 100,
-                activationPrice,
-              })
-              .catch(error);
-          }
-
           if (takeProfits.length > 0) {
             // Create the take profit orders
             takeProfits.forEach(({ price, quantityPercentage }) => {
@@ -628,6 +618,42 @@ export class Bot {
                 price: stopLoss,
                 quantity: String(positionTotalSize),
                 recvWindow: 60000,
+              })
+              .catch(error);
+          }
+
+          if (trailingStopConfig) {
+            const calculateActivationPrice = (currentPrice: number) => {
+              let { percentageToTP, changePercentage } =
+                trailingStopConfig.activation;
+
+              if (takeProfits.length > 0 && percentageToTP) {
+                const nearestTakeProfitPrice = Math.max(
+                  ...takeProfits.map((tp) => tp.price)
+                );
+                let delta = Math.abs(currentPrice - nearestTakeProfitPrice);
+                return decimalCeil(
+                  currentPrice - delta * percentageToTP,
+                  pricePrecision
+                );
+              } else if (changePercentage) {
+                return decimalCeil(
+                  currentPrice * (1 - changePercentage),
+                  pricePrecision
+                );
+              } else {
+                return currentPrice;
+              }
+            };
+
+            binanceClient
+              .futuresOrder({
+                side: OrderSide.BUY,
+                type: OrderType.TRAILING_STOP_MARKET,
+                symbol: pair,
+                quantity: String(positionTotalSize),
+                callbackRate: trailingStopConfig.callbackRate * 100,
+                activationPrice: calculateActivationPrice(currentPrice),
               })
               .catch(error);
           }

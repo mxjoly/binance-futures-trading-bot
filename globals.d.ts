@@ -32,11 +32,11 @@ interface CandleData {
 type Signal = (candles: CandleData[]) => boolean;
 
 type TrailingStopConfig = {
-  // Activation of trailing stop when:
-  // changePercentage: the price change of X% (0 to 1)
+  // Activation price of trailing stop calculated by :
+  // changePercentage: the price moves X% (0 to 1) in the positive
   // percentageToTP: the price reach X% (0 to 1) of the nearest take profit
   activation: { changePercentage?: number; percentageToTP: number };
-  callbackRate: number; // Percentage between 0 and 1 - stop loss if the price increase/decrease of %
+  callbackRate: number; // Percentage between 0 and 1 - stop loss if the price increase/decrease of % from last candle
 };
 
 type TPSLStrategy = (
