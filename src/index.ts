@@ -65,7 +65,7 @@ if (process.env.NODE_ENV !== 'test') {
   tradingBot.run();
 } else {
   const startDate = new Date('2021-01-01 00:00:00');
-  const endDate = new Date('2021-01-10 23:59:59');
+  const endDate = new Date('2022-01-01 00:00:00');
   const initialCapital = 10000;
 
   const bot = new BackTestBot(Config, startDate, endDate);

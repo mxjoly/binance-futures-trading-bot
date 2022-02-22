@@ -283,7 +283,6 @@ export class Bot {
       asset,
       base,
       risk,
-      leverage,
       buySignal,
       sellSignal,
       tpslStrategy,
@@ -310,6 +309,8 @@ export class Bot {
     const position = positions.find((position) => position.symbol === pair);
     const hasLongPosition = Number(position.positionAmt) > 0;
     const hasShortPosition = Number(position.positionAmt) < 0;
+    const positionSize = Math.abs(Number(position.positionAmt));
+    const positionEntryPrice = Number(position.entryPrice);
 
     // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
@@ -342,7 +343,7 @@ export class Bot {
             side: OrderSide.BUY,
             type: OrderType.MARKET,
             symbol: pair,
-            quantity: position.positionAmt,
+            quantity: String(positionSize),
             recvWindow: 60000,
           })
           .then(() => {
@@ -383,15 +384,13 @@ export class Bot {
       });
 
       // Quantity to add to close the previous position
-      let previousPositionQuantity = hasShortPosition
-        ? Number(position.positionAmt)
-        : 0;
+      let previousPositionQuantity = hasShortPosition ? positionSize : 0;
 
       // To close the previous short position
       if (
-        isValidQuantity(quantity - previousPositionQuantity, pair, exchangeInfo)
+        isValidQuantity(quantity + previousPositionQuantity, pair, exchangeInfo)
       ) {
-        quantity -= previousPositionQuantity;
+        quantity += previousPositionQuantity;
       } else {
         throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
       }
@@ -404,16 +403,17 @@ export class Bot {
           quantity: String(quantity),
           recvWindow: 60000,
         })
-        .then(async ({ executedQty }) => {
+        .then(async () => {
           // Cancel the previous orders to update them
           if (currentOpenOrders.length > 0) {
             this.closeOpenOrders(pair);
           }
 
-          // Get the total size and the entry price on the position updated
-          const { positionAmt: positionSize, entryPrice: avgPrice } = (
-            await binanceClient.futuresAccountInfo()
-          ).positions.find((position) => position.symbol === pair);
+          // Calculate the total size and the average entry price on the position updated
+          const positionTotalSize = positionSize + quantity;
+          const avgPrice =
+            (positionSize * positionEntryPrice + quantity * currentPrice) /
+            (positionSize + quantity);
 
           if (trailingStopConfig) {
             let { percentageToTP, changePercentage } =
@@ -431,7 +431,7 @@ export class Bot {
                 side: OrderSide.SELL,
                 type: OrderType.TRAILING_STOP_MARKET,
                 symbol: pair,
-                quantity: positionSize,
+                quantity: String(positionTotalSize),
                 callbackRate: trailingStopConfig.callbackRate * 100,
                 activationPrice,
               })
@@ -450,7 +450,7 @@ export class Bot {
                   price: price,
                   quantity: String(
                     decimalFloor(
-                      Number(positionSize) * quantityPercentage,
+                      Number(positionTotalSize) * quantityPercentage,
                       quantityPrecision
                     )
                   ),
@@ -468,7 +468,7 @@ export class Bot {
                 type: OrderType.LIMIT,
                 symbol: pair,
                 price: stopLoss,
-                quantity: String(positionSize),
+                quantity: String(positionTotalSize),
                 recvWindow: 60000,
               })
               .catch(error);
@@ -476,9 +476,7 @@ export class Bot {
 
           if (hasLongPosition) {
             log(
-              `Adds ${Number(
-                executedQty
-              )}${asset} to the size of the long position on ${pair}. The average enter price is now ${avgPrice}${base} and the total size ${positionSize}${asset}`
+              `Add ${quantity}${asset} to the long position on ${pair}. The average entry price is now ${avgPrice}${base} and the total size ${positionTotalSize}${asset}`
             );
           } else {
             logBuySellExecutionOrder(
@@ -486,7 +484,7 @@ export class Bot {
               asset,
               base,
               currentPrice,
-              Number(positionSize),
+              quantity,
               takeProfits,
               stopLoss
             );
@@ -501,7 +499,7 @@ export class Bot {
             side: OrderSide.SELL,
             type: OrderType.MARKET,
             symbol: pair,
-            quantity: position.positionAmt,
+            quantity: String(positionSize),
             recvWindow: 60000,
           })
           .then(() => {
@@ -543,9 +541,7 @@ export class Bot {
       });
 
       // Quantity to add to close the previous position
-      let previousPositionQuantity = hasLongPosition
-        ? Number(position.positionAmt)
-        : 0;
+      let previousPositionQuantity = hasLongPosition ? positionSize : 0;
 
       // To close the previous long position
       if (
@@ -564,16 +560,17 @@ export class Bot {
           quantity: String(quantity),
           recvWindow: 60000,
         })
-        .then(async ({ executedQty }) => {
+        .then(async () => {
           // Cancel the previous orders to update them
           if (currentOpenOrders.length > 0) {
             this.closeOpenOrders(pair);
           }
 
-          // Get the total size and the entry price on the position updated
-          const { positionAmt: positionSize, entryPrice: avgPrice } = (
-            await binanceClient.futuresAccountInfo()
-          ).positions.find((position) => position.symbol === pair);
+          // Calculate the total size and the average entry price on the position updated
+          const positionTotalSize = positionSize + quantity;
+          const avgPrice =
+            (positionSize * positionEntryPrice + quantity * currentPrice) /
+            (positionSize + quantity);
 
           if (trailingStopConfig) {
             let { percentageToTP, changePercentage } =
@@ -591,7 +588,7 @@ export class Bot {
                 side: OrderSide.BUY,
                 type: OrderType.TRAILING_STOP_MARKET,
                 symbol: pair,
-                quantity: positionSize,
+                quantity: String(positionTotalSize),
                 callbackRate: trailingStopConfig.callbackRate * 100,
                 activationPrice,
               })
@@ -611,7 +608,7 @@ export class Bot {
                   stopPrice: price,
                   quantity: String(
                     decimalFloor(
-                      Number(positionSize) * quantityPercentage,
+                      Number(positionTotalSize) * quantityPercentage,
                       quantityPrecision
                     )
                   ),
@@ -629,7 +626,7 @@ export class Bot {
                 type: OrderType.LIMIT,
                 symbol: pair,
                 price: stopLoss,
-                quantity: String(positionSize),
+                quantity: String(positionTotalSize),
                 recvWindow: 60000,
               })
               .catch(error);
@@ -637,9 +634,7 @@ export class Bot {
 
           if (hasShortPosition) {
             log(
-              `Adds ${Number(
-                executedQty
-              )}${asset} to the size of the short position on ${pair}. The average enter price is now ${avgPrice}${base} and the total size ${positionSize}${asset}`
+              `Add ${quantity}${asset} to the short position on ${pair}. The average entry price is now ${avgPrice}${base} and the total size ${positionTotalSize}${asset}`
             );
           } else {
             logBuySellExecutionOrder(
@@ -647,7 +642,7 @@ export class Bot {
               asset,
               base,
               currentPrice,
-              Number(positionSize),
+              quantity,
               takeProfits,
               stopLoss
             );
