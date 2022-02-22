@@ -92,6 +92,8 @@ export class BackTestBot {
   private openOrders: OpenOrder[];
   private futuresOpenOrders: FuturesOpenOrder[];
 
+  private strategyResults: StrategyResults;
+
   constructor(tradeConfigs: TradeConfig[], startDate: Date, endDate: Date) {
     this.tradeConfigs = tradeConfigs;
     this.startDate = startDate;

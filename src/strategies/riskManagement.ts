@@ -21,8 +21,8 @@ export function getPositionSizeByPercent({
   let pair = asset + base;
   let quantityPrecision =
     BINANCE_MODE === 'spot' && process.env.NODE_ENV === 'development'
-      ? getQuantityPrecision(pair, exchangeInfo)
-      : 3;
+      ? 3
+      : getQuantityPrecision(pair, exchangeInfo);
   let quantity = (balance * risk) / enterPrice;
 
   let minQuantity =
