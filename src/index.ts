@@ -1,5 +1,6 @@
-import winston from 'winston';
+import fs from 'fs';
 import Binance from 'binance-api-node';
+import { createLogger, transports, format } from 'winston';
 import { Bot } from './bot';
 import { BackTestBot } from './backtest/bot';
 import Config from './configs/rsi';
@@ -11,11 +12,24 @@ require('dotenv').config();
 // Initialize the plugins of dayjs
 initializePlugins();
 
-// Log
-export const logger = winston.createLogger({
+const loggerFilePath = {
+  production: 'logs/bot-prod.log',
+  development: 'logs/bot-dev.log',
+  test: 'logs/bot-test.log',
+};
+
+if (fs.existsSync(loggerFilePath[process.env.NODE_ENV])) {
+  fs.unlinkSync(loggerFilePath[process.env.NODE_ENV]);
+}
+
+export const logger = createLogger({
   level: 'info',
-  format: winston.format.simple(),
-  transports: [new winston.transports.File({ filename: 'logs/bot.log' })],
+  format: format.simple(),
+  transports: [
+    new transports.File({
+      filename: loggerFilePath[process.env.NODE_ENV],
+    }),
+  ],
 });
 
 // The bot will trade with the binance :
@@ -50,8 +64,8 @@ if (process.env.NODE_ENV !== 'test') {
   tradingBot.prepare();
   tradingBot.run();
 } else {
-  const startDate = new Date('2022-01-02 13:00:00');
-  const endDate = new Date('2022-01-04 00:00:00');
+  const startDate = new Date('2021-01-01 00:00:00');
+  const endDate = new Date('2021-01-10 23:59:59');
   const initialCapital = 10000;
 
   const bot = new BackTestBot(Config, startDate, endDate);

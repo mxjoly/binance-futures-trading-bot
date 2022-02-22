@@ -9,6 +9,7 @@ import { CandleChartInterval, ExchangeInfo, OrderSide } from 'binance-api-node';
 import { binanceClient, BINANCE_MODE } from '..';
 import { createDatabase, saveState, saveFuturesState } from './db';
 import { decimalFloor } from '../utils/math';
+import { debugLastCandle, debugWallet, log, printDateBanner } from './debug';
 import {
   durationBetweenDates,
   dateMatchTimeFrame,
@@ -33,7 +34,18 @@ const bar = new cliProgress.SingleBar(
 
 // ====================================================================== //
 
-const DEBUG = process.argv[2].split('=')[1] === 'true' ? true : false;
+function clone(obj) {
+  if (obj === null || typeof obj !== 'object') return obj;
+  let props = Object.getOwnPropertyDescriptors(obj);
+  for (let prop in props) {
+    props[prop].value = clone(props[prop].value);
+  }
+  return Object.create(Object.getPrototypeOf(obj), props);
+}
+
+// ====================================================================== //
+
+export const DEBUG = process.argv[2].split('=')[1] === 'true' ? true : false;
 const SAVE_HISTORY = false;
 const MAX_LENGTH_CANDLES = 15;
 
@@ -51,80 +63,6 @@ const supportedTimeFrames = [
 ];
 
 // ====================================================================== //
-
-function log(message: string, chalk: any) {
-  if (DEBUG) {
-    console.log(chalk(`> ${message}`));
-  }
-}
-
-function printDateBanner(date: Date) {
-  log(
-    `------------------------------- ${dayjs(date).format(
-      'YYYY-MM-DD HH:mm:ss'
-    )} -----------------------------------`,
-    chalk.white
-  );
-}
-
-function debugLastCandle(lastCandle: CandleData) {
-  let { close, open, high, low } = lastCandle;
-  log(
-    `candle: [ open: ${open} | high: ${high} | low: ${low} | close: ${close} ]`,
-    chalk.yellow
-  );
-}
-
-function debugWallet(wallet: Wallet, futuresWallet: FuturesWallet) {
-  if (BINANCE_MODE === 'spot') {
-    let balance = wallet.balance;
-    let balanceString =
-      'balances: ' +
-      balance.map(
-        (bal) => `[ symbol: ${bal.symbol} | quantity: ${bal.quantity} ]`
-      );
-    log(balanceString, chalk.grey);
-  } else {
-    let {
-      availableBalance,
-      totalWalletBalance,
-      totalUnrealizedProfit,
-      positions,
-    } = futuresWallet;
-    let walletString = `wallet: { availableBalance: ${decimalFloor(
-      availableBalance,
-      2
-    )} | totalBalance: ${decimalFloor(
-      totalWalletBalance,
-      2
-    )} | unrealizedProfit: ${decimalFloor(totalUnrealizedProfit, 2)} }`;
-    log(walletString, chalk.grey);
-    let positionsString =
-      'positions: ' +
-      positions.map(
-        (pos) =>
-          `[ pair: ${pos.pair} | leverage: ${pos.leverage} | positionSide: ${
-            pos.positionSide
-          } | size: ${pos.size} | margin: ${decimalFloor(
-            pos.margin,
-            2
-          )} | entryPrice: ${pos.entryPrice} | pnl: ${decimalFloor(
-            pos.unrealizedProfit,
-            2
-          )} ]`
-      );
-    log(positionsString, chalk.grey);
-  }
-}
-
-function clone(obj) {
-  if (obj === null || typeof obj !== 'object') return obj;
-  let props = Object.getOwnPropertyDescriptors(obj);
-  for (let prop in props) {
-    props[prop].value = clone(props[prop].value);
-  }
-  return Object.create(Object.getPrototypeOf(obj), props);
-}
 
 // ====================================================================== //
 
@@ -217,13 +155,23 @@ export class BackTestBot {
       )
     );
 
-    // Duration of the backtest period in minutes
-    const duration = durationBetweenDates(
-      this.startDate,
-      this.endDate,
-      CandleChartInterval.ONE_MINUTE
-    );
+    // Check if the candle data are available on the specified period
+    let historyError = false;
+    Object.keys(this.historicCandles).forEach((symbol) => {
+      if (this.historicCandles[symbol].length === 0) {
+        historyError = true;
+        console.error(
+          `No candle data has been found on the pair ${symbol} for the period: ${dayjs(
+            this.startDate
+          ).format('YYYY-MM-DD HH:mm:ss')} to ${dayjs(this.endDate).format(
+            'YYYY-MM-DD HH:mm:ss'
+          )}`
+        );
+      }
+    });
+    if (historyError) return;
 
+    // Get the smaller time frame on the configs
     const smallerTimeFrame = this.tradeConfigs
       .map(({ loopInterval, indicatorInterval }) => {
         if (!indicatorInterval) return loopInterval;
@@ -235,12 +183,18 @@ export class BackTestBot {
       })
       .sort((tf1, tf2) => compareTimeFrame(tf1, tf2))[0];
 
+    // Duration of the backtest period in minutes
+    const duration = durationBetweenDates(
+      this.startDate,
+      this.endDate,
+      smallerTimeFrame
+    );
+
     // Initiation of CLI Progress bar
     if (!DEBUG) bar.start(duration, 0);
 
     // Time loop
     let currentDate = this.startDate;
-
     while (dayjs(currentDate).isSameOrBefore(this.endDate)) {
       printDateBanner(currentDate);
 
@@ -254,7 +208,7 @@ export class BackTestBot {
           )
           .sort((a, b) => a.openTime.getTime() - b.openTime.getTime());
 
-        if (DEBUG && currentCandles.length > 0) {
+        if (currentCandles.length > 0) {
           debugLastCandle(currentCandles[currentCandles.length - 1]);
         }
 
@@ -314,7 +268,8 @@ export class BackTestBot {
         }
       }
 
-      if (DEBUG) debugWallet(this.wallet, this.futuresWallet);
+      debugWallet(this.wallet, this.futuresWallet);
+      log(''); // \n
 
       if (!DEBUG)
         bar.increment(1, {
@@ -834,6 +789,11 @@ export class BackTestBot {
                 position.entryPrice = avgEntryPrice;
                 wallet.availableBalance -= baseCost;
               }
+
+              log(
+                `Long order #${id} has been activated for ${quantity} ${asset} at $${price}`,
+                chalk.magenta
+              );
             } else if (position.positionSide === 'SHORT') {
               // Update wallet
               let pnl = this.getPositionPNL(position, price);
@@ -841,10 +801,8 @@ export class BackTestBot {
               wallet.totalWalletBalance += pnl;
 
               // Update position
-              let sizeTamp = clone(position).size;
               position.size -= quantity;
-              position.margin =
-                Math.abs((quantity + sizeTamp) * price) / leverage;
+              position.margin = Math.abs(position.size * price);
 
               if (position.size === 0) {
                 position.entryPrice = 0;
@@ -856,15 +814,21 @@ export class BackTestBot {
                 position.positionSide = 'LONG';
                 let newPnl = this.getPositionPNL(position, price);
                 position.unrealizedProfit = newPnl;
-                wallet.availableBalance -=
-                  Math.abs((sizeTamp - quantity) * price) / leverage;
+                wallet.availableBalance -= position.margin;
               }
+
+              log(
+                `${
+                  entryPrice > price
+                    ? '[SL]'
+                    : entryPrice < price
+                    ? '[TP]'
+                    : '[BE]'
+                } Long order #${id} has been activated for ${quantity} ${asset} at $${price}`,
+                chalk.magenta
+              );
             }
 
-            log(
-              `Long order #${id} has been activated for ${quantity} ${asset} at $${price}`,
-              chalk.magenta
-            );
             this.closeFutureOpenOrder(id);
           } else if (type === 'TRAILING_STOP_MARKET') {
             let { status, callbackRate, activation } = trailingStop;
@@ -916,6 +880,13 @@ export class BackTestBot {
                 position.entryPrice = avgEntryPrice;
                 wallet.availableBalance -= baseCost;
               }
+
+              log(
+                `Sell order #${id} has been activated for ${Math.abs(
+                  quantity
+                )} ${asset} at $${price}`,
+                chalk.magenta
+              );
             } else if (position.positionSide === 'LONG') {
               // Update wallet
               let pnl = this.getPositionPNL(position, price);
@@ -924,8 +895,7 @@ export class BackTestBot {
 
               // Update position
               position.size -= quantity;
-              position.margin =
-                Math.abs((position.size - quantity) * price) / leverage;
+              position.margin = Math.abs(position.size * price);
 
               if (position.size === 0) {
                 position.entryPrice = 0;
@@ -937,17 +907,21 @@ export class BackTestBot {
                 position.positionSide = 'SHORT';
                 let newPnl = this.getPositionPNL(position, price);
                 position.unrealizedProfit = newPnl;
-                wallet.availableBalance -=
-                  Math.abs((position.size - quantity) * price) / leverage;
+                wallet.availableBalance -= position.margin;
               }
+
+              log(
+                `${
+                  entryPrice > price
+                    ? '[SL]'
+                    : entryPrice < price
+                    ? '[TP]'
+                    : '[BE]'
+                } Sell order #${id} has been activated for ${quantity} ${asset} at $${price}`,
+                chalk.magenta
+              );
             }
 
-            log(
-              `Sell order #${id} has been activated for ${Math.abs(
-                quantity
-              )} ${asset} at $${price}`,
-              chalk.magenta
-            );
             this.closeFutureOpenOrder(id);
           } else if (type === 'TRAILING_STOP_MARKET') {
             let { status, callbackRate, activation } = trailingStop;
@@ -1051,15 +1025,15 @@ export class BackTestBot {
   ) {
     (resolve, reject) => {
       const balance = this.wallet.balance;
-      const indexBase = balance.findIndex((bal) => bal.symbol === base);
-      const indexAsset = balance.findIndex((bal) => bal.symbol === asset);
+      const baseBalance = balance.find((bal) => bal.symbol === base);
+      const assetBalance = balance.find((bal) => bal.symbol === asset);
 
       if (side === 'BUY') {
         let baseCost = quantity * price;
         // If have enough base to buy
-        if (balance[indexBase].quantity >= baseCost) {
-          balance[indexBase].quantity -= baseCost;
-          balance[indexAsset].quantity += quantity;
+        if (baseBalance.quantity >= baseCost) {
+          baseBalance.quantity -= baseCost;
+          assetBalance.quantity += quantity;
 
           log(
             `Buy ${quantity} ${asset} at $${price} for $${baseCost}`,
@@ -1073,10 +1047,10 @@ export class BackTestBot {
 
       if (side === 'SELL') {
         // If have enough asset to sell
-        if (balance[indexAsset].quantity >= quantity) {
+        if (assetBalance.quantity >= quantity) {
           let profit = price * quantity;
-          balance[indexAsset].quantity -= quantity;
-          balance[indexBase].quantity += profit;
+          assetBalance.quantity -= quantity;
+          baseBalance.quantity += profit;
 
           log(
             `Sell ${quantity} ${asset} at $${price} for $${profit}`,

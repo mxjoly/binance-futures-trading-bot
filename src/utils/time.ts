@@ -98,39 +98,39 @@ export function durationBetweenDates(
       return Math.round((endDate.getTime() - startDate.getTime()) / 60000);
     case CandleChartInterval.FIVE_MINUTES:
       return Math.round(
-        ((endDate.getTime() - startDate.getTime()) / 60000) * 5
+        (endDate.getTime() - startDate.getTime()) / (60000 * 5)
       );
     case CandleChartInterval.FIFTEEN_MINUTES:
       return Math.round(
-        ((endDate.getTime() - startDate.getTime()) / 60000) * 15
+        (endDate.getTime() - startDate.getTime()) / (60000 * 15)
       );
     case CandleChartInterval.THIRTY_MINUTES:
       return Math.round(
-        ((endDate.getTime() - startDate.getTime()) / 60000) * 30
+        (endDate.getTime() - startDate.getTime()) / (60000 * 30)
       );
     case CandleChartInterval.ONE_HOUR:
       return Math.round(
-        ((endDate.getTime() - startDate.getTime()) / 60000) * 60
+        (endDate.getTime() - startDate.getTime()) / (60000 * 60)
       );
     case CandleChartInterval.TWO_HOURS:
       return Math.round(
-        ((endDate.getTime() - startDate.getTime()) / 60000) * 60 * 2
+        (endDate.getTime() - startDate.getTime()) / (60000 * 60 * 2)
       );
     case CandleChartInterval.FOUR_HOURS:
       return Math.round(
-        ((endDate.getTime() - startDate.getTime()) / 60000) * 60 * 4
+        (endDate.getTime() - startDate.getTime()) / (60000 * 60 * 4)
       );
     case CandleChartInterval.SIX_HOURS:
       return Math.round(
-        ((endDate.getTime() - startDate.getTime()) / 60000) * 60 * 6
+        (endDate.getTime() - startDate.getTime()) / (60000 * 60 * 6)
       );
     case CandleChartInterval.TWELVE_HOURS:
       return Math.round(
-        ((endDate.getTime() - startDate.getTime()) / 60000) * 60 * 12
+        (endDate.getTime() - startDate.getTime()) / (60000 * 60 * 12)
       );
     case CandleChartInterval.ONE_DAY:
       return Math.round(
-        ((endDate.getTime() - startDate.getTime()) / 60000) * 60 * 12
+        (endDate.getTime() - startDate.getTime()) / (60000 * 60 * 12)
       );
   }
 }
