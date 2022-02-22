@@ -45,14 +45,21 @@ function clone(obj) {
 
 // ====================================================================== //
 
+// Save the backtest history to the database
+const SAVE_HISTORY = false;
+
+// Debug mode with console.log
 export const DEBUG = process.argv[2]
   ? process.argv[2].split('=')[1] === 'true'
     ? true
     : false
   : false;
-const SAVE_HISTORY = false;
-const MAX_LENGTH_CANDLES = 16;
 
+// Max length of the candle arrays needed for the strategy and the calculation of indicators
+// Better to have the minimum to get a higher performance
+const MAX_LENGTH_CANDLES = 50;
+
+// Supported time frame in backtest mode
 const supportedTimeFrames = [
   CandleChartInterval.ONE_MINUTE,
   CandleChartInterval.FIVE_MINUTES,
@@ -67,6 +74,10 @@ const supportedTimeFrames = [
 ];
 
 // ====================================================================== //
+
+// Exchange fee info
+const TAKER_FEES = 0.04; // %
+const MAKER_FEES = 0.02; // %
 
 // ====================================================================== //
 
@@ -92,9 +103,9 @@ export class BackTestBot {
     if (SAVE_HISTORY) createDatabase();
 
     if (BINANCE_MODE === 'spot') {
-      const balance = this.wallet.balance;
       this.wallet = { balance: [] };
       this.openOrders = [];
+      const balance = this.wallet.balance;
 
       this.tradeConfigs.forEach(({ base, asset }) => {
         // Add base balance
@@ -103,13 +114,13 @@ export class BackTestBot {
             symbol: base,
             quantity: initialCapital,
           });
-          // Add asset balance
-          if (!balance.some((balance) => balance.symbol === asset)) {
-            balance.push({
-              symbol: base,
-              quantity: 0,
-            });
-          }
+        }
+        // Add asset balance
+        if (!balance.some((balance) => balance.symbol === asset)) {
+          balance.push({
+            symbol: asset,
+            quantity: 0,
+          });
         }
       });
     } else {
@@ -238,8 +249,8 @@ export class BackTestBot {
             this.checkSpotOpenOrders(asset, base, candles);
           } else {
             this.checkFuturesOpenOrders(asset, base, candles);
+            this.updatePNL(asset, base, candles[candles.length - 1].close);
           }
-          this.updatePNL(asset, base, candles[candles.length - 1].close);
 
           if (
             dateMatchTimeFrame(
@@ -338,11 +349,6 @@ export class BackTestBot {
       if (sellSignal(candles)) {
         this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
         this.closeOpenOrders(pair);
-        const totalValue = currentPrice * Number(assetBalance);
-        log(
-          `Sells ${assetBalance}${asset} for ${totalValue}${base}.`,
-          chalk.red
-        );
       }
     } else if (canBuy && buySignal(candles)) {
       const quantity = riskManagement({
@@ -1054,45 +1060,44 @@ export class BackTestBot {
     quantity: number,
     side: 'BUY' | 'SELL'
   ) {
-    (resolve, reject) => {
-      const balance = this.wallet.balance;
-      const baseBalance = balance.find((bal) => bal.symbol === base);
-      const assetBalance = balance.find((bal) => bal.symbol === asset);
+    const balance = this.wallet.balance;
+    const baseBalance = balance.find((bal) => bal.symbol === base);
+    const assetBalance = balance.find((bal) => bal.symbol === asset);
 
-      if (side === 'BUY') {
-        let baseCost = quantity * price;
-        // If have enough base to buy
-        if (baseBalance.quantity >= baseCost) {
-          baseBalance.quantity -= baseCost;
-          assetBalance.quantity += quantity;
+    if (side === 'BUY') {
+      let baseCost = quantity * price;
+      // If have enough base to buy
+      if (baseBalance.quantity >= baseCost) {
+        baseBalance.quantity -= baseCost;
+        assetBalance.quantity += quantity;
 
-          log(
-            `Buy ${quantity} ${asset} at $${price} for $${baseCost}`,
-            chalk.green
-          );
-          resolve({ executedQty: quantity, price });
-        } else {
-          reject(`Not enough ${base} to buy ${asset}`);
-        }
+        log(
+          `Buy ${quantity} ${asset} at $${price} for $${baseCost}`,
+          chalk.green
+        );
+      } else {
+        log(
+          `Not enough ${base} to buy ${asset}. Want to buy ${quantity}${asset} at ${price} with only ${baseBalance.quantity}${base}`,
+          chalk.red
+        );
       }
+    }
 
-      if (side === 'SELL') {
-        // If have enough asset to sell
-        if (assetBalance.quantity >= quantity) {
-          let profit = price * quantity;
-          assetBalance.quantity -= quantity;
-          baseBalance.quantity += profit;
+    if (side === 'SELL') {
+      // If have enough asset to sell
+      if (assetBalance.quantity >= quantity) {
+        let profit = price * quantity;
+        assetBalance.quantity -= quantity;
+        baseBalance.quantity += profit;
 
-          log(
-            `Sell ${quantity} ${asset} at $${price} for $${profit}`,
-            chalk.red
-          );
-          resolve({ executedQty: quantity, price });
-        } else {
-          reject(`Not enough ${asset} to sell for ${base}`);
-        }
+        log(`Sell ${quantity} ${asset} at $${price} for $${profit}`, chalk.red);
+      } else {
+        log(
+          `Not enough ${base} to buy ${asset}. Want to buy ${quantity}${asset} at ${price} with only ${baseBalance.quantity}${base}`,
+          chalk.red
+        );
       }
-    };
+    }
   }
 
   private spotOrderLimit(

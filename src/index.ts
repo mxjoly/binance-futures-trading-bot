@@ -3,7 +3,7 @@ import Binance from 'binance-api-node';
 import { createLogger, transports, format } from 'winston';
 import { Bot } from './bot';
 import { BackTestBot } from './backtest/bot';
-import Config from './configs/rsi';
+import Config from './configs/stochasticRsi';
 import { initializePlugins } from './utils/plugins';
 
 // Initialize environment variables

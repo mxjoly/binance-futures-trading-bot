@@ -10,7 +10,7 @@ const config: TradeConfig[] = [
     asset: 'BTC',
     base: 'USDT',
     loopInterval: CandleChartInterval.FIFTEEN_MINUTES,
-    risk: 0.1,
+    risk: 0.01,
     leverage: 10,
     trendFilter: (candles) =>
       threeEma.getTrend(candles, {
