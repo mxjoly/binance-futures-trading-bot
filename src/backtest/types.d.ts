@@ -15,12 +15,13 @@ interface MockAccount {
 }
 
 interface Wallet {
-  balance: Balance[];
+  balances: Balance[];
 }
 
 interface Balance {
   symbol: string;
   quantity: number;
+  avgPrice: number;
 }
 
 interface FuturesWallet {
@@ -66,30 +67,33 @@ interface FuturesOpenOrder {
 /**
  * @see: https://www.metatrader5.com/fr/terminal/help/algotrading/testing_report
  */
-interface StrategyResults {
-  initialDeposit: number;
-  numberSymbol: number;
-  totalNetProfit: number;
-  totalBars: number;
-  totalTrades: number;
-  totalLongTrades: number;
-  totalShortTrades: number;
-  profitFactor: number;
-  totalProfit: number;
-  totalLoss: number;
-  maxDrawdownAbsolute: number;
-  maxDrawdownRelative: number;
-  totalWinRate: number;
-  longWinRate: number;
-  shortWinRate: number;
-  longWinningTrade: number;
-  longLostTrade: number;
-  shortWinningTrade: number;
-  shortLostTrade: number;
-  avgProfit: number;
-  avgLoss: number;
-  maxProfit: number;
-  maxLoss: number;
-  consecutiveProfitCount: number;
-  consecutiveLossCount: number;
+interface StrategyReport {
+  initialCapital?: number;
+  finalCapital?: number;
+  numberSymbol?: number;
+  totalNetProfit?: number;
+  totalBars?: number;
+  totalTrades?: number;
+  totalLongTrades?: number;
+  totalShortTrades?: number;
+  profitFactor?: number;
+  sharpRatio?: number;
+  totalProfit?: number;
+  totalLoss?: number;
+  maxDrawdown?: number;
+  totalWinRate?: number;
+  longWinRate?: number;
+  shortWinRate?: number;
+  longWinningTrade?: number;
+  longLostTrade?: number;
+  shortWinningTrade?: number;
+  shortLostTrade?: number;
+  avgProfit?: number;
+  avgLoss?: number;
+  maxProfit?: number;
+  maxLoss?: number;
+  consecutiveProfitCount?: number;
+  consecutiveLossCount?: number;
+  consecutiveWins?: number;
+  consecutiveLosses?: number;
 }

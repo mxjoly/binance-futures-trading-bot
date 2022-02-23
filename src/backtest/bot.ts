@@ -83,40 +83,65 @@ const MAKER_FEES = 0.02; // %
 
 export class BackTestBot {
   private tradeConfigs: TradeConfig[];
+  private strategyName: string;
   private historicCandles: { [symbol: string]: CandleData[] };
   private startDate: Date;
   private endDate: Date;
+  private initialCapital: number;
 
   private wallet: Wallet;
   private futuresWallet: FuturesWallet;
   private openOrders: OpenOrder[];
   private futuresOpenOrders: FuturesOpenOrder[];
 
-  private strategyResults: StrategyResults;
+  private strategyReport: StrategyReport;
+  private maxBalance: number;
+  private maxDrawdown: number;
+  private maxConsecutiveWins: number;
+  private maxConsecutiveLosses: number;
+  private maxConsecutiveProfitCount: number;
+  private maxConsecutiveLossCount: number;
 
-  constructor(tradeConfigs: TradeConfig[], startDate: Date, endDate: Date) {
+  constructor(
+    tradeConfigs: TradeConfig[],
+    strategyName: string,
+    startDate: Date,
+    endDate: Date,
+    initialCapital: number
+  ) {
     this.tradeConfigs = tradeConfigs;
+    this.strategyName = strategyName;
     this.startDate = startDate;
     this.endDate = endDate;
+    this.initialCapital = initialCapital;
     this.historicCandles = {};
+
+    this.strategyReport = {};
+    this.maxBalance = 0;
+    this.maxDrawdown = 1;
+    this.maxConsecutiveWins = 0;
+    this.maxConsecutiveLosses = 0;
+    this.maxConsecutiveProfitCount = 0;
+    this.maxConsecutiveLossCount = 0;
   }
 
-  public prepare(initialCapital: number) {
-    if (SAVE_HISTORY) createDatabase();
+  public prepare() {
+    if (SAVE_HISTORY) createDatabase(this.strategyName);
 
     let numberAssetsInBalance = 0;
 
     if (BINANCE_MODE === 'spot') {
-      this.wallet = { balance: [] };
+      this.wallet = { balances: [] };
       this.openOrders = [];
-      const balance = this.wallet.balance;
+      const balance = this.wallet.balances;
 
       this.tradeConfigs.forEach(({ base, asset }) => {
         // Add base balance
         if (!balance.some((balance) => balance.symbol === base)) {
           balance.push({
             symbol: base,
-            quantity: initialCapital,
+            quantity: this.initialCapital,
+            avgPrice: 1,
           });
         }
         // Add asset balance
@@ -124,14 +149,15 @@ export class BackTestBot {
           balance.push({
             symbol: asset,
             quantity: 0,
+            avgPrice: 0,
           });
           numberAssetsInBalance++;
         }
       });
     } else {
       this.futuresWallet = {
-        availableBalance: initialCapital,
-        totalWalletBalance: initialCapital,
+        availableBalance: this.initialCapital,
+        totalWalletBalance: this.initialCapital,
         totalUnrealizedProfit: 0,
         positions: this.tradeConfigs.map(({ asset, base, leverage }) => ({
           pair: asset + base,
@@ -147,21 +173,25 @@ export class BackTestBot {
     }
 
     // Initialize some property of strategy result
-    this.strategyResults.initialDeposit = initialCapital;
-    this.strategyResults.numberSymbol =
+    this.strategyReport.initialCapital = this.initialCapital;
+    this.strategyReport.numberSymbol =
       BINANCE_MODE === 'spot'
         ? numberAssetsInBalance
         : this.futuresWallet.positions.length;
-    this.strategyResults.totalNetProfit = 0;
-    this.strategyResults.totalTrades = 0;
-    this.strategyResults.totalLongTrades = 0;
-    this.strategyResults.totalShortTrades = 0;
-    this.strategyResults.totalProfit = 0;
-    this.strategyResults.totalLoss = 0;
-    this.strategyResults.longWinningTrade = 0;
-    this.strategyResults.longLostTrade = 0;
-    this.strategyResults.shortWinningTrade = 0;
-    this.strategyResults.shortLostTrade = 0;
+    this.strategyReport.totalNetProfit = 0;
+    this.strategyReport.totalTrades = 0;
+    this.strategyReport.totalLongTrades = 0;
+    this.strategyReport.totalShortTrades = 0;
+    this.strategyReport.totalProfit = 0;
+    this.strategyReport.totalLoss = 0;
+    this.strategyReport.longWinningTrade = 0;
+    this.strategyReport.longLostTrade = 0;
+    this.strategyReport.shortWinningTrade = 0;
+    this.strategyReport.shortLostTrade = 0;
+    this.strategyReport.consecutiveProfitCount = 0;
+    this.strategyReport.consecutiveLossCount = 0;
+    this.strategyReport.consecutiveWins = 0;
+    this.strategyReport.consecutiveLosses = 0;
   }
 
   public async run() {
@@ -172,7 +202,7 @@ export class BackTestBot {
 
     // Get exchange info
     const exchangeInfo =
-      BINANCE_MODE === 'spot'
+      BINANCE_MODE === 'spot' && process.env.NODE_ENV === 'production'
         ? await binanceClient.exchangeInfo()
         : await binanceClient.futuresExchangeInfo();
 
@@ -208,7 +238,31 @@ export class BackTestBot {
     });
     if (historyError) return process.exit();
 
-    // Get the smaller time frame on the configs
+    // Check the start date and end date comparing to historic data date period downloaded
+    Object.keys(this.historicCandles).forEach((pair) => {
+      let candles = this.historicCandles[pair];
+      let startDate = candles[0].openTime;
+      let endDate = dayjs(candles[candles.length - 1].closeTime).add(
+        1,
+        'minute'
+      );
+      if (dayjs(this.startDate).isBefore(startDate)) {
+        console.warn(
+          `Your start date is too old comparing to your downloaded candle data. The earliest possible date is ${dayjs(
+            startDate
+          ).format('YYYY-MM-DD HH:mm:ss')}\n`
+        );
+      }
+      if (dayjs(this.endDate).isAfter(endDate)) {
+        console.warn(
+          `Your start date is too recent comparing to your downloaded candle data. The latest possible date is ${dayjs(
+            endDate
+          ).format('YYYY-MM-DD HH:mm:ss')}\n`
+        );
+      }
+    });
+
+    // Get the smaller time frame on the trade configs
     const smallerTimeFrame = this.tradeConfigs
       .map(({ loopInterval, indicatorInterval }) => {
         if (!indicatorInterval) return loopInterval;
@@ -228,7 +282,7 @@ export class BackTestBot {
     );
 
     // Set property for strategy
-    this.strategyResults.totalBars = duration;
+    this.strategyReport.totalBars = duration;
 
     // Initiation of CLI Progress bar
     if (!DEBUG) bar.start(duration, 0);
@@ -312,6 +366,25 @@ export class BackTestBot {
         }
       }
 
+      if (BINANCE_MODE === 'spot') {
+        let currentWalletValue = this.evaluateSpotWalletBaseValue();
+        if (currentWalletValue > this.maxBalance) {
+          this.maxBalance = currentWalletValue;
+        }
+        let drawdown = currentWalletValue / this.maxBalance;
+        if (drawdown < this.maxDrawdown) {
+          this.maxDrawdown = decimalFloor(-((1 - drawdown) * 100), 2);
+        }
+      } else {
+        if (this.futuresWallet.totalWalletBalance > this.maxBalance) {
+          this.maxBalance = this.futuresWallet.totalWalletBalance;
+        }
+        let drawdown = this.futuresWallet.totalWalletBalance / this.maxBalance;
+        if (drawdown < this.maxDrawdown) {
+          this.maxDrawdown = decimalFloor(-((1 - drawdown) * 100), 2);
+        }
+      }
+
       debugWallet(this.wallet, this.futuresWallet);
       log(''); // \n
 
@@ -326,6 +399,134 @@ export class BackTestBot {
     }
 
     if (!DEBUG) bar.stop();
+
+    // Strategy results
+    this.calculateStrategyStats();
+    this.displayStrategyResults();
+  }
+
+  private calculateStrategyStats() {
+    let {
+      totalLongTrades,
+      totalShortTrades,
+      longWinningTrade,
+      shortWinningTrade,
+      longLostTrade,
+      shortLostTrade,
+      totalTrades,
+      totalProfit,
+      totalLoss,
+    } = this.strategyReport;
+
+    this.strategyReport.finalCapital = decimalFloor(
+      BINANCE_MODE === 'spot'
+        ? this.evaluateSpotWalletBaseValue()
+        : this.futuresWallet.availableBalance,
+      2
+    );
+    this.strategyReport.totalNetProfit = decimalFloor(
+      BINANCE_MODE === 'spot'
+        ? this.evaluateSpotWalletBaseValue() - this.initialCapital
+        : this.futuresWallet.availableBalance - this.initialCapital,
+      2
+    );
+    this.strategyReport.totalProfit = decimalFloor(
+      this.strategyReport.totalProfit,
+      2
+    );
+    this.strategyReport.totalLoss = decimalFloor(
+      this.strategyReport.totalLoss,
+      2
+    );
+    this.strategyReport.profitFactor = Math.abs(
+      decimalFloor(totalProfit / totalLoss, 2)
+    );
+    this.strategyReport.sharpRatio = 0; // ????????
+    this.strategyReport.maxDrawdown = this.maxDrawdown;
+
+    this.strategyReport.longWinRate = decimalFloor(
+      (longWinningTrade / totalLongTrades) * 100,
+      2
+    );
+    this.strategyReport.shortWinRate = decimalFloor(
+      (shortWinningTrade / totalShortTrades) * 100,
+      2
+    );
+    this.strategyReport.totalWinRate = decimalFloor(
+      ((longWinningTrade + shortWinningTrade) / totalTrades) * 100,
+      2
+    );
+    this.strategyReport.avgProfit = decimalFloor(
+      totalProfit / (longWinningTrade + shortWinningTrade),
+      2
+    );
+    this.strategyReport.avgLoss = decimalFloor(
+      totalLoss / (longLostTrade + shortLostTrade),
+      2
+    );
+  }
+
+  private displayStrategyResults() {
+    const {
+      initialCapital,
+      finalCapital,
+      totalBars,
+      totalNetProfit,
+      totalProfit,
+      totalLoss,
+      profitFactor,
+      totalTrades,
+      totalWinRate,
+      longWinRate,
+      shortWinRate,
+      longWinningTrade,
+      shortWinningTrade,
+      totalLongTrades,
+      totalShortTrades,
+      sharpRatio,
+      maxProfit,
+      maxLoss,
+      avgProfit,
+      avgLoss,
+      maxDrawdown,
+      consecutiveProfitCount,
+      consecutiveLossCount,
+      consecutiveWins,
+      consecutiveLosses,
+    } = this.strategyReport;
+
+    console.log(
+      `\n========================= STRATEGY RESULTS =========================\n
+      Period: ${dayjs(this.startDate).format('YYYY-MM-DD HH:mm:ss')} to ${dayjs(
+        this.endDate
+      ).format('YYYY-MM-DD HH:mm:ss')}
+      Total bars: ${totalBars}
+      ----------------------------------------------------------
+      Initial capital: ${initialCapital}
+      Final capital: ${finalCapital}
+      Total net profit: ${totalNetProfit}
+      Total profit: ${totalProfit}
+      Total loss: ${totalLoss}
+      Profit factor: ${profitFactor}
+      Sharp ratio: ${sharpRatio}
+      Max drawdown: ${maxDrawdown}%
+      ----------------------------------------------------------
+      Total trades: ${totalTrades}
+      Total win rate: ${totalWinRate}%
+      Long trades won: ${longWinRate}%
+      Short trades won: ${shortWinRate}%
+      Long trades won: ${longWinningTrade}/${totalLongTrades}
+      Short trades won: ${shortWinningTrade}/${totalShortTrades}
+      Max profit: ${maxProfit}
+      Max loss: ${maxLoss}
+      Average profit: ${avgProfit}
+      Average loss: ${avgLoss}
+      Consecutive profit (count): ${consecutiveProfitCount}
+      Consecutive loss (count): ${consecutiveLossCount}
+      Consecutive wins: ${consecutiveWins}
+      Consecutive losses: ${consecutiveLosses}
+      `
+    );
   }
 
   private tradeWithSpot(
@@ -347,11 +548,11 @@ export class BackTestBot {
     const pair = asset + base;
 
     // Balance information
-    const balance = this.wallet.balance;
-    const indexBase = balance.findIndex((bal) => bal.symbol === base);
-    const indexAsset = balance.findIndex((bal) => bal.symbol === asset);
-    const assetBalance = balance[indexAsset].quantity;
-    const baseBalance = balance[indexBase].quantity;
+    const balances = this.wallet.balances;
+    const indexBase = balances.findIndex((bal) => bal.symbol === base);
+    const indexAsset = balances.findIndex((bal) => bal.symbol === asset);
+    const assetBalance = balances[indexAsset].quantity;
+    const baseBalance = balances[indexBase].quantity;
 
     // Data
     const currentPrice = candles[candles.length - 1].close;
@@ -387,7 +588,6 @@ export class BackTestBot {
 
       // Buy market order
       this.spotOrderMarket(asset, base, currentPrice, quantity, 'BUY');
-      // @NOTES => calculate the average price
 
       // Calculate the tp and sl
       const { takeProfits, stopLoss } = tpslStrategy
@@ -791,7 +991,7 @@ export class BackTestBot {
       const pairOrders = this.openOrders.filter((order) => order.pair === pair);
       const buyOrders = pairOrders.filter((order) => order.side === 'BUY');
       const sellOrders = pairOrders.filter((order) => order.side === 'SELL');
-      const balance = this.wallet.balance;
+      const balance = this.wallet.balances;
       const baseBalance = balance.find((bal) => bal.symbol === base);
       const assetBalance = balance.find((bal) => bal.symbol === asset);
 
@@ -799,10 +999,13 @@ export class BackTestBot {
       buyOrders.forEach(({ id, price, quantity }) => {
         // Price crossed the buy limit order
         if (lastCandle.high > price && lastCandle.low < price) {
-          let cost = quantity * price;
+          let baseCost = quantity * price;
           // Convert base to asset
-          if (baseBalance.quantity >= cost) {
-            baseBalance.quantity -= cost;
+          if (baseBalance.quantity >= baseCost) {
+            baseBalance.quantity -= baseCost;
+            assetBalance.avgPrice =
+              (assetBalance.avgPrice * assetBalance.quantity + baseCost) /
+              (assetBalance.quantity + quantity);
             assetBalance.quantity += quantity;
             log(`Buy order #${id} has been activated`, chalk.magenta);
             // Close the order
@@ -820,6 +1023,7 @@ export class BackTestBot {
           if (assetBalance.quantity >= quantity) {
             assetBalance.quantity -= quantity;
             baseBalance.quantity += profit;
+            if (assetBalance.quantity === 0) assetBalance.avgPrice = 0;
             log(`Sell order #${id} has been activated`, chalk.magenta);
             // Close the order
             this.closeOpenOrder(id);
@@ -862,7 +1066,11 @@ export class BackTestBot {
         let { entryPrice, size, leverage } = position;
 
         // Price crossed the buy limit order
-        if (lastCandle.high > price && lastCandle.low < price) {
+        if (
+          type !== 'TRAILING_STOP_MARKET' &&
+          lastCandle.high > price &&
+          lastCandle.low < price
+        ) {
           if (type === 'LIMIT') {
             // Average the position
             if (position.positionSide === 'LONG') {
@@ -878,8 +1086,8 @@ export class BackTestBot {
                 wallet.availableBalance -= baseCost;
               }
 
-              this.strategyResults.totalTrades++;
-              this.strategyResults.totalLongTrades++;
+              this.strategyReport.totalTrades++;
+              this.strategyReport.totalLongTrades++;
 
               log(
                 `Long order #${id} has been activated for ${quantity} ${asset} at $${price}`,
@@ -892,6 +1100,9 @@ export class BackTestBot {
               let pnl = this.getPositionPNL(position, price);
               wallet.availableBalance += position.margin + pnl;
               wallet.totalWalletBalance += pnl;
+
+              if (pnl > 0) this.strategyReport.totalProfit += pnl;
+              if (pnl < 0) this.strategyReport.totalLoss += pnl;
 
               // Update position
               position.size += quantity;
@@ -908,14 +1119,14 @@ export class BackTestBot {
                 let newPnl = this.getPositionPNL(position, price);
                 position.unrealizedProfit = newPnl;
                 wallet.availableBalance -= position.margin;
-                this.strategyResults.totalTrades++;
-                this.strategyResults.totalLongTrades++;
+                this.strategyReport.totalTrades++;
+                this.strategyReport.totalLongTrades++;
               }
 
               if (hadPosition && entryPrice >= price)
-                this.strategyResults.longWinningTrade++;
+                this.strategyReport.longWinningTrade++;
               if (hadPosition && entryPrice < price)
-                this.strategyResults.longLostTrade++;
+                this.strategyReport.longLostTrade++;
 
               log(
                 `${
@@ -930,30 +1141,32 @@ export class BackTestBot {
             }
 
             this.closeFutureOpenOrder(id);
-          } else if (type === 'TRAILING_STOP_MARKET') {
-            let { status, callbackRate, activation } = trailingStop;
-            if (status === 'PENDING') {
-              if (
-                (activation.changePercentage &&
-                  lastCandle.low < price * (1 - activation.changePercentage)) ||
-                // (activation.percentageToTP &&
-                //   lastCandle.low < price * (1 - activation.percentageToTP)) ||
-                (!activation.changePercentage && !activation.percentageToTP)
-              )
-                status = 'ACTIVE';
-            } else if (status === 'ACTIVE') {
-              let prevCandle = candles[candles.length - 2];
-              let stopLoss = prevCandle.close * (1 + callbackRate);
-              // Trailing stop loss is activated
-              if (lastCandle.high >= stopLoss) {
-                let pnl = this.getPositionPNL(position, price);
-                wallet.availableBalance += position.margin + pnl;
-                wallet.totalWalletBalance += pnl;
-                log(
-                  `Trailing stop buy order #${id} has been activated for ${quantity} ${asset} at $${price}`,
-                  chalk.magenta
-                );
-              }
+          }
+        }
+
+        // Trailing stops
+        if (type === 'TRAILING_STOP_MARKET') {
+          let activationPrice = price;
+          let { status, callbackRate } = trailingStop;
+          if (status === 'PENDING' && lastCandle.low <= activationPrice) {
+            status = 'ACTIVE';
+          }
+          if (status === 'ACTIVE') {
+            let stopLossPrice = lastCandle.open * (1 + callbackRate);
+            // Trailing stop loss is activated
+            if (lastCandle.high >= stopLossPrice) {
+              let pnl = this.getPositionPNL(position, price);
+              wallet.availableBalance += position.margin + pnl;
+              wallet.totalWalletBalance += pnl;
+              if (pnl > 0) this.strategyReport.totalProfit += pnl;
+              if (pnl < 0) this.strategyReport.totalLoss += pnl;
+
+              log(
+                `Trailing stop long order #${id} has been activated for ${Math.abs(
+                  quantity
+                )}${asset} at $${price}`,
+                chalk.magenta
+              );
             }
           }
         }
@@ -963,7 +1176,11 @@ export class BackTestBot {
         let { entryPrice, size, leverage } = position;
 
         // Price crossed the sell limit order
-        if (lastCandle.high > price && lastCandle.low < price) {
+        if (
+          type !== 'TRAILING_STOP_MARKET' &&
+          lastCandle.high > price &&
+          lastCandle.low < price
+        ) {
           // If there is enough available base
           if (type === 'LIMIT') {
             // Average the position
@@ -980,8 +1197,8 @@ export class BackTestBot {
                 wallet.availableBalance -= baseCost;
               }
 
-              this.strategyResults.totalTrades++;
-              this.strategyResults.totalShortTrades++;
+              this.strategyReport.totalTrades++;
+              this.strategyReport.totalShortTrades++;
 
               log(
                 `Sell order #${id} has been activated for ${Math.abs(
@@ -996,6 +1213,9 @@ export class BackTestBot {
               let pnl = this.getPositionPNL(position, price);
               wallet.availableBalance += position.margin + pnl;
               wallet.totalWalletBalance += pnl;
+
+              if (pnl > 0) this.strategyReport.totalProfit += pnl;
+              if (pnl < 0) this.strategyReport.totalLoss += pnl;
 
               // Update position
               position.size -= quantity;
@@ -1012,14 +1232,14 @@ export class BackTestBot {
                 let newPnl = this.getPositionPNL(position, price);
                 position.unrealizedProfit = newPnl;
                 wallet.availableBalance -= position.margin;
-                this.strategyResults.totalTrades++;
-                this.strategyResults.totalShortTrades++;
+                this.strategyReport.totalTrades++;
+                this.strategyReport.totalShortTrades++;
               }
 
               if (hadPosition && entryPrice <= price)
-                this.strategyResults.longWinningTrade++;
+                this.strategyReport.shortWinningTrade++;
               if (hadPosition && entryPrice > price)
-                this.strategyResults.longLostTrade++;
+                this.strategyReport.shortLostTrade++;
 
               log(
                 `${
@@ -1034,38 +1254,44 @@ export class BackTestBot {
             }
 
             this.closeFutureOpenOrder(id);
-          } else if (type === 'TRAILING_STOP_MARKET') {
-            let { status, callbackRate, activation } = trailingStop;
-            if (status === 'PENDING') {
-              if (
-                (activation.changePercentage &&
-                  lastCandle.low < price * (1 + activation.changePercentage)) ||
-                // (activation.percentageToTP &&
-                //   lastCandle.low < price * (1 + activation.percentageToTP)) ||
-                (!activation.changePercentage && !activation.percentageToTP)
-              )
-                status = 'ACTIVE';
-            } else if (status === 'ACTIVE') {
-              let prevCandle = candles[candles.length - 2];
-              let stopLoss = prevCandle.close * (1 - callbackRate);
-              // Trailing stop loss is activated
-              if (lastCandle.low <= stopLoss) {
-                let pnl = this.getPositionPNL(position, price);
-                wallet.availableBalance += position.margin + pnl;
-                wallet.totalWalletBalance += pnl;
+          }
+        }
 
-                log(
-                  `Trailing stop sell order #${id} has been activated for ${Math.abs(
-                    quantity
-                  )} ${asset} at $${price}`,
-                  chalk.magenta
-                );
-              }
+        // Trailing stops
+        if (type === 'TRAILING_STOP_MARKET') {
+          let activationPrice = price;
+          let { status, callbackRate } = trailingStop;
+          if (status === 'PENDING' && lastCandle.high >= activationPrice) {
+            status = 'ACTIVE';
+          }
+          if (status === 'ACTIVE') {
+            let stopLossPrice = lastCandle.open * (1 - callbackRate);
+            // Trailing stop loss is activated
+            if (lastCandle.low <= stopLossPrice) {
+              let pnl = this.getPositionPNL(position, price);
+              wallet.availableBalance += position.margin + pnl;
+              wallet.totalWalletBalance += pnl;
+              if (pnl > 0) this.strategyReport.totalProfit += pnl;
+              if (pnl < 0) this.strategyReport.totalLoss += pnl;
+
+              log(
+                `Trailing stop sell order #${id} has been activated for ${Math.abs(
+                  quantity
+                )}${asset} at $${price}`,
+                chalk.magenta
+              );
             }
           }
         }
       });
     }
+  }
+
+  private evaluateSpotWalletBaseValue() {
+    return this.wallet.balances.reduce(
+      (prev, cur) => prev + cur.avgPrice * cur.quantity,
+      0
+    );
   }
 
   private getPositionPNL(position: Position, currentPrice: number) {
@@ -1134,7 +1360,7 @@ export class BackTestBot {
     quantity: number,
     side: 'BUY' | 'SELL'
   ) {
-    const balance = this.wallet.balance;
+    const balance = this.wallet.balances;
     const baseBalance = balance.find((bal) => bal.symbol === base);
     const assetBalance = balance.find((bal) => bal.symbol === asset);
 
@@ -1143,10 +1369,13 @@ export class BackTestBot {
       // If have enough base to buy
       if (baseBalance.quantity >= baseCost) {
         baseBalance.quantity -= baseCost;
+        assetBalance.avgPrice =
+          (assetBalance.avgPrice * assetBalance.quantity + baseCost) /
+          (assetBalance.quantity + quantity);
         assetBalance.quantity += quantity;
 
         log(
-          `Buy ${quantity} ${asset} at $${price} for $${baseCost}`,
+          `Buy ${quantity}${asset} at $${price} for $${baseCost}`,
           chalk.green
         );
       } else {
@@ -1163,8 +1392,9 @@ export class BackTestBot {
         let profit = price * quantity;
         assetBalance.quantity -= quantity;
         baseBalance.quantity += profit;
+        if (assetBalance.quantity === 0) assetBalance.avgPrice = 0;
 
-        log(`Sell ${quantity} ${asset} at $${price} for $${profit}`, chalk.red);
+        log(`Sell ${quantity}${asset} at $${price} for $${profit}`, chalk.red);
       } else {
         log(
           `Not enough ${base} to buy ${asset}. Want to buy ${quantity}${asset} at ${price} with only ${baseBalance.quantity}${base}`,
@@ -1181,7 +1411,7 @@ export class BackTestBot {
     quantity: number,
     side: 'BUY' | 'SELL'
   ) {
-    const balance = this.wallet.balance;
+    const balance = this.wallet.balances;
     const indexBase = balance.findIndex((bal) => bal.symbol === base);
     const indexAsset = balance.findIndex((bal) => bal.symbol === asset);
 
@@ -1202,12 +1432,14 @@ export class BackTestBot {
       log(
         `Create a ${side.toLowerCase()} limit order #${
           order.id
-        } for ${quantity} ${asset} at $${price}`,
+        } for ${quantity}${asset} at $${price}`,
         chalk.magenta
       );
     } else {
       console.error(
-        `Limit order for the pair ${asset + base} cannot be placed`
+        `Limit order for the pair ${
+          asset + base
+        } cannot be placed. quantity=${quantity} price=${price}`
       );
     }
   }
@@ -1249,8 +1481,8 @@ export class BackTestBot {
             chalk.green
           );
 
-          this.strategyResults.totalTrades++;
-          this.strategyResults.totalLongTrades++;
+          this.strategyReport.totalTrades++;
+          this.strategyReport.totalLongTrades++;
         }
       } else if (position.positionSide === 'SHORT') {
         let hadPosition = position.size < 0;
@@ -1259,6 +1491,9 @@ export class BackTestBot {
         let pnl = this.getPositionPNL(position, price);
         wallet.availableBalance += position.margin + pnl;
         wallet.totalWalletBalance += pnl;
+
+        if (pnl > 0) this.strategyReport.totalProfit += pnl;
+        if (pnl < 0) this.strategyReport.totalLoss += pnl;
 
         // Update position
         position.size += quantity;
@@ -1275,14 +1510,14 @@ export class BackTestBot {
           let newPnl = this.getPositionPNL(position, price);
           position.unrealizedProfit = newPnl;
           wallet.availableBalance -= position.margin;
-          this.strategyResults.totalTrades++;
-          this.strategyResults.totalLongTrades++;
+          this.strategyReport.totalTrades++;
+          this.strategyReport.totalLongTrades++;
         }
 
         if (hadPosition && entryPrice >= price)
-          this.strategyResults.longWinningTrade++;
+          this.strategyReport.longWinningTrade++;
         if (hadPosition && entryPrice < price)
-          this.strategyResults.longLostTrade++;
+          this.strategyReport.longLostTrade++;
 
         log(
           `Take a long position on ${pair} with a size of ${quantity} at $${price}`,
@@ -1308,8 +1543,8 @@ export class BackTestBot {
             chalk.red
           );
 
-          this.strategyResults.totalTrades++;
-          this.strategyResults.totalShortTrades++;
+          this.strategyReport.totalTrades++;
+          this.strategyReport.totalShortTrades++;
         }
       } else if (position.positionSide === 'LONG') {
         let hadPosition = position.size > 0;
@@ -1318,6 +1553,9 @@ export class BackTestBot {
         let pnl = this.getPositionPNL(position, price);
         wallet.availableBalance += position.margin + pnl;
         wallet.totalWalletBalance += pnl;
+
+        if (pnl > 0) this.strategyReport.totalProfit += pnl;
+        if (pnl < 0) this.strategyReport.totalLoss += pnl;
 
         // Update position
         position.size -= quantity;
@@ -1334,14 +1572,14 @@ export class BackTestBot {
           let newPnl = this.getPositionPNL(position, price);
           position.unrealizedProfit = newPnl;
           wallet.availableBalance -= position.margin;
-          this.strategyResults.totalTrades++;
-          this.strategyResults.totalShortTrades++;
+          this.strategyReport.totalTrades++;
+          this.strategyReport.totalShortTrades++;
         }
 
         if (hadPosition && entryPrice <= price)
-          this.strategyResults.longWinningTrade++;
+          this.strategyReport.shortWinningTrade++;
         if (hadPosition && entryPrice > price)
-          this.strategyResults.longLostTrade++;
+          this.strategyReport.shortLostTrade++;
 
         log(
           `Take a short position on ${pair} with a size of ${-quantity} at $${price}`,
@@ -1390,7 +1628,9 @@ export class BackTestBot {
         chalk.magenta
       );
     } else {
-      console.error(`Limit order for the pair ${pair} cannot be placed`);
+      console.error(
+        `Limit order for the pair ${pair} cannot be placed. quantity=${quantity} price=${price}`
+      );
     }
   }
 

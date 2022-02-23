@@ -4,7 +4,7 @@ import { BINANCE_MODE, logger } from '..';
 import { decimalFloor } from '../utils/math';
 import { DEBUG } from './bot';
 
-export function log(message: string, chalkColor?: any) {
+export function log(message: any, chalkColor?: any) {
   if (DEBUG) {
     if (chalkColor) console.log(chalkColor(message));
     else console.log(chalk.white(message));
@@ -31,7 +31,7 @@ export function debugLastCandle(lastCandle: CandleData) {
 
 export function debugWallet(wallet: Wallet, futuresWallet: FuturesWallet) {
   if (BINANCE_MODE === 'spot') {
-    let balance = wallet.balance;
+    let balance = wallet.balances;
     let balanceString =
       'balances: ' +
       balance.map(

@@ -19,10 +19,7 @@ export function getPositionSizeByPercent({
   exchangeInfo,
 }: RiskManagementOptions) {
   let pair = asset + base;
-  let quantityPrecision =
-    BINANCE_MODE === 'spot' && process.env.NODE_ENV === 'development'
-      ? 3
-      : getQuantityPrecision(pair, exchangeInfo);
+  let quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
   let quantity = (balance * risk) / enterPrice;
 
   let minQuantity =
@@ -58,10 +55,7 @@ export function getPositionSizeByRisk({
     });
   }
   let pair = asset + base;
-  let quantityPrecision =
-    BINANCE_MODE === 'spot' && process.env.NODE_ENV === 'development'
-      ? 3
-      : getQuantityPrecision(pair, exchangeInfo);
+  let quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
   let riskBalance = balance * risk;
   let delta = Math.abs(stopLossPrice - enterPrice) / enterPrice;
   let quantity = riskBalance / delta / enterPrice;

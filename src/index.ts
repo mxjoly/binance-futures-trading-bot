@@ -67,8 +67,15 @@ if (process.env.NODE_ENV !== 'test') {
   const startDate = new Date('2021-01-01 00:00:00');
   const endDate = new Date('2022-01-01 00:00:00');
   const initialCapital = 10000;
+  const strategyName = 'stochastic_rsi';
 
-  const bot = new BackTestBot(Config, startDate, endDate);
-  bot.prepare(initialCapital);
+  const bot = new BackTestBot(
+    Config,
+    strategyName,
+    startDate,
+    endDate,
+    initialCapital
+  );
+  bot.prepare();
   bot.run();
 }

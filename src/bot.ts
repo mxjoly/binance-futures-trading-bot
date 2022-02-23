@@ -166,7 +166,7 @@ export class Bot {
           .then(() => {
             this.closeOpenOrders(pair);
             const totalValue = currentPrice * Number(assetBalance);
-            log(`Sells ${assetBalance}${asset} for ${totalValue}${base}.`);
+            log(`Sell ${assetBalance}${asset} for ${totalValue}${base}.`);
           })
           .catch(error);
       }
@@ -349,7 +349,7 @@ export class Bot {
           .then(() => {
             this.closeOpenOrders(pair);
             log(
-              `Closes the short position for ${pair}. PNL: ${position.unrealizedProfit}`
+              `Close the short position for ${pair}. PNL: ${position.unrealizedProfit}`
             );
           });
         return;
@@ -518,7 +518,7 @@ export class Bot {
           .then(() => {
             this.closeOpenOrders(pair);
             log(
-              `Closes the long position for ${pair}. PNL: ${position.unrealizedProfit}`
+              `Close the long position for ${pair}. PNL: ${position.unrealizedProfit}`
             );
           });
         return;

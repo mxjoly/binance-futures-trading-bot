@@ -48,9 +48,9 @@ export function logBuySellExecutionOrder(
   let introPhrase =
     BINANCE_MODE === 'spot'
       ? `${
-          orderSide === OrderSide.BUY ? 'Buys' : 'Sells'
+          orderSide === OrderSide.BUY ? 'Buy' : 'Sell'
         } ${quantity}${asset} at the price ${price}${base}`
-      : `Opens a ${
+      : `Open a ${
           orderSide === OrderSide.BUY ? 'long' : 'short'
         } position on ${asset}${base} at the price ${price} with a size of ${quantity}${asset}`;
 
