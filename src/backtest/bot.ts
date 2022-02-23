@@ -188,10 +188,10 @@ export class BackTestBot {
     this.strategyReport.longLostTrade = 0;
     this.strategyReport.shortWinningTrade = 0;
     this.strategyReport.shortLostTrade = 0;
-    this.strategyReport.consecutiveProfitCount = 0;
-    this.strategyReport.consecutiveLossCount = 0;
-    this.strategyReport.consecutiveWins = 0;
-    this.strategyReport.consecutiveLosses = 0;
+    this.strategyReport.maxConsecutiveProfit = 0;
+    this.strategyReport.maxConsecutiveLoss = 0;
+    this.strategyReport.maxConsecutiveWins = 0;
+    this.strategyReport.maxConsecutiveLosses = 0;
   }
 
   public async run() {
@@ -373,7 +373,7 @@ export class BackTestBot {
         }
         let drawdown = currentWalletValue / this.maxBalance;
         if (drawdown < this.maxDrawdown) {
-          this.maxDrawdown = decimalFloor(-((1 - drawdown) * 100), 2);
+          this.maxDrawdown = decimalFloor((1 - drawdown) * 100, 2);
         }
       } else {
         if (this.futuresWallet.totalWalletBalance > this.maxBalance) {
@@ -381,7 +381,7 @@ export class BackTestBot {
         }
         let drawdown = this.futuresWallet.totalWalletBalance / this.maxBalance;
         if (drawdown < this.maxDrawdown) {
-          this.maxDrawdown = decimalFloor(-((1 - drawdown) * 100), 2);
+          this.maxDrawdown = decimalFloor((1 - drawdown) * 100, 2);
         }
       }
 
@@ -442,7 +442,7 @@ export class BackTestBot {
       decimalFloor(totalProfit / totalLoss, 2)
     );
     this.strategyReport.sharpRatio = 0; // ????????
-    this.strategyReport.maxDrawdown = this.maxDrawdown;
+    this.strategyReport.maxDrawdown = -this.maxDrawdown;
 
     this.strategyReport.longWinRate = decimalFloor(
       (longWinningTrade / totalLongTrades) * 100,
@@ -462,6 +462,16 @@ export class BackTestBot {
     );
     this.strategyReport.avgLoss = decimalFloor(
       totalLoss / (longLostTrade + shortLostTrade),
+      2
+    );
+    this.strategyReport.maxConsecutiveWins = this.maxConsecutiveWins;
+    this.strategyReport.maxConsecutiveLosses = this.maxConsecutiveLosses;
+    this.strategyReport.maxConsecutiveProfit = decimalFloor(
+      this.maxConsecutiveProfitCount,
+      2
+    );
+    this.strategyReport.maxConsecutiveLoss = -decimalFloor(
+      this.maxConsecutiveLossCount,
       2
     );
   }
@@ -489,44 +499,72 @@ export class BackTestBot {
       avgProfit,
       avgLoss,
       maxDrawdown,
-      consecutiveProfitCount,
-      consecutiveLossCount,
-      consecutiveWins,
-      consecutiveLosses,
+      maxConsecutiveProfit,
+      maxConsecutiveLoss,
+      maxConsecutiveWins,
+      maxConsecutiveLosses,
     } = this.strategyReport;
 
-    console.log(
-      `\n========================= STRATEGY RESULTS =========================\n
-      Period: ${dayjs(this.startDate).format('YYYY-MM-DD HH:mm:ss')} to ${dayjs(
-        this.endDate
-      ).format('YYYY-MM-DD HH:mm:ss')}
-      Total bars: ${totalBars}
-      ----------------------------------------------------------
-      Initial capital: ${initialCapital}
-      Final capital: ${finalCapital}
-      Total net profit: ${totalNetProfit}
-      Total profit: ${totalProfit}
-      Total loss: ${totalLoss}
-      Profit factor: ${profitFactor}
-      Sharp ratio: ${sharpRatio}
-      Max drawdown: ${maxDrawdown}%
-      ----------------------------------------------------------
-      Total trades: ${totalTrades}
-      Total win rate: ${totalWinRate}%
-      Long trades won: ${longWinRate}%
-      Short trades won: ${shortWinRate}%
-      Long trades won: ${longWinningTrade}/${totalLongTrades}
-      Short trades won: ${shortWinningTrade}/${totalShortTrades}
-      Max profit: ${maxProfit}
-      Max loss: ${maxLoss}
-      Average profit: ${avgProfit}
-      Average loss: ${avgLoss}
-      Consecutive profit (count): ${consecutiveProfitCount}
-      Consecutive loss (count): ${consecutiveLossCount}
-      Consecutive wins: ${consecutiveWins}
-      Consecutive losses: ${consecutiveLosses}
-      `
-    );
+    let strategyReportString = `\n========================= STRATEGY RESULTS =========================\n
+    Period: ${dayjs(this.startDate).format('YYYY-MM-DD HH:mm:ss')} to ${dayjs(
+      this.endDate
+    ).format('YYYY-MM-DD HH:mm:ss')}
+    Total bars: ${totalBars}
+    ----------------------------------------------------------
+    Initial capital: ${initialCapital}
+    Final capital: ${finalCapital}
+    Total net profit: ${totalNetProfit}
+    Total profit: ${totalProfit}
+    Total loss: ${totalLoss}
+    Profit factor: ${profitFactor}
+    Sharp ratio: ${sharpRatio}
+    Max drawdown: ${maxDrawdown}%
+    ----------------------------------------------------------
+    Total trades: ${totalTrades}
+    Total win rate: ${totalWinRate}%
+    Long trades won: ${longWinRate}%
+    Short trades won: ${shortWinRate}%
+    Long trades won: ${longWinningTrade}/${totalLongTrades}
+    Short trades won: ${shortWinningTrade}/${totalShortTrades}
+    Max profit: ${maxProfit}
+    Max loss: ${maxLoss}
+    Average profit: ${avgProfit}
+    Average loss: ${avgLoss}
+    Max consecutive profit: ${maxConsecutiveProfit}
+    Max consecutive loss: ${maxConsecutiveLoss}
+    Max consecutive wins: ${maxConsecutiveWins}
+    Max consecutive losses: ${maxConsecutiveLosses}
+    `;
+    console.log(strategyReportString);
+  }
+
+  private updateStrategyConsecutiveProperties(pnl: number) {
+    if (pnl > 0) {
+      this.strategyReport.totalProfit += pnl;
+      this.strategyReport.maxConsecutiveWins++;
+      this.strategyReport.maxConsecutiveProfit += Math.abs(pnl);
+      if (this.strategyReport.maxConsecutiveLosses > this.maxConsecutiveLosses)
+        this.maxConsecutiveLosses = this.strategyReport.maxConsecutiveLosses;
+      if (this.strategyReport.maxConsecutiveLoss > this.maxConsecutiveLossCount)
+        this.maxConsecutiveLossCount = this.strategyReport.maxConsecutiveLoss;
+      this.strategyReport.maxConsecutiveLosses = 0;
+      this.strategyReport.maxConsecutiveLoss = 0;
+    }
+    if (pnl < 0) {
+      this.strategyReport.totalLoss += pnl;
+      this.strategyReport.maxConsecutiveLosses++;
+      this.strategyReport.maxConsecutiveLoss += Math.abs(pnl);
+      if (this.strategyReport.maxConsecutiveWins > this.maxConsecutiveWins)
+        this.maxConsecutiveWins = this.strategyReport.maxConsecutiveWins;
+      if (
+        this.strategyReport.maxConsecutiveProfit >
+        this.maxConsecutiveProfitCount
+      )
+        this.maxConsecutiveProfitCount =
+          this.strategyReport.maxConsecutiveProfit;
+      this.strategyReport.maxConsecutiveWins = 0;
+      this.strategyReport.maxConsecutiveProfit = 0;
+    }
   }
 
   private tradeWithSpot(
@@ -1101,8 +1139,8 @@ export class BackTestBot {
               wallet.availableBalance += position.margin + pnl;
               wallet.totalWalletBalance += pnl;
 
-              if (pnl > 0) this.strategyReport.totalProfit += pnl;
-              if (pnl < 0) this.strategyReport.totalLoss += pnl;
+              // Update strategy report
+              this.updateStrategyConsecutiveProperties(pnl);
 
               // Update position
               position.size += quantity;
@@ -1214,8 +1252,8 @@ export class BackTestBot {
               wallet.availableBalance += position.margin + pnl;
               wallet.totalWalletBalance += pnl;
 
-              if (pnl > 0) this.strategyReport.totalProfit += pnl;
-              if (pnl < 0) this.strategyReport.totalLoss += pnl;
+              // Update strategy report
+              this.updateStrategyConsecutiveProperties(pnl);
 
               // Update position
               position.size -= quantity;
@@ -1492,8 +1530,8 @@ export class BackTestBot {
         wallet.availableBalance += position.margin + pnl;
         wallet.totalWalletBalance += pnl;
 
-        if (pnl > 0) this.strategyReport.totalProfit += pnl;
-        if (pnl < 0) this.strategyReport.totalLoss += pnl;
+        // Update strategy report
+        this.updateStrategyConsecutiveProperties(pnl);
 
         // Update position
         position.size += quantity;
@@ -1554,8 +1592,8 @@ export class BackTestBot {
         wallet.availableBalance += position.margin + pnl;
         wallet.totalWalletBalance += pnl;
 
-        if (pnl > 0) this.strategyReport.totalProfit += pnl;
-        if (pnl < 0) this.strategyReport.totalLoss += pnl;
+        // Update strategy report
+        this.updateStrategyConsecutiveProperties(pnl);
 
         // Update position
         position.size -= quantity;

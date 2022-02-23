@@ -92,8 +92,8 @@ interface StrategyReport {
   avgLoss?: number;
   maxProfit?: number;
   maxLoss?: number;
-  consecutiveProfitCount?: number;
-  consecutiveLossCount?: number;
-  consecutiveWins?: number;
-  consecutiveLosses?: number;
+  maxConsecutiveProfit?: number;
+  maxConsecutiveLoss?: number;
+  maxConsecutiveWins?: number;
+  maxConsecutiveLosses?: number;
 }
