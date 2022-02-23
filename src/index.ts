@@ -64,8 +64,9 @@ if (process.env.NODE_ENV !== 'test') {
   tradingBot.prepare();
   tradingBot.run();
 } else {
+  // Backtester parameters
   const startDate = new Date('2021-01-01 00:00:00');
-  const endDate = new Date('2022-01-01 00:00:00');
+  const endDate = new Date('2021-04-01 00:00:00');
   const initialCapital = 10000;
   const strategyName = 'stochastic_rsi';
 

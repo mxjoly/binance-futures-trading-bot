@@ -166,7 +166,9 @@ export class Bot {
           .then(() => {
             this.closeOpenOrders(pair);
             const totalValue = currentPrice * Number(assetBalance);
-            log(`Sell ${assetBalance}${asset} for ${totalValue}${base}.`);
+            log(
+              `Sell ${assetBalance}${asset} at the price ${currentPrice} for ${totalValue}${base}.`
+            );
           })
           .catch(error);
       }

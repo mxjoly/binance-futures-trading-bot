@@ -1,26 +1,27 @@
-import fs from 'fs';
-import path from 'path';
-import chalk from 'chalk';
-import csv from 'csv-parser';
-import dayjs from 'dayjs';
-import cliProgress from 'cli-progress';
 import colors from 'ansi-colors';
 import { CandleChartInterval, ExchangeInfo, OrderSide } from 'binance-api-node';
+import chalk from 'chalk';
+import cliProgress from 'cli-progress';
+import csv from 'csv-parser';
+import dayjs from 'dayjs';
+import fs from 'fs';
+import path from 'path';
 import { binanceClient, BINANCE_MODE } from '..';
-import { createDatabase, saveState, saveFuturesState } from './db';
 import { decimalCeil, decimalFloor } from '../utils/math';
-import { debugLastCandle, debugWallet, log, printDateBanner } from './debug';
-import {
-  durationBetweenDates,
-  dateMatchTimeFrame,
-  timeFrameToMinutes,
-  compareTimeFrame,
-} from '../utils/time';
 import {
   getPricePrecision,
   getQuantityPrecision,
   isValidQuantity,
 } from '../utils/rules';
+import {
+  compareTimeFrame,
+  dateMatchTimeFrame,
+  durationBetweenDates,
+  timeFrameToMinutes,
+} from '../utils/time';
+import { createDatabase, saveFuturesState, saveState } from './db';
+import { debugLastCandle, debugWallet, log, printDateBanner } from './debug';
+import generateHTMLReport from './generateReport';
 
 // ====================================================================== //
 
@@ -76,8 +77,8 @@ const supportedTimeFrames = [
 // ====================================================================== //
 
 // Exchange fee info
-const TAKER_FEES = 0.04; // %
-const MAKER_FEES = 0.02; // %
+const TAKER_FEES = BINANCE_MODE === 'spot' ? 0.01 : 0.04; // %
+const MAKER_FEES = BINANCE_MODE === 'spot' ? 0.01 : 0.02; // %
 
 // ====================================================================== //
 
@@ -97,10 +98,15 @@ export class BackTestBot {
   private strategyReport: StrategyReport;
   private maxBalance: number;
   private maxDrawdown: number;
+  private maxProfit: number;
+  private maxLoss: number;
   private maxConsecutiveWins: number;
   private maxConsecutiveLosses: number;
   private maxConsecutiveProfitCount: number;
   private maxConsecutiveLossCount: number;
+
+  private chartLabels: string[];
+  private chartData: number[];
 
   constructor(
     tradeConfigs: TradeConfig[],
@@ -119,10 +125,15 @@ export class BackTestBot {
     this.strategyReport = {};
     this.maxBalance = 0;
     this.maxDrawdown = 1;
+    this.maxProfit = 0;
+    this.maxLoss = 0;
     this.maxConsecutiveWins = 0;
     this.maxConsecutiveLosses = 0;
     this.maxConsecutiveProfitCount = 0;
     this.maxConsecutiveLossCount = 0;
+
+    this.chartLabels = [];
+    this.chartData = [];
   }
 
   public prepare() {
@@ -179,6 +190,7 @@ export class BackTestBot {
         ? numberAssetsInBalance
         : this.futuresWallet.positions.length;
     this.strategyReport.totalNetProfit = 0;
+    this.strategyReport.totalFees = 0;
     this.strategyReport.totalTrades = 0;
     this.strategyReport.totalLongTrades = 0;
     this.strategyReport.totalShortTrades = 0;
@@ -393,6 +405,14 @@ export class BackTestBot {
           date: dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
         });
 
+      // Preparing chart data
+      this.chartLabels.push(dayjs(currentDate).format('YYYY-MM-DD'));
+      this.chartData.push(
+        BINANCE_MODE === 'spot'
+          ? this.evaluateSpotWalletBaseValue()
+          : this.futuresWallet.totalWalletBalance
+      );
+
       currentDate = dayjs(currentDate)
         .add(timeFrameToMinutes(smallerTimeFrame), 'minute')
         .toDate();
@@ -403,6 +423,12 @@ export class BackTestBot {
     // Strategy results
     this.calculateStrategyStats();
     this.displayStrategyResults();
+    generateHTMLReport(
+      this.strategyName,
+      this.strategyReport,
+      this.chartLabels,
+      this.chartData
+    );
   }
 
   private calculateStrategyStats() {
@@ -416,8 +442,12 @@ export class BackTestBot {
       totalTrades,
       totalProfit,
       totalLoss,
+      totalFees,
     } = this.strategyReport;
 
+    this.strategyReport.testPeriod = `${dayjs(this.startDate).format(
+      'YYYY-MM-DD HH:mm:ss'
+    )} to ${dayjs(this.endDate).format('YYYY-MM-DD HH:mm:ss')}`;
     this.strategyReport.finalCapital = decimalFloor(
       BINANCE_MODE === 'spot'
         ? this.evaluateSpotWalletBaseValue()
@@ -438,10 +468,13 @@ export class BackTestBot {
       this.strategyReport.totalLoss,
       2
     );
-    this.strategyReport.profitFactor = Math.abs(
-      decimalFloor(totalProfit / totalLoss, 2)
+    this.strategyReport.totalFees = -decimalFloor(
+      this.strategyReport.totalFees,
+      2
     );
-    this.strategyReport.sharpRatio = 0; // ????????
+    this.strategyReport.profitFactor = Math.abs(
+      decimalFloor(totalProfit / (totalLoss - totalFees), 2)
+    );
     this.strategyReport.maxDrawdown = -this.maxDrawdown;
 
     this.strategyReport.longWinRate = decimalFloor(
@@ -456,6 +489,8 @@ export class BackTestBot {
       ((longWinningTrade + shortWinningTrade) / totalTrades) * 100,
       2
     );
+    this.strategyReport.maxProfit = decimalFloor(this.maxProfit, 2);
+    this.strategyReport.maxLoss = -decimalFloor(this.maxLoss, 2);
     this.strategyReport.avgProfit = decimalFloor(
       totalProfit / (longWinningTrade + shortWinningTrade),
       2
@@ -478,12 +513,14 @@ export class BackTestBot {
 
   private displayStrategyResults() {
     const {
+      testPeriod,
       initialCapital,
       finalCapital,
       totalBars,
       totalNetProfit,
       totalProfit,
       totalLoss,
+      totalFees,
       profitFactor,
       totalTrades,
       totalWinRate,
@@ -493,7 +530,6 @@ export class BackTestBot {
       shortWinningTrade,
       totalLongTrades,
       totalShortTrades,
-      sharpRatio,
       maxProfit,
       maxLoss,
       avgProfit,
@@ -505,10 +541,8 @@ export class BackTestBot {
       maxConsecutiveLosses,
     } = this.strategyReport;
 
-    let strategyReportString = `\n========================= STRATEGY RESULTS =========================\n
-    Period: ${dayjs(this.startDate).format('YYYY-MM-DD HH:mm:ss')} to ${dayjs(
-      this.endDate
-    ).format('YYYY-MM-DD HH:mm:ss')}
+    let strategyReportString = `\n========================= STRATEGY REPORT =========================\n
+    Period: ${testPeriod}
     Total bars: ${totalBars}
     ----------------------------------------------------------
     Initial capital: ${initialCapital}
@@ -516,29 +550,27 @@ export class BackTestBot {
     Total net profit: ${totalNetProfit}
     Total profit: ${totalProfit}
     Total loss: ${totalLoss}
+    Total fees: ${totalFees}
     Profit factor: ${profitFactor}
-    Sharp ratio: ${sharpRatio}
     Max drawdown: ${maxDrawdown}%
     ----------------------------------------------------------
     Total trades: ${totalTrades}
     Total win rate: ${totalWinRate}%
-    Long trades won: ${longWinRate}%
-    Short trades won: ${shortWinRate}%
-    Long trades won: ${longWinningTrade}/${totalLongTrades}
-    Short trades won: ${shortWinningTrade}/${totalShortTrades}
+    Long trades won: ${longWinRate}% (${longWinningTrade}/${totalLongTrades})
+    Short trades won: ${shortWinRate}% (${shortWinningTrade}/${totalShortTrades})
     Max profit: ${maxProfit}
     Max loss: ${maxLoss}
     Average profit: ${avgProfit}
     Average loss: ${avgLoss}
     Max consecutive profit: ${maxConsecutiveProfit}
     Max consecutive loss: ${maxConsecutiveLoss}
-    Max consecutive wins: ${maxConsecutiveWins}
-    Max consecutive losses: ${maxConsecutiveLosses}
+    Max consecutive wins (count): ${maxConsecutiveWins}
+    Max consecutive losses (count): ${maxConsecutiveLosses}
     `;
     console.log(strategyReportString);
   }
 
-  private updateStrategyConsecutiveProperties(pnl: number) {
+  private updateProfitLossStrategyProperty(pnl: number) {
     if (pnl > 0) {
       this.strategyReport.totalProfit += pnl;
       this.strategyReport.maxConsecutiveWins++;
@@ -549,6 +581,7 @@ export class BackTestBot {
         this.maxConsecutiveLossCount = this.strategyReport.maxConsecutiveLoss;
       this.strategyReport.maxConsecutiveLosses = 0;
       this.strategyReport.maxConsecutiveLoss = 0;
+      if (Math.abs(pnl) > this.maxProfit) this.maxProfit = Math.abs(pnl);
     }
     if (pnl < 0) {
       this.strategyReport.totalLoss += pnl;
@@ -564,6 +597,7 @@ export class BackTestBot {
           this.strategyReport.maxConsecutiveProfit;
       this.strategyReport.maxConsecutiveWins = 0;
       this.strategyReport.maxConsecutiveProfit = 0;
+      if (Math.abs(pnl) > this.maxLoss) this.maxLoss = Math.abs(pnl);
     }
   }
 
@@ -608,13 +642,11 @@ export class BackTestBot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    // If a trade exists, search when to sell
-    if (assetBalance > 0) {
-      if (sellSignal(candles)) {
-        this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
-        this.closeOpenOrders(pair);
-      }
-    } else if (canBuy && buySignal(candles)) {
+    if (assetBalance > 0 && sellSignal(candles)) {
+      this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
+      this.closeOpenOrders(pair);
+    }
+    if (canBuy && buySignal(candles)) {
       const quantity = riskManagement({
         asset,
         base,
@@ -1040,12 +1072,23 @@ export class BackTestBot {
           let baseCost = quantity * price;
           // Convert base to asset
           if (baseBalance.quantity >= baseCost) {
+            let quantityFees = quantity * (MAKER_FEES / 100);
+            let quantityWithFees = quantity - quantityFees;
+            let fees = quantityFees * price;
+
             baseBalance.quantity -= baseCost;
             assetBalance.avgPrice =
-              (assetBalance.avgPrice * assetBalance.quantity + baseCost) /
-              (assetBalance.quantity + quantity);
-            assetBalance.quantity += quantity;
-            log(`Buy order #${id} has been activated`, chalk.magenta);
+              (assetBalance.avgPrice * assetBalance.quantity +
+                quantityWithFees * price) /
+              (assetBalance.quantity + quantityWithFees);
+            assetBalance.quantity += quantityWithFees;
+
+            this.strategyReport.totalTrades++;
+            this.strategyReport.totalFees += fees;
+            log(
+              `Buy order #${id} has been activated for ${quantity}${asset}. Fees: ${fees}`,
+              chalk.magenta
+            );
             // Close the order
             this.closeOpenOrder(id);
           }
@@ -1059,10 +1102,28 @@ export class BackTestBot {
           let profit = quantity * price;
           // Convert asset to base
           if (assetBalance.quantity >= quantity) {
+            let fees = quantity * price * (MAKER_FEES / 100);
             assetBalance.quantity -= quantity;
-            baseBalance.quantity += profit;
+            baseBalance.quantity += profit - fees;
+
+            if (price >= assetBalance.avgPrice)
+              this.strategyReport.totalProfit +=
+                quantity * price - quantity * assetBalance.avgPrice;
+            if (price < assetBalance.avgPrice)
+              this.strategyReport.totalLoss +=
+                quantity * price - quantity * assetBalance.avgPrice;
+
+            this.updateProfitLossStrategyProperty(
+              quantity * price - quantity * assetBalance.avgPrice
+            );
+
             if (assetBalance.quantity === 0) assetBalance.avgPrice = 0;
-            log(`Sell order #${id} has been activated`, chalk.magenta);
+
+            this.strategyReport.totalFees += fees;
+            log(
+              `Sell order #${id} has been activated for ${quantity}${asset}. Fees: ${fees}`,
+              chalk.magenta
+            );
             // Close the order
             this.closeOpenOrder(id);
           }
@@ -1115,32 +1176,40 @@ export class BackTestBot {
               let baseCost = (price * quantity) / leverage;
               // If there is enough available base
               if (wallet.availableBalance >= baseCost) {
+                let quantityFees = quantity * (MAKER_FEES / 100);
+                let quantityWithFees = quantity - quantityFees;
+                let fees = quantityFees * price;
+
                 let avgEntryPrice =
-                  (price * quantity + entryPrice * Math.abs(size)) /
-                  (quantity + Math.abs(size));
+                  (price * quantityWithFees + entryPrice * Math.abs(size)) /
+                  (quantityWithFees + Math.abs(size));
                 position.margin += baseCost;
-                position.size += quantity;
+                position.size += quantityWithFees;
                 position.entryPrice = avgEntryPrice;
                 wallet.availableBalance -= baseCost;
+
+                this.strategyReport.totalTrades++;
+                this.strategyReport.totalLongTrades++;
+                this.strategyReport.totalFees += fees;
+
+                log(
+                  `Long order #${id} has been activated for ${quantity}${asset} at $${price}. Fees: ${fees}`,
+                  chalk.magenta
+                );
               }
-
-              this.strategyReport.totalTrades++;
-              this.strategyReport.totalLongTrades++;
-
-              log(
-                `Long order #${id} has been activated for ${quantity} ${asset} at $${price}`,
-                chalk.magenta
-              );
             } else if (position.positionSide === 'SHORT') {
               let hadPosition = position.size < 0;
 
+              // Fees
+              let fees = quantity * price * (MAKER_FEES / 100);
+
               // Update wallet
               let pnl = this.getPositionPNL(position, price);
-              wallet.availableBalance += position.margin + pnl;
-              wallet.totalWalletBalance += pnl;
+              wallet.availableBalance += position.margin + pnl - fees;
+              wallet.totalWalletBalance += pnl - fees;
 
               // Update strategy report
-              this.updateStrategyConsecutiveProperties(pnl);
+              this.updateProfitLossStrategyProperty(pnl - fees);
 
               // Update position
               position.size += quantity;
@@ -1161,6 +1230,7 @@ export class BackTestBot {
                 this.strategyReport.totalLongTrades++;
               }
 
+              this.strategyReport.totalFees += fees;
               if (hadPosition && entryPrice >= price)
                 this.strategyReport.longWinningTrade++;
               if (hadPosition && entryPrice < price)
@@ -1173,7 +1243,7 @@ export class BackTestBot {
                     : entryPrice > price
                     ? '[TP]'
                     : '[BE]'
-                } Long order #${id} has been activated for ${quantity} ${asset} at $${price}`,
+                } Long order #${id} has been activated for ${quantity} ${asset} at $${price}. Fees: ${fees}`,
                 chalk.magenta
               );
             }
@@ -1194,15 +1264,16 @@ export class BackTestBot {
             // Trailing stop loss is activated
             if (lastCandle.high >= stopLossPrice) {
               let pnl = this.getPositionPNL(position, price);
+              let fees = quantity * price * (MAKER_FEES / 100);
               wallet.availableBalance += position.margin + pnl;
               wallet.totalWalletBalance += pnl;
-              if (pnl > 0) this.strategyReport.totalProfit += pnl;
-              if (pnl < 0) this.strategyReport.totalLoss += pnl;
+              this.updateProfitLossStrategyProperty(pnl - fees);
+              this.strategyReport.totalFees += fees;
 
               log(
                 `Trailing stop long order #${id} has been activated for ${Math.abs(
                   quantity
-                )}${asset} at $${price}`,
+                )}${asset} at $${price}. Fees: ${fees}`,
                 chalk.magenta
               );
             }
@@ -1226,26 +1297,34 @@ export class BackTestBot {
               let baseCost = (price * quantity) / leverage;
               // If there is enough available base
               if (wallet.availableBalance >= baseCost) {
+                let quantityFees = quantity * (MAKER_FEES / 100);
+                let quantityWithFees = quantity - quantityFees;
+                let fees = quantityFees * price;
+
                 let avgEntryPrice =
-                  (price * quantity + entryPrice * Math.abs(size)) /
-                  (quantity + Math.abs(size));
+                  (price * quantityWithFees + entryPrice * Math.abs(size)) /
+                  (quantityWithFees + Math.abs(size));
                 position.margin += baseCost;
-                position.size -= quantity;
+                position.size -= quantityWithFees;
                 position.entryPrice = avgEntryPrice;
                 wallet.availableBalance -= baseCost;
+
+                this.strategyReport.totalTrades++;
+                this.strategyReport.totalShortTrades++;
+                this.strategyReport.totalFees += fees;
+
+                log(
+                  `Sell order #${id} has been activated for ${Math.abs(
+                    quantity
+                  )} ${asset} at $${price}. Fees: ${fees}`,
+                  chalk.magenta
+                );
               }
-
-              this.strategyReport.totalTrades++;
-              this.strategyReport.totalShortTrades++;
-
-              log(
-                `Sell order #${id} has been activated for ${Math.abs(
-                  quantity
-                )} ${asset} at $${price}`,
-                chalk.magenta
-              );
             } else if (position.positionSide === 'LONG') {
               let hadPosition = position.size > 0;
+
+              // Fees
+              let fees = quantity * price * (MAKER_FEES / 100);
 
               // Update wallet
               let pnl = this.getPositionPNL(position, price);
@@ -1253,7 +1332,7 @@ export class BackTestBot {
               wallet.totalWalletBalance += pnl;
 
               // Update strategy report
-              this.updateStrategyConsecutiveProperties(pnl);
+              this.updateProfitLossStrategyProperty(pnl);
 
               // Update position
               position.size -= quantity;
@@ -1274,6 +1353,7 @@ export class BackTestBot {
                 this.strategyReport.totalShortTrades++;
               }
 
+              this.strategyReport.totalFees += fees;
               if (hadPosition && entryPrice <= price)
                 this.strategyReport.shortWinningTrade++;
               if (hadPosition && entryPrice > price)
@@ -1286,7 +1366,7 @@ export class BackTestBot {
                     : entryPrice < price
                     ? '[TP]'
                     : '[BE]'
-                } Sell order #${id} has been activated for ${quantity} ${asset} at $${price}`,
+                } Sell order #${id} has been activated for ${quantity}${asset} at $${price}. Fees: ${fees}`,
                 chalk.magenta
               );
             }
@@ -1307,15 +1387,16 @@ export class BackTestBot {
             // Trailing stop loss is activated
             if (lastCandle.low <= stopLossPrice) {
               let pnl = this.getPositionPNL(position, price);
-              wallet.availableBalance += position.margin + pnl;
-              wallet.totalWalletBalance += pnl;
-              if (pnl > 0) this.strategyReport.totalProfit += pnl;
-              if (pnl < 0) this.strategyReport.totalLoss += pnl;
+              let fees = quantity * price * (MAKER_FEES / 100);
+              wallet.availableBalance += position.margin + pnl - fees;
+              wallet.totalWalletBalance += pnl - fees;
+              this.updateProfitLossStrategyProperty(pnl - fees);
+              this.strategyReport.totalFees += fees;
 
               log(
                 `Trailing stop sell order #${id} has been activated for ${Math.abs(
                   quantity
-                )}${asset} at $${price}`,
+                )}${asset} at $${price}. Fees: ${fees}`,
                 chalk.magenta
               );
             }
@@ -1406,11 +1487,18 @@ export class BackTestBot {
       let baseCost = quantity * price;
       // If have enough base to buy
       if (baseBalance.quantity >= baseCost) {
+        let quantityFees = quantity * (TAKER_FEES / 100);
+        let quantityWithFees = quantity - quantityFees;
+
         baseBalance.quantity -= baseCost;
         assetBalance.avgPrice =
-          (assetBalance.avgPrice * assetBalance.quantity + baseCost) /
-          (assetBalance.quantity + quantity);
-        assetBalance.quantity += quantity;
+          (assetBalance.avgPrice * assetBalance.quantity +
+            price * quantityWithFees) /
+          (assetBalance.quantity + quantityWithFees);
+        assetBalance.quantity += quantityWithFees;
+
+        this.strategyReport.totalFees += quantityFees * price;
+        this.strategyReport.totalTrades++;
 
         log(
           `Buy ${quantity}${asset} at $${price} for $${baseCost}`,
@@ -1427,9 +1515,26 @@ export class BackTestBot {
     if (side === 'SELL') {
       // If have enough asset to sell
       if (assetBalance.quantity >= quantity) {
-        let profit = price * quantity;
+        let quantityFees = quantity * (TAKER_FEES / 100);
+        let quantityWithFees = quantity - quantityFees;
+        let profit = price * quantityWithFees;
+
         assetBalance.quantity -= quantity;
         baseBalance.quantity += profit;
+
+        if (price >= assetBalance.avgPrice)
+          this.strategyReport.totalProfit +=
+            quantity * price - quantity * assetBalance.avgPrice;
+        if (price < assetBalance.avgPrice)
+          this.strategyReport.totalLoss +=
+            quantity * price - quantity * assetBalance.avgPrice;
+
+        this.updateProfitLossStrategyProperty(
+          quantity * price - quantity * assetBalance.avgPrice
+        );
+
+        this.strategyReport.totalFees += quantityFees * price;
+
         if (assetBalance.quantity === 0) assetBalance.avgPrice = 0;
 
         log(`Sell ${quantity}${asset} at $${price} for $${profit}`, chalk.red);
@@ -1452,11 +1557,12 @@ export class BackTestBot {
     const balance = this.wallet.balances;
     const indexBase = balance.findIndex((bal) => bal.symbol === base);
     const indexAsset = balance.findIndex((bal) => bal.symbol === asset);
+    let fees = quantity * price * (TAKER_FEES / 100);
 
     let canOrder =
       side === 'BUY'
         ? balance[indexBase].quantity >= quantity * price
-        : balance[indexAsset].quantity >= quantity;
+        : balance[indexAsset].quantity >= quantity - fees; // quantity is lower than at buy order due to the fees
     if (canOrder) {
       let order: OpenOrder = {
         id: Math.random().toString(16).slice(2),
@@ -1503,35 +1609,42 @@ export class BackTestBot {
     if (side === 'BUY') {
       if (position.positionSide === 'LONG') {
         let baseCost = (price * quantity) / leverage;
-
         // If there is enough available base
         if (wallet.availableBalance >= baseCost) {
+          let quantityFees = quantity * (TAKER_FEES / 100);
+          let quantityWithFees = quantity - quantityFees;
+          let fees = quantityFees * price;
+
           let avgEntryPrice =
-            (price * quantity + entryPrice * Math.abs(size)) /
-            (quantity + Math.abs(size));
-          position.margin += baseCost;
-          position.size += quantity;
+            (price * quantityWithFees + entryPrice * Math.abs(size)) /
+            (quantityWithFees + Math.abs(size));
+          position.margin += baseCost - fees;
+          position.size += quantityWithFees;
           position.entryPrice = avgEntryPrice;
           wallet.availableBalance -= baseCost;
 
-          log(
-            `Take a long position on ${pair} with a size of ${quantity} at $${price}`,
-            chalk.green
-          );
-
           this.strategyReport.totalTrades++;
           this.strategyReport.totalLongTrades++;
+          this.strategyReport.totalFees += fees;
+
+          log(
+            `Take a long position on ${pair} with a size of ${quantity} at $${price}. Fees: ${fees}`,
+            chalk.green
+          );
         }
       } else if (position.positionSide === 'SHORT') {
         let hadPosition = position.size < 0;
 
+        // Fees
+        let fees = quantity * price * (TAKER_FEES / 100);
+
         // Update wallet
         let pnl = this.getPositionPNL(position, price);
-        wallet.availableBalance += position.margin + pnl;
-        wallet.totalWalletBalance += pnl;
+        wallet.availableBalance += position.margin + pnl - fees;
+        wallet.totalWalletBalance += pnl - fees;
 
         // Update strategy report
-        this.updateStrategyConsecutiveProperties(pnl);
+        this.updateProfitLossStrategyProperty(pnl - fees);
 
         // Update position
         position.size += quantity;
@@ -1552,13 +1665,14 @@ export class BackTestBot {
           this.strategyReport.totalLongTrades++;
         }
 
+        this.strategyReport.totalFees += fees;
         if (hadPosition && entryPrice >= price)
           this.strategyReport.longWinningTrade++;
         if (hadPosition && entryPrice < price)
           this.strategyReport.longLostTrade++;
 
         log(
-          `Take a long position on ${pair} with a size of ${quantity} at $${price}`,
+          `Take a long position on ${pair} with a size of ${quantity} at $${price}. Fees: ${fees}`,
           chalk.green
         );
       }
@@ -1568,32 +1682,40 @@ export class BackTestBot {
       if (position.positionSide === 'SHORT') {
         // If there is enough available base
         if (wallet.availableBalance >= baseCost) {
+          let quantityFees = quantity * (TAKER_FEES / 100);
+          let quantityWithFees = quantity - quantityFees;
+          let fees = quantityFees * price;
+
           let avgEntryPrice =
-            (price * quantity + entryPrice * Math.abs(size)) /
-            (quantity + Math.abs(size));
-          position.margin += baseCost;
-          position.size -= quantity;
+            (price * quantityWithFees + entryPrice * Math.abs(size)) /
+            (quantityWithFees + Math.abs(size));
+          position.margin += baseCost - fees;
+          position.size -= quantityWithFees;
           position.entryPrice = avgEntryPrice;
           wallet.availableBalance -= baseCost;
 
-          log(
-            `Take a short position on ${pair} with a size of ${-quantity} at $${price}`,
-            chalk.red
-          );
-
           this.strategyReport.totalTrades++;
           this.strategyReport.totalShortTrades++;
+          this.strategyReport.totalFees += fees;
+
+          log(
+            `Take a short position on ${pair} with a size of ${-quantityWithFees} at $${price}. Fees: ${fees}`,
+            chalk.red
+          );
         }
       } else if (position.positionSide === 'LONG') {
         let hadPosition = position.size > 0;
 
+        // Fees
+        let fees = quantity * price * (TAKER_FEES / 100);
+
         // Update wallet
         let pnl = this.getPositionPNL(position, price);
-        wallet.availableBalance += position.margin + pnl;
-        wallet.totalWalletBalance += pnl;
+        wallet.availableBalance += position.margin + pnl - fees;
+        wallet.totalWalletBalance += pnl - fees;
 
         // Update strategy report
-        this.updateStrategyConsecutiveProperties(pnl);
+        this.updateProfitLossStrategyProperty(pnl - fees);
 
         // Update position
         position.size -= quantity;
@@ -1614,13 +1736,14 @@ export class BackTestBot {
           this.strategyReport.totalShortTrades++;
         }
 
+        this.strategyReport.totalFees += fees;
         if (hadPosition && entryPrice <= price)
           this.strategyReport.shortWinningTrade++;
         if (hadPosition && entryPrice > price)
           this.strategyReport.shortLostTrade++;
 
         log(
-          `Take a short position on ${pair} with a size of ${-quantity} at $${price}`,
+          `Take a short position on ${pair} with a size of ${-quantity} at $${price}. Fees: ${fees}`,
           chalk.red
         );
       }

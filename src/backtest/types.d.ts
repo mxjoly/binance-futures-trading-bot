@@ -68,16 +68,17 @@ interface FuturesOpenOrder {
  * @see: https://www.metatrader5.com/fr/terminal/help/algotrading/testing_report
  */
 interface StrategyReport {
+  testPeriod?: string;
   initialCapital?: number;
   finalCapital?: number;
   numberSymbol?: number;
   totalNetProfit?: number;
+  totalFees?: number;
   totalBars?: number;
   totalTrades?: number;
   totalLongTrades?: number;
   totalShortTrades?: number;
   profitFactor?: number;
-  sharpRatio?: number;
   totalProfit?: number;
   totalLoss?: number;
   maxDrawdown?: number;

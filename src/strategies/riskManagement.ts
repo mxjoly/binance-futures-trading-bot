@@ -25,7 +25,7 @@ export function getPositionSizeByPercent({
   let minQuantity =
     BINANCE_MODE === 'spot'
       ? getLotSizeQuantityRules(pair, exchangeInfo).minQty
-      : getMinOrderQuantity(asset, enterPrice, exchangeInfo);
+      : getMinOrderQuantity(asset, base, enterPrice, exchangeInfo);
 
   return quantity > minQuantity
     ? decimalCeil(quantity, quantityPrecision)
@@ -63,7 +63,7 @@ export function getPositionSizeByRisk({
   let minQuantity =
     BINANCE_MODE === 'spot'
       ? getLotSizeQuantityRules(pair, exchangeInfo).minQty
-      : getMinOrderQuantity(asset, enterPrice, exchangeInfo);
+      : getMinOrderQuantity(asset, base, enterPrice, exchangeInfo);
 
   return quantity > minQuantity
     ? decimalCeil(quantity, quantityPrecision)
