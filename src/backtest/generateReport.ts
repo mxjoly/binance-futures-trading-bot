@@ -66,7 +66,7 @@ export default function (
               <td>${strategyReport.finalCapital}</td>
             </tr>
             <tr>
-              <td><b>Total net profit capital:</b></td>
+              <td><b>Total net profit:</b></td>
               <td>${strategyReport.totalNetProfit}</td>
             </tr>
             <tr>
