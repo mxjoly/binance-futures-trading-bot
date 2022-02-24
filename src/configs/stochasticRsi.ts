@@ -10,21 +10,30 @@ const config: TradeConfig[] = [
     asset: 'BTC',
     base: 'USDT',
     loopInterval: CandleChartInterval.FIFTEEN_MINUTES,
+    indicatorIntervals: [CandleChartInterval.FIFTEEN_MINUTES],
     risk: 0.01,
     leverage: 10,
     trendFilter: (candles) =>
-      threeEma.getTrend(candles, {
+      threeEma.getTrend(candles[CandleChartInterval.FIFTEEN_MINUTES], {
         emaShortPeriod: 8,
         emaMediumPeriod: 14,
         emaLongPeriod: 50,
       }),
     tpslStrategy: (price, candles, pricePrecision, side) =>
-      atrTpslStrategy(price, candles, pricePrecision, side, {
-        takeProfitAtrRatio: 2,
-        stopLossAtrRatio: 3,
-      }),
-    buySignal: (candles) => STOCHASTIC_RSI.isBuySignal(candles),
-    sellSignal: (candles) => STOCHASTIC_RSI.isSellSignal(candles),
+      atrTpslStrategy(
+        price,
+        candles[CandleChartInterval.FIFTEEN_MINUTES],
+        pricePrecision,
+        side,
+        {
+          takeProfitAtrRatio: 2,
+          stopLossAtrRatio: 3,
+        }
+      ),
+    buySignal: (candles) =>
+      STOCHASTIC_RSI.isBuySignal(candles[CandleChartInterval.FIFTEEN_MINUTES]),
+    sellSignal: (candles) =>
+      STOCHASTIC_RSI.isSellSignal(candles[CandleChartInterval.FIFTEEN_MINUTES]),
     riskManagement: getPositionSizeByRisk,
   },
 ];

@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { binanceClient, BINANCE_MODE } from '..';
 import { decimalCeil, decimalFloor } from '../utils/math';
+import { clone } from '../utils';
 import {
   getPricePrecision,
   getQuantityPrecision,
@@ -35,17 +36,6 @@ const bar = new cliProgress.SingleBar(
 
 // ====================================================================== //
 
-function clone(obj) {
-  if (obj === null || typeof obj !== 'object') return obj;
-  let props = Object.getOwnPropertyDescriptors(obj);
-  for (let prop in props) {
-    props[prop].value = clone(props[prop].value);
-  }
-  return Object.create(Object.getPrototypeOf(obj), props);
-}
-
-// ====================================================================== //
-
 // Save the backtest history to the database
 const SAVE_HISTORY = false;
 
@@ -58,21 +48,7 @@ export const DEBUG = process.argv[2]
 
 // Max length of the candle arrays needed for the strategy and the calculation of indicators
 // Better to have the minimum to get a higher performance
-const MAX_LENGTH_CANDLES = 50;
-
-// Supported time frame in backtest mode
-const supportedTimeFrames = [
-  CandleChartInterval.ONE_MINUTE,
-  CandleChartInterval.FIVE_MINUTES,
-  CandleChartInterval.FIFTEEN_MINUTES,
-  CandleChartInterval.THIRTY_MINUTES,
-  CandleChartInterval.ONE_HOUR,
-  CandleChartInterval.TWO_HOURS,
-  CandleChartInterval.FOUR_HOURS,
-  CandleChartInterval.SIX_HOURS,
-  CandleChartInterval.TWELVE_HOURS,
-  CandleChartInterval.ONE_DAY,
-];
+const MAX_LENGTH_CANDLES = 100;
 
 // ====================================================================== //
 
@@ -83,18 +59,27 @@ const MAKER_FEES = BINANCE_MODE === 'spot' ? 0.01 : 0.02; // %
 // ====================================================================== //
 
 export class BackTestBot {
+  // Configuration
   private tradeConfigs: TradeConfig[];
   private strategyName: string;
-  private historicCandles: { [symbol: string]: CandleData[] };
+
+  // Candles
+  private historicCandleDataMultiTimeFrames: {
+    [symbol: string]: CandlesDataMultiTimeFrames;
+  };
+
+  // Initial parameters
   private startDate: Date;
   private endDate: Date;
   private initialCapital: number;
 
+  // Account mocks
   private wallet: Wallet;
   private futuresWallet: FuturesWallet;
   private openOrders: OpenOrder[];
   private futuresOpenOrders: FuturesOpenOrder[];
 
+  // For the strategy report
   private strategyReport: StrategyReport;
   private maxBalance: number;
   private maxDrawdown: number;
@@ -105,6 +90,7 @@ export class BackTestBot {
   private maxConsecutiveProfitCount: number;
   private maxConsecutiveLossCount: number;
 
+  // To generate the html report
   private chartLabels: string[];
   private chartData: number[];
 
@@ -120,7 +106,8 @@ export class BackTestBot {
     this.startDate = startDate;
     this.endDate = endDate;
     this.initialCapital = initialCapital;
-    this.historicCandles = {};
+
+    this.historicCandleDataMultiTimeFrames = {};
 
     this.strategyReport = {};
     this.maxBalance = 0;
@@ -206,84 +193,110 @@ export class BackTestBot {
     this.strategyReport.maxConsecutiveLosses = 0;
   }
 
-  public async run() {
-    log(
-      '====================== 💵 BINANCE TRADING BOT (BACKTEST) 💵 ======================',
-      chalk.white
+  private async prepareCandleHistoric() {
+    this.tradeConfigs.forEach(
+      ({ asset, base, loopInterval, indicatorIntervals }) => {
+        this.historicCandleDataMultiTimeFrames[asset + base] = {};
+        new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
+          this.historicCandleDataMultiTimeFrames[asset + base][interval] = [];
+        });
+      }
     );
 
-    // Get exchange info
+    // Load the candle data streams
+    let loadPairTimeFrame = [];
+    this.tradeConfigs.forEach(
+      ({ asset, base, loopInterval, indicatorIntervals }) => {
+        new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
+          loadPairTimeFrame.push(
+            new Promise<void>((resolve, reject) => {
+              this.loadCandles(asset + base, interval)
+                .then((candles) => {
+                  this.historicCandleDataMultiTimeFrames[asset + base][
+                    interval
+                  ] = candles;
+                  resolve();
+                })
+                .catch(reject);
+            })
+          );
+        });
+      }
+    );
+
+    await Promise.all(loadPairTimeFrame);
+
+    // Check if the candle data are available on the specified period
+    let historyError = false;
+    this.tradeConfigs.forEach(({ asset, base }) => {
+      Object.keys(this.historicCandleDataMultiTimeFrames[asset + base]).forEach(
+        (interval) => {
+          if (
+            this.historicCandleDataMultiTimeFrames[asset + base][interval]
+              .length === 0
+          ) {
+            historyError = true;
+            console.error(
+              `No candle data has been found on the pair ${
+                asset + base
+              } and time frame ${interval} for the period: ${dayjs(
+                this.startDate
+              ).format('YYYY-MM-DD HH:mm:ss')} to ${dayjs(this.endDate).format(
+                'YYYY-MM-DD HH:mm:ss'
+              )}`
+            );
+          }
+        }
+      );
+    });
+    if (historyError) return process.exit();
+
+    // Check the start date and end date comparing to the historic date period downloaded
+    Object.keys(this.historicCandleDataMultiTimeFrames).forEach((pair) => {
+      let candles = this.historicCandleDataMultiTimeFrames[pair];
+      Object.keys(this.historicCandleDataMultiTimeFrames[pair]).forEach(
+        (timeFrame) => {
+          let candleTimeFrame = candles[timeFrame];
+          let startDate = candleTimeFrame[0].openTime;
+          let endDate = dayjs(
+            candleTimeFrame[candleTimeFrame.length - 1].closeTime
+          ).add(1, 'minute');
+          if (dayjs(this.startDate).isBefore(startDate)) {
+            console.warn(
+              `Your start date is too old comparing to your downloaded candle data for ${pair} in ${timeFrame}. The earliest possible date is ${dayjs(
+                startDate
+              ).format('YYYY-MM-DD HH:mm:ss')}\n`
+            );
+          }
+          if (dayjs(this.endDate).isAfter(endDate)) {
+            console.warn(
+              `Your start date is too recent comparing to your downloaded candle data for ${pair} in ${timeFrame}. The latest possible date is ${dayjs(
+                endDate
+              ).format('YYYY-MM-DD HH:mm:ss')}\n`
+            );
+          }
+        }
+      );
+    });
+  }
+
+  public async run() {
+    log(
+      '====================== 💵 BINANCE TRADING BOT (BACKTEST) 💵 ======================'
+    );
+
+    // Get exchange info (account information are incomplete in the testnet)
     const exchangeInfo =
       BINANCE_MODE === 'spot' && process.env.NODE_ENV === 'production'
         ? await binanceClient.exchangeInfo()
         : await binanceClient.futuresExchangeInfo();
 
-    // Save all candle data
-    await Promise.all(
-      this.tradeConfigs.map(
-        ({ base, asset, loopInterval }) =>
-          new Promise<void>((resolve, reject) => {
-            const pair = asset + base;
-            this.loadCandles(pair, loopInterval)
-              .then((candles) => {
-                this.historicCandles[pair] = candles;
-                resolve();
-              })
-              .catch(reject);
-          })
-      )
-    );
+    // Prepare the candle historic
+    await this.prepareCandleHistoric();
 
-    // Check if the candle data are available on the specified period
-    let historyError = false;
-    Object.keys(this.historicCandles).forEach((symbol) => {
-      if (this.historicCandles[symbol].length === 0) {
-        historyError = true;
-        console.error(
-          `No candle data has been found on the pair ${symbol} for the period: ${dayjs(
-            this.startDate
-          ).format('YYYY-MM-DD HH:mm:ss')} to ${dayjs(this.endDate).format(
-            'YYYY-MM-DD HH:mm:ss'
-          )}`
-        );
-      }
-    });
-    if (historyError) return process.exit();
-
-    // Check the start date and end date comparing to historic data date period downloaded
-    Object.keys(this.historicCandles).forEach((pair) => {
-      let candles = this.historicCandles[pair];
-      let startDate = candles[0].openTime;
-      let endDate = dayjs(candles[candles.length - 1].closeTime).add(
-        1,
-        'minute'
-      );
-      if (dayjs(this.startDate).isBefore(startDate)) {
-        console.warn(
-          `Your start date is too old comparing to your downloaded candle data. The earliest possible date is ${dayjs(
-            startDate
-          ).format('YYYY-MM-DD HH:mm:ss')}\n`
-        );
-      }
-      if (dayjs(this.endDate).isAfter(endDate)) {
-        console.warn(
-          `Your start date is too recent comparing to your downloaded candle data. The latest possible date is ${dayjs(
-            endDate
-          ).format('YYYY-MM-DD HH:mm:ss')}\n`
-        );
-      }
-    });
-
-    // Get the smaller time frame on the trade configs
+    // Get the smaller loop time frame in the trade configs
     const smallerTimeFrame = this.tradeConfigs
-      .map(({ loopInterval, indicatorInterval }) => {
-        if (!indicatorInterval) return loopInterval;
-        else
-          return timeFrameToMinutes(indicatorInterval) >
-            timeFrameToMinutes(loopInterval)
-            ? loopInterval
-            : indicatorInterval;
-      })
+      .map(({ loopInterval }) => loopInterval)
       .sort((tf1, tf2) => compareTimeFrame(tf1, tf2))[0];
 
     // Duration of the backtest period in minutes
@@ -300,10 +313,17 @@ export class BackTestBot {
     if (!DEBUG) bar.start(duration, 0);
 
     // Index to generated candle arrays progressively
-    let index: { [pair: string]: { start: number; end: number } } = {};
-    this.tradeConfigs.forEach((config) => {
-      index[config.asset + config.base] = { start: 0, end: 0 };
-    });
+    let indexes: {
+      [pair: string]: { [timeFrame: string]: { start: number; end: number } };
+    } = {};
+    this.tradeConfigs.forEach(
+      ({ asset, base, indicatorIntervals, loopInterval }) => {
+        indexes[asset + base] = {};
+        new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
+          indexes[asset + base][interval] = { start: 0, end: 0 };
+        });
+      }
+    );
 
     // Time loop
     let currentDate = this.startDate;
@@ -311,91 +331,62 @@ export class BackTestBot {
       printDateBanner(currentDate);
 
       this.tradeConfigs.forEach((config) => {
-        const { base, asset } = config;
+        const { base, asset, loopInterval, indicatorIntervals } = config;
         const pair = asset + base;
 
-        // Generate the array of candles progressively by determining the part of historic candle data to take
-        for (
-          let i = index[pair].end;
-          i < this.historicCandles[pair].length;
-          i++
-        ) {
-          let pairCandles = this.historicCandles[pair];
-          if (dayjs(pairCandles[i].closeTime).isAfter(currentDate) && i > 0) {
-            index[pair].end = i - 1;
-            break;
-          }
-          if (i - index[pair].start > MAX_LENGTH_CANDLES) index[pair].start++;
-        }
-        let candles = this.historicCandles[pair].slice(
-          index[pair].start,
-          index[pair].end
-        );
+        // Update the candle data array on multiple time frame
+        new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
+          let { indexStart, indexEnd } = this.updateCandleHistoricIndex(
+            indexes[pair][interval].start,
+            indexes[pair][interval].end,
+            pair,
+            interval,
+            currentDate
+          );
+          indexes[pair][interval].start = indexStart;
+          indexes[pair][interval].end = indexEnd;
+        });
 
-        if (candles.length > 0) {
-          debugLastCandle(candles[candles.length - 1]);
+        let candles = this.generateCandleHistoric(pair, indexes[pair]);
+        let candlesStream: CandleData[] = candles[pair][loopInterval];
+
+        if (candlesStream.length > 0) {
+          const currentCandle = candlesStream[candlesStream.length - 1];
+          const currentPrice = currentCandle.close;
+
+          debugLastCandle(currentCandle);
 
           // Check if an open order has been activated
           if (BINANCE_MODE === 'spot') {
-            this.checkSpotOpenOrders(asset, base, candles);
+            this.checkSpotOpenOrders(asset, base, candlesStream);
           } else {
-            this.checkFuturesOpenOrders(asset, base, candles);
-            this.updatePNL(asset, base, candles[candles.length - 1].close);
+            this.checkFuturesOpenOrders(asset, base, candlesStream);
+            this.updatePNL(asset, base, currentPrice);
           }
 
-          if (
-            dateMatchTimeFrame(
-              currentDate,
-              config.indicatorInterval || config.loopInterval
-            )
-          ) {
+          if (dateMatchTimeFrame(currentDate, config.loopInterval)) {
             if (BINANCE_MODE === 'spot') {
-              this.tradeWithSpot(config, candles, exchangeInfo);
+              this.tradeWithSpot(
+                config,
+                currentPrice,
+                candles[pair],
+                exchangeInfo
+              );
             } else {
-              this.tradeWithFutures(config, candles, exchangeInfo);
-              this.updatePNL(asset, base, candles[candles.length - 1].close);
+              this.tradeWithFutures(
+                config,
+                currentPrice,
+                candles[pair],
+                exchangeInfo
+              );
+              this.updatePNL(asset, base, currentPrice);
             }
           }
         }
       });
 
-      if (BINANCE_MODE === 'spot') {
-        if (SAVE_HISTORY) {
-          saveState(
-            dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
-            clone(this.wallet),
-            clone(this.openOrders)
-          );
-        }
-      } else {
-        this.updateTotalPNL();
-        if (SAVE_HISTORY) {
-          saveFuturesState(
-            dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
-            clone(this.futuresWallet),
-            clone(this.futuresOpenOrders)
-          );
-        }
-      }
-
-      if (BINANCE_MODE === 'spot') {
-        let currentWalletValue = this.evaluateSpotWalletBaseValue();
-        if (currentWalletValue > this.maxBalance) {
-          this.maxBalance = currentWalletValue;
-        }
-        let drawdown = currentWalletValue / this.maxBalance;
-        if (drawdown < this.maxDrawdown) {
-          this.maxDrawdown = decimalFloor((1 - drawdown) * 100, 2);
-        }
-      } else {
-        if (this.futuresWallet.totalWalletBalance > this.maxBalance) {
-          this.maxBalance = this.futuresWallet.totalWalletBalance;
-        }
-        let drawdown = this.futuresWallet.totalWalletBalance / this.maxBalance;
-        if (drawdown < this.maxDrawdown) {
-          this.maxDrawdown = decimalFloor((1 - drawdown) * 100, 2);
-        }
-      }
+      this.saveStateToDB(currentDate);
+      this.updateMaxDrawdown();
 
       debugWallet(this.wallet, this.futuresWallet);
       log(''); // \n
@@ -429,6 +420,49 @@ export class BackTestBot {
       this.chartLabels,
       this.chartData
     );
+  }
+
+  private generateCandleHistoric(
+    pair: string,
+    pairIndexes: { [timeFrame: string]: { start: number; end: number } }
+  ) {
+    let candles: {
+      [symbol: string]: CandlesDataMultiTimeFrames;
+    } = {};
+    Object.keys(this.historicCandleDataMultiTimeFrames).forEach(
+      (pair) => (candles[pair] = {})
+    );
+    Object.entries(this.historicCandleDataMultiTimeFrames[pair]).forEach(
+      ([timeFrame, data]: [CandleChartInterval, CandleData[]]) => {
+        candles[pair][timeFrame] = data.slice(
+          pairIndexes[timeFrame].start,
+          pairIndexes[timeFrame].end
+        );
+      }
+    );
+    return candles;
+  }
+
+  private updateCandleHistoricIndex(
+    indexStart: number,
+    indexEnd: number,
+    pair: string,
+    timeFrame: CandleChartInterval,
+    currentDate: Date
+  ) {
+    for (
+      let i = indexEnd;
+      i < this.historicCandleDataMultiTimeFrames[pair][timeFrame].length;
+      i++
+    ) {
+      let pairCandles = this.historicCandleDataMultiTimeFrames[pair][timeFrame];
+      if (dayjs(pairCandles[i].closeTime).isAfter(currentDate) && i > 0) {
+        indexEnd = i - 1;
+        break;
+      }
+      if (i - indexStart > MAX_LENGTH_CANDLES) indexStart++;
+    }
+    return { indexStart, indexEnd };
   }
 
   private calculateStrategyStats() {
@@ -570,6 +604,27 @@ export class BackTestBot {
     console.log(strategyReportString);
   }
 
+  private updateMaxDrawdown() {
+    if (BINANCE_MODE === 'spot') {
+      let currentWalletValue = this.evaluateSpotWalletBaseValue();
+      if (currentWalletValue > this.maxBalance) {
+        this.maxBalance = currentWalletValue;
+      }
+      let drawdown = currentWalletValue / this.maxBalance;
+      if (drawdown < this.maxDrawdown) {
+        this.maxDrawdown = decimalFloor((1 - drawdown) * 100, 2);
+      }
+    } else {
+      if (this.futuresWallet.totalWalletBalance > this.maxBalance) {
+        this.maxBalance = this.futuresWallet.totalWalletBalance;
+      }
+      let drawdown = this.futuresWallet.totalWalletBalance / this.maxBalance;
+      if (drawdown < this.maxDrawdown) {
+        this.maxDrawdown = decimalFloor((1 - drawdown) * 100, 2);
+      }
+    }
+  }
+
   private updateProfitLossStrategyProperty(pnl: number) {
     if (pnl > 0) {
       this.strategyReport.totalProfit += pnl;
@@ -601,9 +656,31 @@ export class BackTestBot {
     }
   }
 
+  private saveStateToDB(currentDate: Date) {
+    if (BINANCE_MODE === 'spot') {
+      if (SAVE_HISTORY) {
+        saveState(
+          dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
+          clone(this.wallet),
+          clone(this.openOrders)
+        );
+      }
+    } else {
+      this.updateTotalPNL();
+      if (SAVE_HISTORY) {
+        saveFuturesState(
+          dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
+          clone(this.futuresWallet),
+          clone(this.futuresOpenOrders)
+        );
+      }
+    }
+  }
+
   private tradeWithSpot(
     tradeConfig: TradeConfig,
-    candles: CandleData[],
+    currentPrice: number,
+    candles: CandlesDataMultiTimeFrames,
     exchangeInfo: ExchangeInfo
   ) {
     const {
@@ -627,7 +704,6 @@ export class BackTestBot {
     const baseBalance = balances[indexBase].quantity;
 
     // Data
-    const currentPrice = candles[candles.length - 1].close;
     const currentOpenOrders = this.openOrders.filter(
       (order) => order.pair === pair
     );
@@ -690,7 +766,8 @@ export class BackTestBot {
 
   private tradeWithFutures(
     tradeConfig: TradeConfig,
-    candles: CandleData[],
+    currentPrice: number,
+    candles: CandlesDataMultiTimeFrames,
     exchangeInfo: ExchangeInfo
   ) {
     const {
@@ -733,7 +810,6 @@ export class BackTestBot {
       (!allowPyramiding && !hasShortPosition) || allowPyramiding;
 
     // Other data
-    const currentPrice = candles[candles.length - 1].close;
     const currentOpenOrders = this.futuresOpenOrders;
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
@@ -984,12 +1060,6 @@ export class BackTestBot {
     onlyFinalCandle = true
   ) {
     return new Promise<CandleData[]>((resolve, reject) => {
-      if (!supportedTimeFrames.some((tf) => tf === interval)) {
-        reject(
-          `You use a time frame not supported in backtest mode: ${interval}`
-        );
-      }
-
       let file = path.join(process.cwd(), 'data', symbol, `_${interval}.csv`);
       let candleData: CandleData[] = [];
       let results: CandleData[] = [];
@@ -1069,24 +1139,24 @@ export class BackTestBot {
       buyOrders.forEach(({ id, price, quantity }) => {
         // Price crossed the buy limit order
         if (lastCandle.high > price && lastCandle.low < price) {
+          let fees = quantity * price * (MAKER_FEES / 100);
           let baseCost = quantity * price;
-          // Convert base to asset
-          if (baseBalance.quantity >= baseCost) {
-            let quantityFees = quantity * (MAKER_FEES / 100);
-            let quantityWithFees = quantity - quantityFees;
-            let fees = quantityFees * price;
 
-            baseBalance.quantity -= baseCost;
+          // If have enough base to buy asset including fees
+          if (baseBalance.quantity >= baseCost + fees) {
+            // Convert base to asset with fees
+            baseBalance.quantity -= baseCost + fees;
             assetBalance.avgPrice =
               (assetBalance.avgPrice * assetBalance.quantity +
-                quantityWithFees * price) /
-              (assetBalance.quantity + quantityWithFees);
-            assetBalance.quantity += quantityWithFees;
+                quantity * price) /
+              (assetBalance.quantity + quantity);
+            assetBalance.quantity += quantity;
 
             this.strategyReport.totalTrades++;
             this.strategyReport.totalFees += fees;
+
             log(
-              `Buy order #${id} has been activated for ${quantity}${asset}. Fees: ${fees}`,
+              `Buy order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,
               chalk.magenta
             );
             // Close the order
@@ -1099,29 +1169,28 @@ export class BackTestBot {
       sellOrders.forEach(({ id, price, quantity }) => {
         // Price crossed the sell limit order
         if (lastCandle.high > price && lastCandle.low < price) {
-          let profit = quantity * price;
-          // Convert asset to base
+          // If have enough asset quantity to sell
           if (assetBalance.quantity >= quantity) {
             let fees = quantity * price * (MAKER_FEES / 100);
+            let brutBaseReturn = quantity * price;
+            let netBaseReturn =
+              quantity * price - quantity * assetBalance.avgPrice;
+
+            // Convert asset to base with fees
             assetBalance.quantity -= quantity;
-            baseBalance.quantity += profit - fees;
+            baseBalance.quantity += brutBaseReturn - fees;
 
             if (price >= assetBalance.avgPrice)
-              this.strategyReport.totalProfit +=
-                quantity * price - quantity * assetBalance.avgPrice;
+              this.strategyReport.totalProfit += netBaseReturn - fees;
             if (price < assetBalance.avgPrice)
-              this.strategyReport.totalLoss +=
-                quantity * price - quantity * assetBalance.avgPrice;
+              this.strategyReport.totalLoss += netBaseReturn - fees;
 
-            this.updateProfitLossStrategyProperty(
-              quantity * price - quantity * assetBalance.avgPrice
-            );
-
+            this.updateProfitLossStrategyProperty(netBaseReturn);
             if (assetBalance.quantity === 0) assetBalance.avgPrice = 0;
-
             this.strategyReport.totalFees += fees;
+
             log(
-              `Sell order #${id} has been activated for ${quantity}${asset}. Fees: ${fees}`,
+              `Sell order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,
               chalk.magenta
             );
             // Close the order
@@ -1161,248 +1230,274 @@ export class BackTestBot {
       }
 
       // Check if a long order has been activated on the last candle
-      longOrders.forEach(({ id, price, quantity, type, trailingStop }) => {
-        let { entryPrice, size, leverage } = position;
+      longOrders
+        .sort((order1, order2) => order2.price - order1.price) // sort order from nearest to furthest
+        .every(({ id, price, quantity, type, trailingStop }) => {
+          let { entryPrice, size, leverage } = position;
 
-        // Price crossed the buy limit order
-        if (
-          type !== 'TRAILING_STOP_MARKET' &&
-          lastCandle.high > price &&
-          lastCandle.low < price
-        ) {
-          if (type === 'LIMIT') {
-            // Average the position
-            if (position.positionSide === 'LONG') {
-              let baseCost = (price * quantity) / leverage;
-              // If there is enough available base
-              if (wallet.availableBalance >= baseCost) {
-                let quantityFees = quantity * (MAKER_FEES / 100);
-                let quantityWithFees = quantity - quantityFees;
-                let fees = quantityFees * price;
+          // Price crossed the buy limit order
+          if (
+            type !== 'TRAILING_STOP_MARKET' &&
+            lastCandle.high > price &&
+            lastCandle.low < price
+          ) {
+            if (type === 'LIMIT') {
+              // Average the position
+              if (position.positionSide === 'LONG') {
+                let fees = quantity * price * (MAKER_FEES / 100);
+                let baseCost = (price * quantity) / leverage;
+                // If there is enough available base
+                if (wallet.availableBalance >= baseCost + fees) {
+                  let avgEntryPrice =
+                    (price * quantity + entryPrice * Math.abs(size)) /
+                    (quantity + Math.abs(size));
+                  position.margin += baseCost;
+                  position.size += quantity;
+                  position.entryPrice = avgEntryPrice;
+                  wallet.availableBalance -= baseCost + fees;
+                  wallet.totalWalletBalance -= fees;
 
-                let avgEntryPrice =
-                  (price * quantityWithFees + entryPrice * Math.abs(size)) /
-                  (quantityWithFees + Math.abs(size));
-                position.margin += baseCost;
-                position.size += quantityWithFees;
-                position.entryPrice = avgEntryPrice;
-                wallet.availableBalance -= baseCost;
+                  this.strategyReport.totalTrades++;
+                  this.strategyReport.totalLongTrades++;
+                  this.strategyReport.totalFees += fees;
 
-                this.strategyReport.totalTrades++;
-                this.strategyReport.totalLongTrades++;
+                  log(
+                    `Long order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,
+                    chalk.magenta
+                  );
+                }
+              } else if (position.positionSide === 'SHORT') {
+                let hadPosition = position.size < 0;
+
+                // Fees
+                let fees = quantity * price * (MAKER_FEES / 100);
+
+                // Update wallet
+                let pnl = this.getPositionPNL(position, price);
+                wallet.availableBalance += position.margin + pnl - fees;
+                wallet.totalWalletBalance += pnl - fees;
+
+                // Update strategy report
+                this.updateProfitLossStrategyProperty(pnl);
+
+                // Update position
+                position.size += quantity;
+                position.margin = Math.abs(position.size * price) / leverage;
+
+                if (position.size === 0) {
+                  position.entryPrice = 0;
+                  position.unrealizedProfit = 0;
+                }
+
+                if (position.size > 0) {
+                  position.entryPrice = price;
+                  position.positionSide = 'LONG';
+                  let newPnl = this.getPositionPNL(position, price);
+                  position.unrealizedProfit = newPnl;
+                  wallet.availableBalance -= position.margin;
+                  this.strategyReport.totalTrades++;
+                  this.strategyReport.totalLongTrades++;
+                }
+
                 this.strategyReport.totalFees += fees;
+                if (hadPosition && entryPrice >= price)
+                  this.strategyReport.longWinningTrade++;
+                if (hadPosition && entryPrice < price)
+                  this.strategyReport.longLostTrade++;
 
                 log(
-                  `Long order #${id} has been activated for ${quantity}${asset} at $${price}. Fees: ${fees}`,
+                  `${
+                    entryPrice < price
+                      ? '[SL]'
+                      : entryPrice > price
+                      ? '[TP]'
+                      : '[BE]'
+                  } Long order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,
                   chalk.magenta
                 );
               }
-            } else if (position.positionSide === 'SHORT') {
-              let hadPosition = position.size < 0;
 
-              // Fees
-              let fees = quantity * price * (MAKER_FEES / 100);
-
-              // Update wallet
-              let pnl = this.getPositionPNL(position, price);
-              wallet.availableBalance += position.margin + pnl - fees;
-              wallet.totalWalletBalance += pnl - fees;
-
-              // Update strategy report
-              this.updateProfitLossStrategyProperty(pnl - fees);
-
-              // Update position
-              position.size += quantity;
-              position.margin = Math.abs(position.size * price) / leverage;
-
-              if (position.size === 0) {
-                position.entryPrice = 0;
-                position.unrealizedProfit = 0;
-              }
-
-              if (position.size > 0) {
-                position.entryPrice = price;
-                position.positionSide = 'LONG';
-                let newPnl = this.getPositionPNL(position, price);
-                position.unrealizedProfit = newPnl;
-                wallet.availableBalance -= position.margin;
-                this.strategyReport.totalTrades++;
-                this.strategyReport.totalLongTrades++;
-              }
-
-              this.strategyReport.totalFees += fees;
-              if (hadPosition && entryPrice >= price)
-                this.strategyReport.longWinningTrade++;
-              if (hadPosition && entryPrice < price)
-                this.strategyReport.longLostTrade++;
-
-              log(
-                `${
-                  entryPrice < price
-                    ? '[SL]'
-                    : entryPrice > price
-                    ? '[TP]'
-                    : '[BE]'
-                } Long order #${id} has been activated for ${quantity} ${asset} at $${price}. Fees: ${fees}`,
-                chalk.magenta
-              );
-            }
-
-            this.closeFutureOpenOrder(id);
-          }
-        }
-
-        // Trailing stops
-        if (type === 'TRAILING_STOP_MARKET') {
-          let activationPrice = price;
-          let { status, callbackRate } = trailingStop;
-          if (status === 'PENDING' && lastCandle.low <= activationPrice) {
-            status = 'ACTIVE';
-          }
-          if (status === 'ACTIVE') {
-            let stopLossPrice = lastCandle.open * (1 + callbackRate);
-            // Trailing stop loss is activated
-            if (lastCandle.high >= stopLossPrice) {
-              let pnl = this.getPositionPNL(position, price);
-              let fees = quantity * price * (MAKER_FEES / 100);
-              wallet.availableBalance += position.margin + pnl;
-              wallet.totalWalletBalance += pnl;
-              this.updateProfitLossStrategyProperty(pnl - fees);
-              this.strategyReport.totalFees += fees;
-
-              log(
-                `Trailing stop long order #${id} has been activated for ${Math.abs(
-                  quantity
-                )}${asset} at $${price}. Fees: ${fees}`,
-                chalk.magenta
-              );
+              this.closeFutureOpenOrder(id);
             }
           }
-        }
-      });
 
-      shortOrders.forEach(({ id, price, quantity, type, trailingStop }) => {
-        let { entryPrice, size, leverage } = position;
+          // Trailing stops
+          if (type === 'TRAILING_STOP_MARKET') {
+            let activationPrice = price;
+            let { status, callbackRate } = trailingStop;
+            if (status === 'PENDING' && lastCandle.low <= activationPrice) {
+              status = 'ACTIVE';
+            }
+            if (status === 'ACTIVE') {
+              let stopLossPrice = lastCandle.open * (1 + callbackRate);
+              // Trailing stop loss is activated
+              if (lastCandle.high >= stopLossPrice) {
+                let pnl = this.getPositionPNL(position, price);
+                let fees = quantity * price * (MAKER_FEES / 100);
 
-        // Price crossed the sell limit order
-        if (
-          type !== 'TRAILING_STOP_MARKET' &&
-          lastCandle.high > price &&
-          lastCandle.low < price
-        ) {
-          // If there is enough available base
-          if (type === 'LIMIT') {
-            // Average the position
-            if (position.positionSide === 'SHORT') {
-              let baseCost = (price * quantity) / leverage;
-              // If there is enough available base
-              if (wallet.availableBalance >= baseCost) {
-                let quantityFees = quantity * (MAKER_FEES / 100);
-                let quantityWithFees = quantity - quantityFees;
-                let fees = quantityFees * price;
+                wallet.availableBalance += position.margin + pnl - fees;
+                wallet.totalWalletBalance += pnl - fees;
+                position.size += quantity;
+                position.margin = Math.abs(position.size * price) / leverage;
 
-                let avgEntryPrice =
-                  (price * quantityWithFees + entryPrice * Math.abs(size)) /
-                  (quantityWithFees + Math.abs(size));
-                position.margin += baseCost;
-                position.size -= quantityWithFees;
-                position.entryPrice = avgEntryPrice;
-                wallet.availableBalance -= baseCost;
-
-                this.strategyReport.totalTrades++;
-                this.strategyReport.totalShortTrades++;
+                this.updateProfitLossStrategyProperty(pnl);
                 this.strategyReport.totalFees += fees;
 
                 log(
-                  `Sell order #${id} has been activated for ${Math.abs(
+                  `Trailing stop long order #${id} has been activated for ${Math.abs(
                     quantity
-                  )} ${asset} at $${price}. Fees: ${fees}`,
+                  )}${asset} at ${price}. Fees: ${fees}`,
                   chalk.magenta
                 );
               }
-            } else if (position.positionSide === 'LONG') {
-              let hadPosition = position.size > 0;
-
-              // Fees
-              let fees = quantity * price * (MAKER_FEES / 100);
-
-              // Update wallet
-              let pnl = this.getPositionPNL(position, price);
-              wallet.availableBalance += position.margin + pnl;
-              wallet.totalWalletBalance += pnl;
-
-              // Update strategy report
-              this.updateProfitLossStrategyProperty(pnl);
-
-              // Update position
-              position.size -= quantity;
-              position.margin = Math.abs(position.size * price) / leverage;
-
-              if (position.size === 0) {
-                position.entryPrice = 0;
-                position.unrealizedProfit = 0;
-              }
-
-              if (position.size < 0) {
-                position.entryPrice = price;
-                position.positionSide = 'SHORT';
-                let newPnl = this.getPositionPNL(position, price);
-                position.unrealizedProfit = newPnl;
-                wallet.availableBalance -= position.margin;
-                this.strategyReport.totalTrades++;
-                this.strategyReport.totalShortTrades++;
-              }
-
-              this.strategyReport.totalFees += fees;
-              if (hadPosition && entryPrice <= price)
-                this.strategyReport.shortWinningTrade++;
-              if (hadPosition && entryPrice > price)
-                this.strategyReport.shortLostTrade++;
-
-              log(
-                `${
-                  entryPrice > price
-                    ? '[SL]'
-                    : entryPrice < price
-                    ? '[TP]'
-                    : '[BE]'
-                } Sell order #${id} has been activated for ${quantity}${asset} at $${price}. Fees: ${fees}`,
-                chalk.magenta
-              );
-            }
-
-            this.closeFutureOpenOrder(id);
-          }
-        }
-
-        // Trailing stops
-        if (type === 'TRAILING_STOP_MARKET') {
-          let activationPrice = price;
-          let { status, callbackRate } = trailingStop;
-          if (status === 'PENDING' && lastCandle.high >= activationPrice) {
-            status = 'ACTIVE';
-          }
-          if (status === 'ACTIVE') {
-            let stopLossPrice = lastCandle.open * (1 - callbackRate);
-            // Trailing stop loss is activated
-            if (lastCandle.low <= stopLossPrice) {
-              let pnl = this.getPositionPNL(position, price);
-              let fees = quantity * price * (MAKER_FEES / 100);
-              wallet.availableBalance += position.margin + pnl - fees;
-              wallet.totalWalletBalance += pnl - fees;
-              this.updateProfitLossStrategyProperty(pnl - fees);
-              this.strategyReport.totalFees += fees;
-
-              log(
-                `Trailing stop sell order #${id} has been activated for ${Math.abs(
-                  quantity
-                )}${asset} at $${price}. Fees: ${fees}`,
-                chalk.magenta
-              );
             }
           }
-        }
-      });
+
+          // If an order close the position, do not continue to check the other orders.
+          // Prevent to have multiple orders touches at the same time
+          if (position.size === 0) {
+            this.closeFuturesOpenOrders(pair);
+            return false;
+          } else {
+            return true;
+          }
+        });
+
+      shortOrders
+        .sort((order1, order2) => order1.price - order2.price) // sort order from nearest to furthest
+        .every(({ id, price, quantity, type, trailingStop }) => {
+          let { entryPrice, size, leverage } = position;
+
+          // Price crossed the sell limit order
+          if (
+            type !== 'TRAILING_STOP_MARKET' &&
+            lastCandle.high > price &&
+            lastCandle.low < price
+          ) {
+            // If there is enough available base
+            if (type === 'LIMIT') {
+              // Average the position
+              if (position.positionSide === 'SHORT') {
+                let fees = quantity * price * (MAKER_FEES / 100);
+                let baseCost = (price * quantity) / leverage;
+                // If there is enough available base
+                if (wallet.availableBalance >= baseCost + fees) {
+                  let avgEntryPrice =
+                    (price * quantity + entryPrice * Math.abs(size)) /
+                    (quantity + Math.abs(size));
+                  position.margin += baseCost;
+                  position.size -= quantity;
+                  position.entryPrice = avgEntryPrice;
+                  wallet.availableBalance -= baseCost + fees;
+                  wallet.totalWalletBalance -= fees;
+
+                  this.strategyReport.totalTrades++;
+                  this.strategyReport.totalShortTrades++;
+                  this.strategyReport.totalFees += fees;
+
+                  log(
+                    `Sell order #${id} has been activated for ${Math.abs(
+                      quantity
+                    )}${asset} at ${price}. Fees: ${fees}`,
+                    chalk.magenta
+                  );
+                }
+              } else if (position.positionSide === 'LONG') {
+                let hadPosition = position.size > 0;
+
+                // Fees
+                let fees = quantity * price * (MAKER_FEES / 100);
+
+                // Update wallet
+                let pnl = this.getPositionPNL(position, price);
+                wallet.availableBalance += position.margin + pnl - fees;
+                wallet.totalWalletBalance += pnl - fees;
+
+                // Update strategy report
+                this.updateProfitLossStrategyProperty(pnl);
+
+                // Update position
+                position.size -= quantity;
+                position.margin = Math.abs(position.size * price) / leverage;
+
+                if (position.size === 0) {
+                  position.entryPrice = 0;
+                  position.unrealizedProfit = 0;
+                }
+
+                if (position.size < 0) {
+                  position.entryPrice = price;
+                  position.positionSide = 'SHORT';
+                  let newPnl = this.getPositionPNL(position, price);
+                  position.unrealizedProfit = newPnl;
+                  wallet.availableBalance -= position.margin;
+                  this.strategyReport.totalTrades++;
+                  this.strategyReport.totalShortTrades++;
+                }
+
+                this.strategyReport.totalFees += fees;
+                if (hadPosition && entryPrice <= price)
+                  this.strategyReport.shortWinningTrade++;
+                if (hadPosition && entryPrice > price)
+                  this.strategyReport.shortLostTrade++;
+
+                log(
+                  `${
+                    entryPrice > price
+                      ? '[SL]'
+                      : entryPrice < price
+                      ? '[TP]'
+                      : '[BE]'
+                  } Sell order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,
+                  chalk.magenta
+                );
+              }
+
+              this.closeFutureOpenOrder(id);
+            }
+          }
+
+          // Trailing stops
+          if (type === 'TRAILING_STOP_MARKET') {
+            let activationPrice = price;
+            let { status, callbackRate } = trailingStop;
+            if (status === 'PENDING' && lastCandle.high >= activationPrice) {
+              status = 'ACTIVE';
+            }
+            if (status === 'ACTIVE') {
+              let stopLossPrice = lastCandle.open * (1 - callbackRate);
+              // Trailing stop loss is activated
+              if (lastCandle.low <= stopLossPrice) {
+                let pnl = this.getPositionPNL(position, price);
+                let fees = quantity * price * (MAKER_FEES / 100);
+
+                wallet.availableBalance += position.margin + pnl - fees;
+                wallet.totalWalletBalance += pnl - fees;
+                position.size += quantity;
+                position.margin = Math.abs(position.size * price) / leverage;
+
+                this.updateProfitLossStrategyProperty(pnl);
+                this.strategyReport.totalFees += fees;
+
+                log(
+                  `Trailing stop sell order #${id} has been activated for ${Math.abs(
+                    quantity
+                  )}${asset} at ${price}. Fees: ${fees}`,
+                  chalk.magenta
+                );
+              }
+            }
+          }
+
+          // If an order close the position, do not continue to check the other orders.
+          // Prevent to have multiple orders touches at the same time
+          if (position.size === 0) {
+            this.closeFuturesOpenOrders(pair);
+            return false;
+          } else {
+            return true;
+          }
+        });
     }
   }
 
@@ -1462,14 +1557,14 @@ export class BackTestBot {
 
   private closeOpenOrders(pair: string) {
     this.openOrders = this.openOrders.filter((order) => order.pair !== pair);
-    log(`Close all the open orders for the pair ${pair}`, chalk.cyan);
+    log(`Close all the open orders on the pair ${pair}`, chalk.cyan);
   }
 
   private closeFuturesOpenOrders(pair: string) {
     this.futuresOpenOrders = this.futuresOpenOrders.filter(
       (order) => order.pair !== pair
     );
-    log(`Close all the open orders for the pair ${pair}`, chalk.cyan);
+    log(`Close all the open orders on the pair ${pair}`, chalk.cyan);
   }
 
   private spotOrderMarket(
@@ -1482,26 +1577,25 @@ export class BackTestBot {
     const balance = this.wallet.balances;
     const baseBalance = balance.find((bal) => bal.symbol === base);
     const assetBalance = balance.find((bal) => bal.symbol === asset);
+    const fees = quantity * price * (TAKER_FEES / 100);
 
     if (side === 'BUY') {
       let baseCost = quantity * price;
-      // If have enough base to buy
-      if (baseBalance.quantity >= baseCost) {
-        let quantityFees = quantity * (TAKER_FEES / 100);
-        let quantityWithFees = quantity - quantityFees;
 
-        baseBalance.quantity -= baseCost;
+      // If have enough base to buy asset including fees
+      if (baseBalance.quantity >= baseCost + fees) {
+        // Convert base to asset with fees
+        baseBalance.quantity -= baseCost + fees;
         assetBalance.avgPrice =
-          (assetBalance.avgPrice * assetBalance.quantity +
-            price * quantityWithFees) /
-          (assetBalance.quantity + quantityWithFees);
-        assetBalance.quantity += quantityWithFees;
+          (assetBalance.avgPrice * assetBalance.quantity + price * quantity) /
+          (assetBalance.quantity + quantity);
+        assetBalance.quantity += quantity;
 
-        this.strategyReport.totalFees += quantityFees * price;
+        this.strategyReport.totalFees += fees;
         this.strategyReport.totalTrades++;
 
         log(
-          `Buy ${quantity}${asset} at $${price} for $${baseCost}`,
+          `Buy ${quantity}${asset} at ${price} for ${baseCost}. Fees: ${fees}`,
           chalk.green
         );
       } else {
@@ -1513,31 +1607,28 @@ export class BackTestBot {
     }
 
     if (side === 'SELL') {
-      // If have enough asset to sell
+      // If have enough asset quantity to sell
       if (assetBalance.quantity >= quantity) {
-        let quantityFees = quantity * (TAKER_FEES / 100);
-        let quantityWithFees = quantity - quantityFees;
-        let profit = price * quantityWithFees;
+        let brutBaseReturn = quantity * price;
+        let netBaseReturn = quantity * price - quantity * assetBalance.avgPrice;
 
+        // Convert asset to base including fees
         assetBalance.quantity -= quantity;
-        baseBalance.quantity += profit;
+        baseBalance.quantity += brutBaseReturn - fees;
 
         if (price >= assetBalance.avgPrice)
-          this.strategyReport.totalProfit +=
-            quantity * price - quantity * assetBalance.avgPrice;
+          this.strategyReport.totalProfit += netBaseReturn - fees;
         if (price < assetBalance.avgPrice)
-          this.strategyReport.totalLoss +=
-            quantity * price - quantity * assetBalance.avgPrice;
+          this.strategyReport.totalLoss += netBaseReturn - fees;
 
-        this.updateProfitLossStrategyProperty(
-          quantity * price - quantity * assetBalance.avgPrice
-        );
-
-        this.strategyReport.totalFees += quantityFees * price;
-
+        this.updateProfitLossStrategyProperty(netBaseReturn);
+        this.strategyReport.totalFees += fees;
         if (assetBalance.quantity === 0) assetBalance.avgPrice = 0;
 
-        log(`Sell ${quantity}${asset} at $${price} for $${profit}`, chalk.red);
+        log(
+          `Sell ${quantity}${asset} at ${price} for ${brutBaseReturn}. Fees: ${fees}`,
+          chalk.red
+        );
       } else {
         log(
           `Not enough ${base} to buy ${asset}. Want to buy ${quantity}${asset} at ${price} with only ${baseBalance.quantity}${base}`,
@@ -1576,7 +1667,7 @@ export class BackTestBot {
       log(
         `Create a ${side.toLowerCase()} limit order #${
           order.id
-        } for ${quantity}${asset} at $${price}`,
+        } for ${quantity}${asset} at ${price}`,
         chalk.magenta
       );
     } else {
@@ -1598,6 +1689,7 @@ export class BackTestBot {
     const positions = wallet.positions;
     const position = positions.find((pos) => pos.pair === pair);
     const { entryPrice, size, leverage } = position;
+    const fees = price * quantity * (TAKER_FEES / 100);
 
     if (quantity < 0) {
       console.error(
@@ -1610,33 +1702,27 @@ export class BackTestBot {
       if (position.positionSide === 'LONG') {
         let baseCost = (price * quantity) / leverage;
         // If there is enough available base
-        if (wallet.availableBalance >= baseCost) {
-          let quantityFees = quantity * (TAKER_FEES / 100);
-          let quantityWithFees = quantity - quantityFees;
-          let fees = quantityFees * price;
-
+        if (wallet.availableBalance >= baseCost + fees) {
           let avgEntryPrice =
-            (price * quantityWithFees + entryPrice * Math.abs(size)) /
-            (quantityWithFees + Math.abs(size));
-          position.margin += baseCost - fees;
-          position.size += quantityWithFees;
+            (price * quantity + entryPrice * Math.abs(size)) /
+            (quantity + Math.abs(size));
+          position.margin += baseCost;
+          position.size += quantity;
           position.entryPrice = avgEntryPrice;
-          wallet.availableBalance -= baseCost;
+          wallet.availableBalance -= baseCost + fees;
+          wallet.totalWalletBalance -= fees;
 
           this.strategyReport.totalTrades++;
           this.strategyReport.totalLongTrades++;
           this.strategyReport.totalFees += fees;
 
           log(
-            `Take a long position on ${pair} with a size of ${quantity} at $${price}. Fees: ${fees}`,
+            `Take a long position on ${pair} with a size of ${quantity} at ${price}. Fees: ${fees}`,
             chalk.green
           );
         }
       } else if (position.positionSide === 'SHORT') {
         let hadPosition = position.size < 0;
-
-        // Fees
-        let fees = quantity * price * (TAKER_FEES / 100);
 
         // Update wallet
         let pnl = this.getPositionPNL(position, price);
@@ -1644,7 +1730,7 @@ export class BackTestBot {
         wallet.totalWalletBalance += pnl - fees;
 
         // Update strategy report
-        this.updateProfitLossStrategyProperty(pnl - fees);
+        this.updateProfitLossStrategyProperty(pnl);
 
         // Update position
         position.size += quantity;
@@ -1672,7 +1758,7 @@ export class BackTestBot {
           this.strategyReport.longLostTrade++;
 
         log(
-          `Take a long position on ${pair} with a size of ${quantity} at $${price}. Fees: ${fees}`,
+          `Take a long position on ${pair} with a size of ${quantity} at ${price}. Fees: ${fees}`,
           chalk.green
         );
       }
@@ -1681,33 +1767,27 @@ export class BackTestBot {
 
       if (position.positionSide === 'SHORT') {
         // If there is enough available base
-        if (wallet.availableBalance >= baseCost) {
-          let quantityFees = quantity * (TAKER_FEES / 100);
-          let quantityWithFees = quantity - quantityFees;
-          let fees = quantityFees * price;
-
+        if (wallet.availableBalance >= baseCost + fees) {
           let avgEntryPrice =
-            (price * quantityWithFees + entryPrice * Math.abs(size)) /
-            (quantityWithFees + Math.abs(size));
-          position.margin += baseCost - fees;
-          position.size -= quantityWithFees;
+            (price * quantity + entryPrice * Math.abs(size)) /
+            (quantity + Math.abs(size));
+          position.margin += baseCost;
+          position.size -= quantity;
           position.entryPrice = avgEntryPrice;
-          wallet.availableBalance -= baseCost;
+          wallet.availableBalance -= baseCost + fees;
+          wallet.totalWalletBalance -= fees;
 
           this.strategyReport.totalTrades++;
           this.strategyReport.totalShortTrades++;
           this.strategyReport.totalFees += fees;
 
           log(
-            `Take a short position on ${pair} with a size of ${-quantityWithFees} at $${price}. Fees: ${fees}`,
+            `Take a short position on ${pair} with a size of ${-quantity} at ${price}. Fees: ${fees}`,
             chalk.red
           );
         }
       } else if (position.positionSide === 'LONG') {
         let hadPosition = position.size > 0;
-
-        // Fees
-        let fees = quantity * price * (TAKER_FEES / 100);
 
         // Update wallet
         let pnl = this.getPositionPNL(position, price);
@@ -1715,7 +1795,7 @@ export class BackTestBot {
         wallet.totalWalletBalance += pnl - fees;
 
         // Update strategy report
-        this.updateProfitLossStrategyProperty(pnl - fees);
+        this.updateProfitLossStrategyProperty(pnl);
 
         // Update position
         position.size -= quantity;
@@ -1743,7 +1823,7 @@ export class BackTestBot {
           this.strategyReport.shortLostTrade++;
 
         log(
-          `Take a short position on ${pair} with a size of ${-quantity} at $${price}. Fees: ${fees}`,
+          `Take a short position on ${pair} with a size of ${-quantity} at ${price}. Fees: ${fees}`,
           chalk.red
         );
       }
@@ -1785,7 +1865,7 @@ export class BackTestBot {
           positionSide === 'LONG' ? 'buy' : 'sell'
         } limit order #${order.id} on ${pair} with size ${Math.abs(
           quantity
-        )} at $${price}`,
+        )} at ${price}`,
         chalk.magenta
       );
     } else {

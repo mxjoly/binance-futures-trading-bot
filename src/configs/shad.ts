@@ -47,7 +47,7 @@ const config: TradeConfig[] = assets.map((asset) => ({
   base: 'USDT',
   risk: 0.01,
   loopInterval: CandleChartInterval.ONE_HOUR,
-  indicatorInterval: CandleChartInterval.ONE_WEEK,
+  indicatorIntervals: [CandleChartInterval.ONE_WEEK],
   trendFilter: (candles) => 1, // Take only long position, supposing we are in up trend on long term
   riskManagement: getPositionSizeByPercent,
   tpslStrategy: (price, candles, pricePrecision, side) =>
@@ -75,8 +75,8 @@ const config: TradeConfig[] = assets.map((asset) => ({
         },
       ],
     }),
-  buySignal: (candles: CandleData[]) =>
-    RELOAD_ZONE.isBuySignal(candles, {
+  buySignal: (candles) =>
+    RELOAD_ZONE.isBuySignal(candles[CandleChartInterval.ONE_WEEK], {
       trend: Fibonacci.FibonacciTrend.UP,
     }),
   sellSignal: (candles: CandleData[]) => false,

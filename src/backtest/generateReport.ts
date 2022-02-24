@@ -159,6 +159,7 @@ export default function (
             type: 'line',
             data: data,
             options: {
+              pointRadius: 0,
               plugins: {
                 title: {
                   display: true,
@@ -166,11 +167,6 @@ export default function (
                   font: {
                     size: 32
                   }
-                }
-              },
-              elements: {
-                point:{
-                  radius: 0
                 }
               }
             }

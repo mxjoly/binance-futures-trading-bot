@@ -3,8 +3,8 @@ type BinanceMode = 'spot' | 'futures';
 interface TradeConfig {
   asset: string;
   base: string;
-  loopInterval: any; // type of CandleChartInterval from binance api node library
-  indicatorInterval?: any; // type of CandleChartInterval from binance api node library
+  loopInterval: CandleChartInterval; // The speed of the main loop, the robot look up the market every this interval
+  indicatorIntervals: CandleChartInterval[]; // The intervals/time frames needed for the strategy
   leverage?: number;
   risk: number; // % of total balance to risk in a trade
   trailingStopConfig?: TrailingStopConfig; // Configuration of a trailing stop
@@ -19,6 +19,10 @@ interface TradeConfig {
   tradeManagement?: TradeManagement; // Manage the take profits and stop loss during a trade
 }
 
+type CandlesDataMultiTimeFrames = {
+  [timeframe: CandleChartInterval]: CandleData[];
+};
+
 interface CandleData {
   open: number;
   high: number;
@@ -29,7 +33,7 @@ interface CandleData {
   closeTime: Date;
 }
 
-type Signal = (candles: CandleData[]) => boolean;
+type Signal = (candles: CandlesDataMultiTimeFrames) => boolean;
 
 type TrailingStopConfig = {
   // Activation price of trailing stop calculated by :
@@ -41,7 +45,7 @@ type TrailingStopConfig = {
 
 type TPSLStrategy = (
   price?: number,
-  candles?: CandleData[],
+  candles?: CandlesDataMultiTimeFrames,
   pricePrecision?: number,
   side: 'BUY' | 'SELL'
 ) => {
@@ -49,7 +53,10 @@ type TPSLStrategy = (
   stopLoss?: number;
 };
 
-type TrendFilter = (candles: CandleData[], options?: any) => Trend; // 1: up trend, -1: down trend, 0 no trend
+type TrendFilter = (
+  candles: CandlesDataMultiTimeFrames,
+  options?: any
+) => Trend; // 1: up trend, -1: down trend, 0 no trend
 type Trend = 1 | -1 | 0; // 1: up trend, -1: down trend, 0: no trend
 
 interface RiskManagementOptions {
