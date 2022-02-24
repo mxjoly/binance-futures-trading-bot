@@ -30,7 +30,8 @@ You can backtest your own strategy by running the backtest mode. To do that, you
 
 1. Download the data for your currencies at https://www.cryptodatadownload.com/data/binance/ and move the files to the folder `data`. Run the command `npm run data` to generate your historical data on multiple time frames (1m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, 1d) that you want.
 2. When the data are ready, update the json file `config.json` as you want to prepare the backtest.
-3. When the backtest ends, it generates a log file in the folder `logs` and an html report in `reports`. You can consulting these to evaluate the performance and profitability of your strategy.
+3. Tap the commands `npm build:test` and `npm run test` to run the backtest.
+4. When the backtest ends, it generates a log file in the folder `logs` and an html report in `reports`. You can consulting these to evaluate the performance and profitability of your strategy.
 
 ![demo](./demo/report.png)
 
