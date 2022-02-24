@@ -3,8 +3,9 @@ import Binance, { CandleChartInterval } from 'binance-api-node';
 import { createLogger, transports, format } from 'winston';
 import { Bot } from './bot';
 import { BackTestBot } from './backtest/bot';
-import Config from './configs/stochasticRsi';
 import { initializePlugins } from './utils/plugins';
+
+const BotConfig = require(`${process.cwd()}/config.json`);
 
 // Initialize environment variables
 require('dotenv').config();
@@ -32,6 +33,10 @@ export const logger = createLogger({
   ],
 });
 
+// Import the strategy config
+const StrategyConfig =
+  require(`./configs/${BotConfig['strategy_config_file_name']}`).default;
+
 export const binanceClient = Binance(
   process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'test'
     ? {
@@ -57,7 +62,7 @@ export const binanceClient = Binance(
 );
 
 // The bot will trade with the binance :
-export const BINANCE_MODE: BinanceMode = 'futures';
+export const BINANCE_MODE: BinanceMode = BotConfig['mode'];
 
 // Supported time frame by the robot
 export const supportedTimeFrames = [
@@ -88,8 +93,10 @@ export const supportedTimeFramesBacktest = [
   CandleChartInterval.ONE_DAY,
 ];
 
-const loopTimeFramesFromConfig = Config.map((config) => config.loopInterval);
-const indicatorIntervalsFromConfig = Config.reduce((prev, cur) => {
+const loopTimeFramesFromConfig = StrategyConfig.map(
+  (config) => config.loopInterval
+);
+const indicatorIntervalsFromConfig = StrategyConfig.reduce((prev, cur) => {
   return prev.concat(
     cur.indicatorIntervals
       .map((interval) => {
@@ -121,7 +128,7 @@ if (process.env.NODE_ENV !== 'test') {
     console.error(`You use a time frame not supported by the robot.`);
     process.exit(1);
   } else {
-    const tradingBot = new Bot(Config);
+    const tradingBot = new Bot(StrategyConfig);
     tradingBot.prepare();
     tradingBot.run();
   }
@@ -135,15 +142,14 @@ if (process.env.NODE_ENV !== 'test') {
     console.error(`You use a time frame not supported in backtest mode.`);
     process.exit(1);
   } else {
-    //////////// Backtester parameters /////////////////////
-    const startDate = new Date('2021-01-01 00:00:00');
-    const endDate = new Date('2022-01-01 00:00:00');
-    const initialCapital = 10000;
-    const strategyName = 'stochastic_rsi';
-    ////////////////////////////////////////////////////////
+    const BacktestConfig = BotConfig['backtest'];
+    const startDate = new Date(BacktestConfig['start_date']);
+    const endDate = new Date(BacktestConfig['end_date']);
+    const initialCapital = BacktestConfig['initial_capital'];
+    const strategyName = BacktestConfig['strategy_name'];
 
     const bot = new BackTestBot(
-      Config,
+      StrategyConfig,
       strategyName,
       startDate,
       endDate,

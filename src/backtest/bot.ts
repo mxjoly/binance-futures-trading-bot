@@ -24,6 +24,9 @@ import { createDatabase, saveFuturesState, saveState } from './db';
 import { debugLastCandle, debugWallet, log, printDateBanner } from './debug';
 import generateHTMLReport from './generateReport';
 
+const BotConfig = require(`${process.cwd()}/config.json`);
+const BacktestConfig = BotConfig['backtest'];
+
 // ====================================================================== //
 
 const bar = new cliProgress.SingleBar(
@@ -37,7 +40,7 @@ const bar = new cliProgress.SingleBar(
 // ====================================================================== //
 
 // Save the backtest history to the database
-const SAVE_HISTORY = false;
+const SAVE_HISTORY = BacktestConfig['save'];
 
 // Debug mode with console.log
 export const DEBUG = process.argv[2]
@@ -48,13 +51,19 @@ export const DEBUG = process.argv[2]
 
 // Max length of the candle arrays needed for the strategy and the calculation of indicators
 // Better to have the minimum to get a higher performance
-const MAX_LENGTH_CANDLES = 100;
+const MAX_LENGTH_CANDLES = 250;
 
 // ====================================================================== //
 
 // Exchange fee info
-const TAKER_FEES = BINANCE_MODE === 'spot' ? 0.01 : 0.04; // %
-const MAKER_FEES = BINANCE_MODE === 'spot' ? 0.01 : 0.02; // %
+const TAKER_FEES =
+  BINANCE_MODE === 'spot'
+    ? BacktestConfig['taker_fees_spot']
+    : BacktestConfig['taker_fees_futures']; // %
+const MAKER_FEES =
+  BINANCE_MODE === 'spot'
+    ? BacktestConfig['maker_fees_spot']
+    : BacktestConfig['maker_fees_futures']; // %
 
 // ====================================================================== //
 
@@ -110,7 +119,7 @@ export class BackTestBot {
     this.historicCandleDataMultiTimeFrames = {};
 
     this.strategyReport = {};
-    this.maxBalance = 0;
+    this.maxBalance = initialCapital;
     this.maxDrawdown = 1;
     this.maxProfit = 0;
     this.maxLoss = 0;
@@ -386,7 +395,7 @@ export class BackTestBot {
       });
 
       this.saveStateToDB(currentDate);
-      this.updateMaxDrawdown();
+      this.updateMaxDrawdownMaxBalance();
 
       debugWallet(this.wallet, this.futuresWallet);
       log(''); // \n
@@ -509,7 +518,10 @@ export class BackTestBot {
     this.strategyReport.profitFactor = Math.abs(
       decimalFloor(totalProfit / (totalLoss - totalFees), 2)
     );
-    this.strategyReport.maxDrawdown = -this.maxDrawdown;
+    this.strategyReport.maxDrawdown = -decimalFloor(
+      (1 - this.maxDrawdown) * 100,
+      2
+    );
 
     this.strategyReport.longWinRate = decimalFloor(
       (longWinningTrade / totalLongTrades) * 100,
@@ -604,7 +616,7 @@ export class BackTestBot {
     console.log(strategyReportString);
   }
 
-  private updateMaxDrawdown() {
+  private updateMaxDrawdownMaxBalance() {
     if (BINANCE_MODE === 'spot') {
       let currentWalletValue = this.evaluateSpotWalletBaseValue();
       if (currentWalletValue > this.maxBalance) {
@@ -612,7 +624,7 @@ export class BackTestBot {
       }
       let drawdown = currentWalletValue / this.maxBalance;
       if (drawdown < this.maxDrawdown) {
-        this.maxDrawdown = decimalFloor((1 - drawdown) * 100, 2);
+        this.maxDrawdown = drawdown;
       }
     } else {
       if (this.futuresWallet.totalWalletBalance > this.maxBalance) {
@@ -620,7 +632,7 @@ export class BackTestBot {
       }
       let drawdown = this.futuresWallet.totalWalletBalance / this.maxBalance;
       if (drawdown < this.maxDrawdown) {
-        this.maxDrawdown = decimalFloor((1 - drawdown) * 100, 2);
+        this.maxDrawdown = drawdown;
       }
     }
   }

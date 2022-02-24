@@ -22,15 +22,17 @@ npm run prod
 
 ## Create your strategy
 
-You can create your own strategy for your bot. At first, you must decide if the bot will trade in spot or futures mode by changing `BINANCE_MODE`constant in the fil `src/index/ts`. Next, look up the existing configs to make your own. Don't forget to backtest if before running it in production !
+You can create your own strategy for your bot. The file must be placed in `src/configs`. There are some examples to help you to create the best strategy. Check the declaration file `global.d.ts` to have an overview of the possibilities you can add to your strategy. And don't forget to backtest your strategy before running it in production !
 
 ## Backtesting
 
 You can backtest your own strategy by running the backtest mode. To do that, you need to:
 
 1. Download the data for your currencies at https://www.cryptodatadownload.com/data/binance/ and move the files to the folder `data`. Run the command `npm run data` to generate your historical data on multiple time frames (1m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, 1d) that you want.
-2. When the data are ready, choose your trading configuration in `src/configs` and import it to the backtest constructor initializer in `src/index.tx`. You can set your test period, the initial capital, and choose your strategy name at the same time. Then, run the command `npm run test` to start the backtest.
+2. When the data are ready, update the json file `config.json` as you want to prepare the backtest.
 3. When the backtest ends, it generates a log file in the folder `logs` and an html report in `reports`. You can consulting these to evaluate the performance and profitability of your strategy.
+
+![demo](./demo/report.png)
 
 ## Documentation
 
