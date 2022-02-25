@@ -717,45 +717,37 @@ export class BackTestBot {
     const balances = this.wallet.balances;
     const indexBase = balances.findIndex((bal) => bal.symbol === base);
     const indexAsset = balances.findIndex((bal) => bal.symbol === asset);
-    const assetBalance = balances[indexAsset];
-    const baseBalance = balances[indexBase];
+    const assetBalance = balances[indexAsset].quantity;
+    const baseBalance = balances[indexBase].quantity;
 
     // Open orders
     const currentOpenOrders = this.openOrders.filter(
       (order) => order.pair === pair
     );
-    const hasPendingOrders = currentOpenOrders.length > 0;
 
     // Conditions
     const canBuy =
       !allowPyramiding ||
       (allowPyramiding &&
-        assetBalance.quantity * currentPrice <=
-          baseBalance.quantity * maxPyramidingAllocation);
+        assetBalance * currentPrice <= baseBalance * maxPyramidingAllocation);
 
     // Precisions
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    if (
-      assetBalance.quantity > 0 &&
-      !hasPendingOrders &&
-      sellStrategy(candles)
-    ) {
-      this.spotOrderMarket(
-        asset,
-        base,
-        currentPrice,
-        assetBalance.quantity,
-        'SELL'
-      );
+    // Prevent remaining open orders
+    if (assetBalance === 0 && currentOpenOrders.length > 0)
+      this.closeOpenOrders(pair);
+
+    if (assetBalance > 0 && sellStrategy(candles)) {
+      this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
       this.closeOpenOrders(pair);
     }
-    if (canBuy && !hasPendingOrders && buyStrategy(candles)) {
+    if (canBuy && buyStrategy(candles)) {
       const quantity = riskManagement({
         asset,
         base,
-        balance: baseBalance.quantity,
+        balance: baseBalance,
         risk,
         enterPrice: currentPrice,
         exchangeInfo,
@@ -1266,6 +1258,8 @@ export class BackTestBot {
             this.updateProfitLossStrategyProperty(netBaseReturn);
             if (assetBalance.quantity === 0) assetBalance.avgPrice = 0;
             this.strategyReport.totalFees += fees;
+
+            if (assetBalance.quantity === 0) this.closeOpenOrders(pair);
 
             log(
               `Sell order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,

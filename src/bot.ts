@@ -151,7 +151,6 @@ export class Bot {
     const currentOpenOrders = await binanceClient.openOrders({
       symbol: pair,
     });
-    const hasPendingOrders = currentOpenOrders.length > 0;
 
     // Conditions
     const canBuy =
@@ -163,7 +162,11 @@ export class Bot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    if (assetBalance > 0 && !hasPendingOrders && sellStrategy(candles)) {
+    // Prevent remaining open orders
+    if (assetBalance === 0 && currentOpenOrders.length > 0)
+      this.closeOpenOrders(pair);
+
+    if (assetBalance > 0 && sellStrategy(candles)) {
       binanceClient
         .order({
           side: OrderSide.SELL,
@@ -180,7 +183,7 @@ export class Bot {
           );
         })
         .catch(error);
-    } else if (canBuy && !hasPendingOrders && buyStrategy(candles)) {
+    } else if (canBuy && buyStrategy(candles)) {
       const quantity = riskManagement({
         asset,
         base,

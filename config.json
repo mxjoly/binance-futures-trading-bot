@@ -1,5 +1,5 @@
 {
-  "mode": "futures",
+  "mode": "spot",
   "strategy_config_file_name": "rsi",
   "strategy_name": "RSI",
   "backtest": {
