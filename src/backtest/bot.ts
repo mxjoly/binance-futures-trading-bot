@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { binanceClient, BINANCE_MODE } from '..';
 import { decimalCeil, decimalFloor } from '../utils/math';
-import { clone, shallowEqual } from '../utils';
+import { clone } from '../utils';
 import {
   getPricePrecision,
   getQuantityPrecision,
@@ -844,11 +844,7 @@ export class BackTestBot {
       this.closeFuturesOpenOrders(pair);
     }
 
-    if (
-      canTakeLongPosition &&
-      currentOpenOrders.length === 0 &&
-      buyStrategy(candles)
-    ) {
+    if (canTakeLongPosition && buyStrategy(candles)) {
       // Take the profit and not open a new position
       if (hasShortPosition && unidirectional) {
         this.futuresOrderMarket(
@@ -931,10 +927,7 @@ export class BackTestBot {
           this.futuresOrderLimit(
             pair,
             price,
-            decimalFloor(
-              Math.abs(position.size) * quantityPercentage,
-              quantityPrecision
-            ),
+            Math.abs(position.size) * quantityPercentage,
             'SHORT'
           );
         });
@@ -1073,10 +1066,7 @@ export class BackTestBot {
           this.futuresOrderLimit(
             pair,
             price,
-            decimalFloor(
-              Math.abs(position.size) * quantityPercentage,
-              quantityPrecision
-            ),
+            Math.abs(position.size) * quantityPercentage,
             'LONG'
           );
         });

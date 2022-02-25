@@ -1,6 +1,6 @@
 {
-  "mode": "spot",
-  "strategy_config_file_name": "rsi",
+  "mode": "futures",
+  "strategy_config_file_name": "rsi-dca",
   "strategy_name": "RSI",
   "backtest": {
     "start_date": "2020-09-13 00:00:00",
