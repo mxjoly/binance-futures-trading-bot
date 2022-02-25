@@ -151,6 +151,7 @@ export class Bot {
     const currentOpenOrders = await binanceClient.openOrders({
       symbol: pair,
     });
+    const hasPendingOrders = currentOpenOrders.length > 0;
 
     // Conditions
     const canBuy =
@@ -162,27 +163,24 @@ export class Bot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    // If a trade exists, search when to sell
-    if (assetBalance > 0) {
-      if (sellStrategy(candles)) {
-        binanceClient
-          .order({
-            side: OrderSide.SELL,
-            type: OrderType.MARKET,
-            symbol: pair,
-            quantity: String(assetBalance),
-            recvWindow: 60000,
-          })
-          .then(() => {
-            this.closeOpenOrders(pair);
-            const totalValue = currentPrice * Number(assetBalance);
-            log(
-              `Sell ${assetBalance}${asset} at the price ${currentPrice} for ${totalValue}${base}.`
-            );
-          })
-          .catch(error);
-      }
-    } else if (canBuy && buyStrategy(candles)) {
+    if (assetBalance > 0 && !hasPendingOrders && sellStrategy(candles)) {
+      binanceClient
+        .order({
+          side: OrderSide.SELL,
+          type: OrderType.MARKET,
+          symbol: pair,
+          quantity: String(assetBalance),
+          recvWindow: 60000,
+        })
+        .then(() => {
+          this.closeOpenOrders(pair);
+          const totalValue = currentPrice * Number(assetBalance);
+          log(
+            `Sell ${assetBalance}${asset} at the price ${currentPrice} for ${totalValue}${base}.`
+          );
+        })
+        .catch(error);
+    } else if (canBuy && !hasPendingOrders && buyStrategy(candles)) {
       const quantity = riskManagement({
         asset,
         base,
@@ -320,8 +318,8 @@ export class Bot {
     // Position information
     const { positions } = await binanceClient.futuresAccountInfo();
     const position = positions.find((position) => position.symbol === pair);
-    const hadLongPosition = Number(position.positionAmt) > 0;
-    const hadShortPosition = Number(position.positionAmt) < 0;
+    const hasLongPosition = Number(position.positionAmt) > 0;
+    const hasShortPosition = Number(position.positionAmt) < 0;
     const positionSize = Math.abs(Number(position.positionAmt));
     const positionEntryPrice = Number(position.entryPrice);
 
@@ -331,25 +329,31 @@ export class Bot {
         Number(assetBalance) * maxPyramidingAllocation
       : false;
     const canTakeLongPosition =
-      (!allowPyramiding && !hadLongPosition) || allowPyramiding;
+      (!allowPyramiding && !hasLongPosition) || allowPyramiding;
     const canTakeShortPosition =
-      (!allowPyramiding && !hadShortPosition) || allowPyramiding;
+      (!allowPyramiding && !hasShortPosition) || allowPyramiding;
 
-    // Other data
+    // Open Orders
     const currentOpenOrders = await binanceClient.futuresOpenOrders({
       symbol: pair,
     });
+
+    // Precision
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
-    if (!hadLongPosition && !hadShortPosition && currentOpenOrders.length > 0) {
+    if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
       this.closeOpenOrders(pair);
     }
 
-    if (canTakeLongPosition && buyStrategy(candles)) {
+    if (
+      canTakeLongPosition &&
+      currentOpenOrders.length === 0 &&
+      buyStrategy(candles)
+    ) {
       // Take the profit and not open a new position
-      if (hadShortPosition && unidirectional) {
+      if (hasShortPosition && unidirectional) {
         binanceClient
           .futuresOrder({
             side: OrderSide.BUY,
@@ -371,10 +375,10 @@ export class Bot {
       if (!useLongPosition) return;
 
       // Do not add to the current position if the allocation is over the max allocation
-      if (allowPyramiding && hadLongPosition && !canAddToPosition) return;
+      if (allowPyramiding && hasLongPosition && !canAddToPosition) return;
 
       // Do not close the current short position built progressively in pyramiding mode
-      if (allowPyramiding && hadShortPosition) return;
+      if (allowPyramiding && hasShortPosition) return;
 
       // Calculate TP and SL
       let { takeProfits, stopLoss } = exitStrategy
@@ -394,7 +398,7 @@ export class Bot {
       });
 
       // Quantity to add to close the previous position
-      let previousPositionQuantity = hadShortPosition ? positionSize : 0;
+      let previousPositionQuantity = hasShortPosition ? positionSize : 0;
 
       // To close the previous short position
       if (
@@ -426,7 +430,7 @@ export class Bot {
             (positionSize + quantity);
 
           // In pyramiding mode, update the take profits and stop loss
-          if (allowPyramiding && hadLongPosition) {
+          if (allowPyramiding && hasLongPosition) {
             let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
               exitStrategy
                 ? exitStrategy(avgPrice, candles, pricePrecision, OrderSide.BUY)
@@ -507,7 +511,7 @@ export class Bot {
               .catch(error);
           }
 
-          if (hadLongPosition) {
+          if (hasLongPosition) {
             log(
               `Add ${quantity}${asset} to the long position on ${pair}. The average entry price is now ${avgPrice}${base} and the total size ${positionTotalSize}${asset}`
             );
@@ -524,9 +528,13 @@ export class Bot {
           }
         })
         .catch(error);
-    } else if (canTakeShortPosition && sellStrategy(candles)) {
+    } else if (
+      canTakeShortPosition &&
+      currentOpenOrders.length === 0 &&
+      sellStrategy(candles)
+    ) {
       // Take the profit and not open a new position
-      if (hadLongPosition && unidirectional) {
+      if (hasLongPosition && unidirectional) {
         binanceClient
           .futuresOrder({
             side: OrderSide.SELL,
@@ -548,10 +556,10 @@ export class Bot {
       if (!useShortPosition) return;
 
       // Do not add to the current position if the allocation is over the max allocation
-      if (allowPyramiding && hadShortPosition && !canAddToPosition) return;
+      if (allowPyramiding && hasShortPosition && !canAddToPosition) return;
 
-      // Do not close the current long position built progressively in pyramiding mode
-      if (allowPyramiding && hadLongPosition) return;
+      // Do not close the current short position built progressively in pyramiding mode
+      if (allowPyramiding && hasLongPosition) return;
 
       // Calculate TP and SL
       let { takeProfits, stopLoss } = exitStrategy
@@ -572,7 +580,7 @@ export class Bot {
       });
 
       // Quantity to add to close the previous position
-      let previousPositionQuantity = hadLongPosition ? positionSize : 0;
+      let previousPositionQuantity = hasLongPosition ? positionSize : 0;
 
       // To close the previous long position
       if (
@@ -604,7 +612,7 @@ export class Bot {
             (positionSize + quantity);
 
           // In pyramiding mode, update the take profits and stop loss
-          if (allowPyramiding && hadShortPosition) {
+          if (allowPyramiding && hasShortPosition) {
             let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
               exitStrategy
                 ? exitStrategy(avgPrice, candles, pricePrecision, OrderSide.BUY)
@@ -685,7 +693,7 @@ export class Bot {
               .catch(error);
           }
 
-          if (hadShortPosition) {
+          if (hasShortPosition) {
             log(
               `Add ${quantity}${asset} to the short position on ${pair}. The average entry price is now ${avgPrice}${base} and the total size ${positionTotalSize}${asset}`
             );

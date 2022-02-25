@@ -516,7 +516,12 @@ export class BackTestBot {
       2
     );
     this.strategyReport.profitFactor = Math.abs(
-      decimalFloor(totalProfit / (totalLoss - totalFees), 2)
+      decimalFloor(
+        BINANCE_MODE === 'spot'
+          ? this.evaluateSpotWalletBaseValue() / this.initialCapital
+          : this.futuresWallet.totalWalletBalance / this.initialCapital,
+        2
+      )
     );
     this.strategyReport.maxDrawdown = -decimalFloor(
       (1 - this.maxDrawdown) * 100,
@@ -712,33 +717,45 @@ export class BackTestBot {
     const balances = this.wallet.balances;
     const indexBase = balances.findIndex((bal) => bal.symbol === base);
     const indexAsset = balances.findIndex((bal) => bal.symbol === asset);
-    const assetBalance = balances[indexAsset].quantity;
-    const baseBalance = balances[indexBase].quantity;
+    const assetBalance = balances[indexAsset];
+    const baseBalance = balances[indexBase];
 
-    // Data
+    // Open orders
     const currentOpenOrders = this.openOrders.filter(
       (order) => order.pair === pair
     );
+    const hasPendingOrders = currentOpenOrders.length > 0;
 
     // Conditions
     const canBuy =
       !allowPyramiding ||
       (allowPyramiding &&
-        assetBalance * currentPrice <= baseBalance * maxPyramidingAllocation);
+        assetBalance.quantity * currentPrice <=
+          baseBalance.quantity * maxPyramidingAllocation);
 
     // Precisions
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    if (assetBalance > 0 && sellStrategy(candles)) {
-      this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
+    if (
+      assetBalance.quantity > 0 &&
+      !hasPendingOrders &&
+      sellStrategy(candles)
+    ) {
+      this.spotOrderMarket(
+        asset,
+        base,
+        currentPrice,
+        assetBalance.quantity,
+        'SELL'
+      );
       this.closeOpenOrders(pair);
     }
-    if (canBuy && buyStrategy(candles)) {
+    if (canBuy && !hasPendingOrders && buyStrategy(candles)) {
       const quantity = riskManagement({
         asset,
         base,
-        balance: baseBalance,
+        balance: baseBalance.quantity,
         risk,
         enterPrice: currentPrice,
         exchangeInfo,
@@ -808,8 +825,8 @@ export class BackTestBot {
     // Position information
     const positions = this.futuresWallet.positions;
     const position = positions.find((position) => position.pair === pair);
-    const hadLongPosition = position.size > 0;
-    const hadShortPosition = position.size < 0;
+    const hasLongPosition = position.size > 0;
+    const hasShortPosition = position.size < 0;
 
     // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
@@ -817,23 +834,31 @@ export class BackTestBot {
         assetBalance * maxPyramidingAllocation
       : false;
     const canTakeLongPosition =
-      (!allowPyramiding && !hadLongPosition) || allowPyramiding;
+      (!allowPyramiding && !hasLongPosition) || allowPyramiding;
     const canTakeShortPosition =
-      (!allowPyramiding && !hadShortPosition) || allowPyramiding;
+      (!allowPyramiding && !hasShortPosition) || allowPyramiding;
 
-    // Other data
-    const currentOpenOrders = this.futuresOpenOrders;
+    // Open orders
+    const currentOpenOrders = this.futuresOpenOrders.filter(
+      (order) => order.pair === pair
+    );
+
+    // Precisions
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
-    if (!hadLongPosition && !hadShortPosition && currentOpenOrders.length > 0) {
+    if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
       this.closeFuturesOpenOrders(pair);
     }
 
-    if (canTakeLongPosition && buyStrategy(candles)) {
+    if (
+      canTakeLongPosition &&
+      currentOpenOrders.length === 0 &&
+      buyStrategy(candles)
+    ) {
       // Take the profit and not open a new position
-      if (hadShortPosition && unidirectional) {
+      if (hasShortPosition && unidirectional) {
         this.futuresOrderMarket(
           pair,
           currentPrice,
@@ -848,10 +873,10 @@ export class BackTestBot {
       if (!useLongPosition) return;
 
       // Do not add to the current position if the allocation is over the max allocation
-      if (allowPyramiding && hadLongPosition && !canAddToPosition) return;
+      if (allowPyramiding && hasLongPosition && !canAddToPosition) return;
 
       // Do not close the current short position built progressively in pyramiding mode
-      if (allowPyramiding && hadShortPosition) return;
+      if (allowPyramiding && hasShortPosition) return;
 
       // Calculate TP and SL
       let { takeProfits, stopLoss } =
@@ -872,7 +897,7 @@ export class BackTestBot {
       });
 
       // Quantity to add to close the previous position
-      let previousPositionQuantity = hadShortPosition
+      let previousPositionQuantity = hasShortPosition
         ? Math.abs(position.size)
         : 0;
 
@@ -893,7 +918,7 @@ export class BackTestBot {
       }
 
       // In pyramiding mode, update the take profits and stop loss
-      if (allowPyramiding && hadLongPosition) {
+      if (allowPyramiding && hasLongPosition) {
         let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
           exitStrategy
             ? exitStrategy(
@@ -969,7 +994,7 @@ export class BackTestBot {
       }
     } else if (canTakeShortPosition && sellStrategy(candles)) {
       // Take the profit and not open a new position
-      if (hadLongPosition && unidirectional) {
+      if (hasLongPosition && unidirectional) {
         this.futuresOrderMarket(
           pair,
           currentPrice,
@@ -984,16 +1009,21 @@ export class BackTestBot {
       if (!useShortPosition) return;
 
       // Do not add to the current position if the allocation is over the max allocation
-      if (allowPyramiding && hadShortPosition && !canAddToPosition) return;
+      if (allowPyramiding && hasShortPosition && !canAddToPosition) return;
 
       // Do not close the current long position built progressively in pyramiding mode
-      if (allowPyramiding && hadLongPosition) return;
+      if (allowPyramiding && hasLongPosition) return;
+
+      // Do not sell if a take profit is set on the last long positions
+      let hasTakeProfits = currentOpenOrders.some(
+        (order) => order.price > position.entryPrice
+      );
+      if (hasLongPosition && hasTakeProfits) return;
 
       // Calculate TP and SL
-      let { takeProfits, stopLoss } =
-        !allowPyramiding && exitStrategy
-          ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.SELL)
-          : { takeProfits: [], stopLoss: null };
+      let { takeProfits, stopLoss } = exitStrategy
+        ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.SELL)
+        : { takeProfits: [], stopLoss: null };
 
       // Risk Management
       let quantity = riskManagement({
@@ -1009,7 +1039,7 @@ export class BackTestBot {
       });
 
       // Quantity to add to close the previous position
-      let previousPositionQuantity = hadLongPosition
+      let previousPositionQuantity = hasLongPosition
         ? Math.abs(position.size)
         : 0;
 
@@ -1030,7 +1060,7 @@ export class BackTestBot {
       }
 
       // In pyramiding mode, update the take profits and stop loss
-      if (allowPyramiding && hadLongPosition) {
+      if (allowPyramiding && hasLongPosition) {
         let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
           exitStrategy
             ? exitStrategy(
@@ -1894,7 +1924,7 @@ export class BackTestBot {
     quantity: number,
     positionSide: 'LONG' | 'SHORT'
   ) {
-    let position = this.futuresWallet.positions.find(
+    const position = this.futuresWallet.positions.find(
       (pos) => pos.pair === pair
     );
 
@@ -1905,7 +1935,8 @@ export class BackTestBot {
       return;
     }
 
-    let baseCost = (price * quantity) / position.leverage;
+    let baseCost =
+      Math.abs(price * quantity) / position.leverage - position.margin;
     let canOrder = this.futuresWallet.availableBalance >= baseCost;
 
     if (canOrder) {
@@ -1954,7 +1985,7 @@ export class BackTestBot {
       return;
     }
 
-    let canOrder = quantity <= position.size;
+    let canOrder = quantity <= Math.abs(position.size);
     if (canOrder) {
       let order: FuturesOpenOrder = {
         id: Math.random().toString(16).slice(2),
