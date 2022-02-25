@@ -1,6 +1,6 @@
 import { CandleChartInterval } from 'binance-api-node';
-import atrTpslStrategy from '../strategies/tpsl/atr';
-import { STOCHASTIC_RSI } from '../strategies/buy_sell';
+import atrTpslStrategy from '../strategies/exit/atr';
+import { STOCHASTIC_RSI } from '../strategies/entry';
 import { threeEma } from '../strategies/trend';
 import { getPositionSizeByRisk } from '../strategies/riskManagement';
 
@@ -19,7 +19,7 @@ const config: TradeConfig[] = [
         emaMediumPeriod: 14,
         emaLongPeriod: 50,
       }),
-    tpslStrategy: (price, candles, pricePrecision, side) =>
+    exitStrategy: (price, candles, pricePrecision, side) =>
       atrTpslStrategy(
         price,
         candles[CandleChartInterval.FIFTEEN_MINUTES],
@@ -30,9 +30,9 @@ const config: TradeConfig[] = [
           stopLossAtrRatio: 3,
         }
       ),
-    buySignal: (candles) =>
+    buyStrategy: (candles) =>
       STOCHASTIC_RSI.isBuySignal(candles[CandleChartInterval.FIFTEEN_MINUTES]),
-    sellSignal: (candles) =>
+    sellStrategy: (candles) =>
       STOCHASTIC_RSI.isSellSignal(candles[CandleChartInterval.FIFTEEN_MINUTES]),
     riskManagement: getPositionSizeByRisk,
   },

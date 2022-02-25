@@ -129,9 +129,9 @@ export class Bot {
       asset,
       base,
       risk,
-      buySignal,
-      sellSignal,
-      tpslStrategy,
+      buyStrategy,
+      sellStrategy,
+      exitStrategy,
       riskManagement,
       allowPyramiding,
       maxPyramidingAllocation,
@@ -164,7 +164,7 @@ export class Bot {
 
     // If a trade exists, search when to sell
     if (assetBalance > 0) {
-      if (sellSignal(candles)) {
+      if (sellStrategy(candles)) {
         binanceClient
           .order({
             side: OrderSide.SELL,
@@ -182,7 +182,7 @@ export class Bot {
           })
           .catch(error);
       }
-    } else if (canBuy && buySignal(candles)) {
+    } else if (canBuy && buyStrategy(candles)) {
       const quantity = riskManagement({
         asset,
         base,
@@ -206,8 +206,8 @@ export class Bot {
           // @NOTES => calculate the average price
 
           // Calculate the tp and sl
-          const { takeProfits, stopLoss } = tpslStrategy
-            ? tpslStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
+          const { takeProfits, stopLoss } = exitStrategy
+            ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
             : { takeProfits: [], stopLoss: null };
 
           // Remove the current open orders to update them
@@ -296,9 +296,9 @@ export class Bot {
       asset,
       base,
       risk,
-      buySignal,
-      sellSignal,
-      tpslStrategy,
+      buyStrategy,
+      sellStrategy,
+      exitStrategy,
       trendFilter,
       riskManagement,
       trailingStopConfig,
@@ -320,8 +320,8 @@ export class Bot {
     // Position information
     const { positions } = await binanceClient.futuresAccountInfo();
     const position = positions.find((position) => position.symbol === pair);
-    const hasLongPosition = Number(position.positionAmt) > 0;
-    const hasShortPosition = Number(position.positionAmt) < 0;
+    const hadLongPosition = Number(position.positionAmt) > 0;
+    const hadShortPosition = Number(position.positionAmt) < 0;
     const positionSize = Math.abs(Number(position.positionAmt));
     const positionEntryPrice = Number(position.entryPrice);
 
@@ -331,9 +331,9 @@ export class Bot {
         Number(assetBalance) * maxPyramidingAllocation
       : false;
     const canTakeLongPosition =
-      (!allowPyramiding && !hasLongPosition) || allowPyramiding;
+      (!allowPyramiding && !hadLongPosition) || allowPyramiding;
     const canTakeShortPosition =
-      (!allowPyramiding && !hasShortPosition) || allowPyramiding;
+      (!allowPyramiding && !hadShortPosition) || allowPyramiding;
 
     // Other data
     const currentOpenOrders = await binanceClient.futuresOpenOrders({
@@ -343,13 +343,13 @@ export class Bot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
-    if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
+    if (!hadLongPosition && !hadShortPosition && currentOpenOrders.length > 0) {
       this.closeOpenOrders(pair);
     }
 
-    if (canTakeLongPosition && buySignal(candles)) {
+    if (canTakeLongPosition && buyStrategy(candles)) {
       // Take the profit and not open a new position
-      if (hasShortPosition && unidirectional) {
+      if (hadShortPosition && unidirectional) {
         binanceClient
           .futuresOrder({
             side: OrderSide.BUY,
@@ -371,17 +371,15 @@ export class Bot {
       if (!useLongPosition) return;
 
       // Do not add to the current position if the allocation is over the max allocation
-      if (allowPyramiding && hasLongPosition && !canAddToPosition) return;
+      if (allowPyramiding && hadLongPosition && !canAddToPosition) return;
+
+      // Do not close the current short position built progressively in pyramiding mode
+      if (allowPyramiding && hadShortPosition) return;
 
       // Calculate TP and SL
-      const { takeProfits, stopLoss } =
-        !allowPyramiding && tpslStrategy
-          ? tpslStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
-          : { takeProfits: [], stopLoss: null };
-
-      if (allowPyramiding && tpslStrategy) {
-        error('You cannot use take profits and stop loss in pyramiding mode');
-      }
+      let { takeProfits, stopLoss } = exitStrategy
+        ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
+        : { takeProfits: [], stopLoss: null };
 
       let quantity = riskManagement({
         asset,
@@ -396,7 +394,7 @@ export class Bot {
       });
 
       // Quantity to add to close the previous position
-      let previousPositionQuantity = hasShortPosition ? positionSize : 0;
+      let previousPositionQuantity = hadShortPosition ? positionSize : 0;
 
       // To close the previous short position
       if (
@@ -426,6 +424,16 @@ export class Bot {
           const avgPrice =
             (positionSize * positionEntryPrice + quantity * currentPrice) /
             (positionSize + quantity);
+
+          // In pyramiding mode, update the take profits and stop loss
+          if (allowPyramiding && hadLongPosition) {
+            let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
+              exitStrategy
+                ? exitStrategy(avgPrice, candles, pricePrecision, OrderSide.BUY)
+                : { takeProfits: [], stopLoss: null };
+            takeProfits = updatedTakeProfits;
+            stopLoss = updatedStopLoss;
+          }
 
           if (takeProfits.length > 0) {
             // Create the take profit orders
@@ -494,12 +502,12 @@ export class Bot {
                 symbol: pair,
                 quantity: String(positionTotalSize),
                 callbackRate: trailingStopConfig.callbackRate * 100,
-                activationPrice: calculateActivationPrice(currentPrice),
+                activationPrice: calculateActivationPrice(avgPrice),
               })
               .catch(error);
           }
 
-          if (hasLongPosition) {
+          if (hadLongPosition) {
             log(
               `Add ${quantity}${asset} to the long position on ${pair}. The average entry price is now ${avgPrice}${base} and the total size ${positionTotalSize}${asset}`
             );
@@ -516,9 +524,9 @@ export class Bot {
           }
         })
         .catch(error);
-    } else if (canTakeShortPosition && sellSignal(candles)) {
+    } else if (canTakeShortPosition && sellStrategy(candles)) {
       // Take the profit and not open a new position
-      if (hasLongPosition && unidirectional) {
+      if (hadLongPosition && unidirectional) {
         binanceClient
           .futuresOrder({
             side: OrderSide.SELL,
@@ -540,17 +548,15 @@ export class Bot {
       if (!useShortPosition) return;
 
       // Do not add to the current position if the allocation is over the max allocation
-      if (allowPyramiding && hasShortPosition && !canAddToPosition) return;
+      if (allowPyramiding && hadShortPosition && !canAddToPosition) return;
+
+      // Do not close the current long position built progressively in pyramiding mode
+      if (allowPyramiding && hadLongPosition) return;
 
       // Calculate TP and SL
-      const { takeProfits, stopLoss } =
-        !allowPyramiding && tpslStrategy
-          ? tpslStrategy(currentPrice, candles, pricePrecision, OrderSide.SELL)
-          : { takeProfits: [], stopLoss: null };
-
-      if (allowPyramiding && tpslStrategy) {
-        error('You cannot use take profits and stop loss in pyramiding mode');
-      }
+      let { takeProfits, stopLoss } = exitStrategy
+        ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.SELL)
+        : { takeProfits: [], stopLoss: null };
 
       // Risk Management
       let quantity = riskManagement({
@@ -566,7 +572,7 @@ export class Bot {
       });
 
       // Quantity to add to close the previous position
-      let previousPositionQuantity = hasLongPosition ? positionSize : 0;
+      let previousPositionQuantity = hadLongPosition ? positionSize : 0;
 
       // To close the previous long position
       if (
@@ -585,7 +591,7 @@ export class Bot {
           quantity: String(quantity),
           recvWindow: 60000,
         })
-        .then(async () => {
+        .then(() => {
           // Cancel the previous orders to update them
           if (currentOpenOrders.length > 0) {
             this.closeOpenOrders(pair);
@@ -597,6 +603,16 @@ export class Bot {
             (positionSize * positionEntryPrice + quantity * currentPrice) /
             (positionSize + quantity);
 
+          // In pyramiding mode, update the take profits and stop loss
+          if (allowPyramiding && hadShortPosition) {
+            let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
+              exitStrategy
+                ? exitStrategy(avgPrice, candles, pricePrecision, OrderSide.BUY)
+                : { takeProfits: [], stopLoss: null };
+            takeProfits = updatedTakeProfits;
+            stopLoss = updatedStopLoss;
+          }
+
           if (takeProfits.length > 0) {
             // Create the take profit orders
             takeProfits.forEach(({ price, quantityPercentage }) => {
@@ -607,7 +623,6 @@ export class Bot {
                   type: OrderType.LIMIT,
                   symbol: pair,
                   price: price,
-                  stopPrice: price,
                   quantity: String(
                     decimalFloor(
                       Number(positionTotalSize) * quantityPercentage,
@@ -665,12 +680,12 @@ export class Bot {
                 symbol: pair,
                 quantity: String(positionTotalSize),
                 callbackRate: trailingStopConfig.callbackRate * 100,
-                activationPrice: calculateActivationPrice(currentPrice),
+                activationPrice: calculateActivationPrice(avgPrice),
               })
               .catch(error);
           }
 
-          if (hasShortPosition) {
+          if (hadShortPosition) {
             log(
               `Add ${quantity}${asset} to the short position on ${pair}. The average entry price is now ${avgPrice}${base} and the total size ${positionTotalSize}${asset}`
             );

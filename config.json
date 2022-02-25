@@ -1,10 +1,10 @@
 {
   "mode": "futures",
-  "strategy_config_file_name": "stochasticRsi",
-  "strategy_name": "Stochastic RSI",
+  "strategy_config_file_name": "rsi-dca",
+  "strategy_name": "RSI Down Average",
   "backtest": {
-    "start_date": "2021-01-01 00:00:00",
-    "end_date": "2022-01-01 00:00:00",
+    "start_date": "2020-09-13 00:00:00",
+    "end_date": "2022-02-01 00:00:00",
     "initial_capital": 10000,
     "taker_fees_futures": 0.04,
     "maker_fees_futures": 0.02,

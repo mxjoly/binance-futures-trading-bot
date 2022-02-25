@@ -40,7 +40,12 @@ function getPriceFromFibonacciLevels(
   }
 }
 
-const strategy = (candles, pricePrecision, side, options = defaultOptions) => {
+const strategy = (
+  candles: CandleData[],
+  pricePrecision: number,
+  side: OrderSide,
+  options = defaultOptions
+) => {
   const levelsInUpTrend = Fibonacci.calculate({
     candles,
     trend: Fibonacci.FibonacciTrend.UP,

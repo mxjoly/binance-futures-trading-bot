@@ -146,7 +146,7 @@ if (process.env.NODE_ENV !== 'test') {
     const startDate = new Date(BacktestConfig['start_date']);
     const endDate = new Date(BacktestConfig['end_date']);
     const initialCapital = BacktestConfig['initial_capital'];
-    const strategyName = BacktestConfig['strategy_name'];
+    const strategyName = BotConfig['strategy_name'];
 
     const bot = new BackTestBot(
       StrategyConfig,

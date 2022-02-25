@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { binanceClient, BINANCE_MODE } from '..';
 import { decimalCeil, decimalFloor } from '../utils/math';
-import { clone } from '../utils';
+import { clone, shallowEqual } from '../utils';
 import {
   getPricePrecision,
   getQuantityPrecision,
@@ -494,13 +494,13 @@ export class BackTestBot {
     this.strategyReport.finalCapital = decimalFloor(
       BINANCE_MODE === 'spot'
         ? this.evaluateSpotWalletBaseValue()
-        : this.futuresWallet.availableBalance,
+        : this.futuresWallet.totalWalletBalance,
       2
     );
     this.strategyReport.totalNetProfit = decimalFloor(
       BINANCE_MODE === 'spot'
         ? this.evaluateSpotWalletBaseValue() - this.initialCapital
-        : this.futuresWallet.availableBalance - this.initialCapital,
+        : this.futuresWallet.totalWalletBalance - this.initialCapital,
       2
     );
     this.strategyReport.totalProfit = decimalFloor(
@@ -699,9 +699,9 @@ export class BackTestBot {
       asset,
       base,
       risk,
-      buySignal,
-      sellSignal,
-      tpslStrategy,
+      buyStrategy,
+      sellStrategy,
+      exitStrategy,
       riskManagement,
       allowPyramiding,
       maxPyramidingAllocation,
@@ -730,11 +730,11 @@ export class BackTestBot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    if (assetBalance > 0 && sellSignal(candles)) {
+    if (assetBalance > 0 && sellStrategy(candles)) {
       this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
       this.closeOpenOrders(pair);
     }
-    if (canBuy && buySignal(candles)) {
+    if (canBuy && buyStrategy(candles)) {
       const quantity = riskManagement({
         asset,
         base,
@@ -748,8 +748,8 @@ export class BackTestBot {
       this.spotOrderMarket(asset, base, currentPrice, quantity, 'BUY');
 
       // Calculate the tp and sl
-      const { takeProfits, stopLoss } = tpslStrategy
-        ? tpslStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
+      const { takeProfits, stopLoss } = exitStrategy
+        ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
         : { takeProfits: [], stopLoss: null };
 
       // Remove the current open orders to update them
@@ -786,9 +786,9 @@ export class BackTestBot {
       asset,
       base,
       risk,
-      buySignal,
-      sellSignal,
-      tpslStrategy,
+      buyStrategy,
+      sellStrategy,
+      exitStrategy,
       trendFilter,
       riskManagement,
       trailingStopConfig,
@@ -808,8 +808,8 @@ export class BackTestBot {
     // Position information
     const positions = this.futuresWallet.positions;
     const position = positions.find((position) => position.pair === pair);
-    const hasLongPosition = position.size > 0;
-    const hasShortPosition = position.size < 0;
+    const hadLongPosition = position.size > 0;
+    const hadShortPosition = position.size < 0;
 
     // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
@@ -817,9 +817,9 @@ export class BackTestBot {
         assetBalance * maxPyramidingAllocation
       : false;
     const canTakeLongPosition =
-      (!allowPyramiding && !hasLongPosition) || allowPyramiding;
+      (!allowPyramiding && !hadLongPosition) || allowPyramiding;
     const canTakeShortPosition =
-      (!allowPyramiding && !hasShortPosition) || allowPyramiding;
+      (!allowPyramiding && !hadShortPosition) || allowPyramiding;
 
     // Other data
     const currentOpenOrders = this.futuresOpenOrders;
@@ -827,13 +827,13 @@ export class BackTestBot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
-    if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
+    if (!hadLongPosition && !hadShortPosition && currentOpenOrders.length > 0) {
       this.closeFuturesOpenOrders(pair);
     }
 
-    if (canTakeLongPosition && buySignal(candles)) {
+    if (canTakeLongPosition && buyStrategy(candles)) {
       // Take the profit and not open a new position
-      if (hasShortPosition && unidirectional) {
+      if (hadShortPosition && unidirectional) {
         this.futuresOrderMarket(
           pair,
           currentPrice,
@@ -848,12 +848,15 @@ export class BackTestBot {
       if (!useLongPosition) return;
 
       // Do not add to the current position if the allocation is over the max allocation
-      if (allowPyramiding && hasLongPosition && !canAddToPosition) return;
+      if (allowPyramiding && hadLongPosition && !canAddToPosition) return;
+
+      // Do not close the current short position built progressively in pyramiding mode
+      if (allowPyramiding && hadShortPosition) return;
 
       // Calculate TP and SL
-      const { takeProfits, stopLoss } =
-        !allowPyramiding && tpslStrategy
-          ? tpslStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
+      let { takeProfits, stopLoss } =
+        !allowPyramiding && exitStrategy
+          ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
           : { takeProfits: [], stopLoss: null };
 
       let quantity = riskManagement({
@@ -869,7 +872,7 @@ export class BackTestBot {
       });
 
       // Quantity to add to close the previous position
-      let previousPositionQuantity = hasShortPosition
+      let previousPositionQuantity = hadShortPosition
         ? Math.abs(position.size)
         : 0;
 
@@ -887,6 +890,21 @@ export class BackTestBot {
       // Cancel the previous orders to update them
       if (currentOpenOrders.length > 0) {
         this.closeFuturesOpenOrders(pair);
+      }
+
+      // In pyramiding mode, update the take profits and stop loss
+      if (allowPyramiding && hadLongPosition) {
+        let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
+          exitStrategy
+            ? exitStrategy(
+                position.entryPrice,
+                candles,
+                pricePrecision,
+                OrderSide.BUY
+              )
+            : { takeProfits: [], stopLoss: null };
+        takeProfits = updatedTakeProfits;
+        stopLoss = updatedStopLoss;
       }
 
       if (takeProfits.length > 0) {
@@ -942,16 +960,16 @@ export class BackTestBot {
         this.futuresOrderTrailingStop(
           asset,
           base,
-          calculateActivationPrice(currentPrice),
+          calculateActivationPrice(position.entryPrice),
           Math.abs(position.size),
           'SHORT',
           trailingStopConfig.callbackRate,
           trailingStopConfig.activation
         );
       }
-    } else if (canTakeShortPosition && sellSignal(candles)) {
+    } else if (canTakeShortPosition && sellStrategy(candles)) {
       // Take the profit and not open a new position
-      if (hasLongPosition && unidirectional) {
+      if (hadLongPosition && unidirectional) {
         this.futuresOrderMarket(
           pair,
           currentPrice,
@@ -966,12 +984,15 @@ export class BackTestBot {
       if (!useShortPosition) return;
 
       // Do not add to the current position if the allocation is over the max allocation
-      if (allowPyramiding && hasShortPosition && !canAddToPosition) return;
+      if (allowPyramiding && hadShortPosition && !canAddToPosition) return;
+
+      // Do not close the current long position built progressively in pyramiding mode
+      if (allowPyramiding && hadLongPosition) return;
 
       // Calculate TP and SL
-      const { takeProfits, stopLoss } =
-        !allowPyramiding && tpslStrategy
-          ? tpslStrategy(currentPrice, candles, pricePrecision, OrderSide.SELL)
+      let { takeProfits, stopLoss } =
+        !allowPyramiding && exitStrategy
+          ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.SELL)
           : { takeProfits: [], stopLoss: null };
 
       // Risk Management
@@ -988,7 +1009,7 @@ export class BackTestBot {
       });
 
       // Quantity to add to close the previous position
-      let previousPositionQuantity = hasLongPosition
+      let previousPositionQuantity = hadLongPosition
         ? Math.abs(position.size)
         : 0;
 
@@ -1006,6 +1027,21 @@ export class BackTestBot {
       // Cancel the previous orders to update them
       if (currentOpenOrders.length > 0) {
         this.closeFuturesOpenOrders(pair);
+      }
+
+      // In pyramiding mode, update the take profits and stop loss
+      if (allowPyramiding && hadLongPosition) {
+        let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
+          exitStrategy
+            ? exitStrategy(
+                position.entryPrice,
+                candles,
+                pricePrecision,
+                OrderSide.BUY
+              )
+            : { takeProfits: [], stopLoss: null };
+        takeProfits = updatedTakeProfits;
+        stopLoss = updatedStopLoss;
       }
 
       if (takeProfits.length > 0) {
@@ -1056,7 +1092,7 @@ export class BackTestBot {
         this.futuresOrderTrailingStop(
           asset,
           base,
-          calculateActivationPrice(currentPrice),
+          calculateActivationPrice(position.entryPrice),
           Math.abs(position.size),
           'LONG',
           trailingStopConfig.callbackRate,
@@ -1313,9 +1349,9 @@ export class BackTestBot {
 
                 this.strategyReport.totalFees += fees;
                 if (hadPosition && entryPrice >= price)
-                  this.strategyReport.longWinningTrade++;
+                  this.strategyReport.shortWinningTrade++;
                 if (hadPosition && entryPrice < price)
-                  this.strategyReport.longLostTrade++;
+                  this.strategyReport.shortLostTrade++;
 
                 log(
                   `${
@@ -1354,6 +1390,9 @@ export class BackTestBot {
 
                 this.updateProfitLossStrategyProperty(pnl);
                 this.strategyReport.totalFees += fees;
+                if (price <= entryPrice)
+                  this.strategyReport.shortWinningTrade++;
+                else this.strategyReport.shortLostTrade++;
 
                 log(
                   `Trailing stop long order #${id} has been activated for ${Math.abs(
@@ -1449,9 +1488,9 @@ export class BackTestBot {
 
                 this.strategyReport.totalFees += fees;
                 if (hadPosition && entryPrice <= price)
-                  this.strategyReport.shortWinningTrade++;
+                  this.strategyReport.longWinningTrade++;
                 if (hadPosition && entryPrice > price)
-                  this.strategyReport.shortLostTrade++;
+                  this.strategyReport.longLostTrade++;
 
                 log(
                   `${
@@ -1490,6 +1529,8 @@ export class BackTestBot {
 
                 this.updateProfitLossStrategyProperty(pnl);
                 this.strategyReport.totalFees += fees;
+                if (price >= entryPrice) this.strategyReport.longWinningTrade++;
+                else this.strategyReport.longLostTrade++;
 
                 log(
                   `Trailing stop sell order #${id} has been activated for ${Math.abs(
@@ -1702,6 +1743,7 @@ export class BackTestBot {
     const position = positions.find((pos) => pos.pair === pair);
     const { entryPrice, size, leverage } = position;
     const fees = price * quantity * (TAKER_FEES / 100);
+    const hadPosition = position.size !== 0;
 
     if (quantity < 0) {
       console.error(
@@ -1724,8 +1766,10 @@ export class BackTestBot {
           wallet.availableBalance -= baseCost + fees;
           wallet.totalWalletBalance -= fees;
 
-          this.strategyReport.totalTrades++;
-          this.strategyReport.totalLongTrades++;
+          if (!hadPosition) {
+            this.strategyReport.totalTrades++;
+            this.strategyReport.totalLongTrades++;
+          }
           this.strategyReport.totalFees += fees;
 
           log(
@@ -1789,8 +1833,10 @@ export class BackTestBot {
           wallet.availableBalance -= baseCost + fees;
           wallet.totalWalletBalance -= fees;
 
-          this.strategyReport.totalTrades++;
-          this.strategyReport.totalShortTrades++;
+          if (!hadPosition) {
+            this.strategyReport.totalTrades++;
+            this.strategyReport.totalShortTrades++;
+          }
           this.strategyReport.totalFees += fees;
 
           log(

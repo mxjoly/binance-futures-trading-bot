@@ -8,7 +8,12 @@ interface Options {
 
 const defaultOptions: Options = {};
 
-const strategy = (price, pricePrecision, side, options = defaultOptions) => {
+const strategy = (
+  price: number,
+  pricePrecision: number,
+  side: OrderSide,
+  options = defaultOptions
+) => {
   let takeProfits = options.profitTargets
     ? options.profitTargets
         .filter(

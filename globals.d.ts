@@ -11,9 +11,9 @@ interface TradeConfig {
   allowPyramiding?: boolean; // Allow cumulative longs/shorts to average the entry price
   maxPyramidingAllocation?: number; // Max allocation for a position in pyramiding (between 0 and 1)
   unidirectional?: boolean; // When take the profit, close the position instead of opening new position in futures
-  buySignal: Signal;
-  sellSignal: Signal;
-  tpslStrategy?: TPSLStrategy; // Placement of take profits and stop loss
+  buyStrategy: EntrySrategy;
+  sellStrategy: EntrySrategy;
+  exitStrategy?: ExitStrategy; // Placement of take profits and stop loss
   trendFilter?: TrendFilter; // Trend filter - If the trend is up, only take long, else take only short
   riskManagement: RiskManagement;
   tradeManagement?: TradeManagement; // Manage the take profits and stop loss during a trade
@@ -33,7 +33,7 @@ interface CandleData {
   closeTime: Date;
 }
 
-type Signal = (candles: CandlesDataMultiTimeFrames) => boolean;
+type EntrySrategy = (candles: CandlesDataMultiTimeFrames) => boolean;
 
 type TrailingStopConfig = {
   // Activation price of trailing stop calculated by :
@@ -43,11 +43,12 @@ type TrailingStopConfig = {
   callbackRate: number; // Percentage between 0 and 1 - stop loss if the price increase/decrease of % from last candle
 };
 
-type TPSLStrategy = (
+// Strategy for Take Profits and Stop Loss
+type ExitStrategy = (
   price?: number,
   candles?: CandlesDataMultiTimeFrames,
   pricePrecision?: number,
-  side: 'BUY' | 'SELL'
+  side: OrderSide // type from binance api lib
 ) => {
   takeProfits: { price: number; quantityPercentage: number }[]; // quantityPercentage = 0.1 => 10%
   stopLoss?: number;

@@ -1,7 +1,7 @@
 import { CandleChartInterval } from 'binance-api-node';
-import { RELOAD_ZONE } from '../strategies/buy_sell';
+import { RELOAD_ZONE } from '../strategies/entry';
 import { Fibonacci } from '../indicators';
-import { basicTpslStrategy } from '../strategies/tpsl';
+import { basicTpslStrategy } from '../strategies/exit';
 import { getPositionSizeByPercent } from '../strategies/riskManagement';
 
 // =========================== PRESETS ================================== //
@@ -50,7 +50,7 @@ const config: TradeConfig[] = assets.map((asset) => ({
   indicatorIntervals: [CandleChartInterval.ONE_WEEK],
   trendFilter: (candles) => 1, // Take only long position, supposing we are in up trend on long term
   riskManagement: getPositionSizeByPercent,
-  tpslStrategy: (price, candles, pricePrecision, side) =>
+  exitStrategy: (price, candles, pricePrecision, side) =>
     basicTpslStrategy(price, pricePrecision, side, {
       profitTargets: [
         {
@@ -75,11 +75,11 @@ const config: TradeConfig[] = assets.map((asset) => ({
         },
       ],
     }),
-  buySignal: (candles) =>
+  buyStrategy: (candles) =>
     RELOAD_ZONE.isBuySignal(candles[CandleChartInterval.ONE_WEEK], {
       trend: Fibonacci.FibonacciTrend.UP,
     }),
-  sellSignal: (candles: CandleData[]) => false,
+  sellStrategy: (candles: CandleData[]) => false,
 }));
 
 export default config;

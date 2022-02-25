@@ -13,10 +13,10 @@ const defaultOptions: Options = {
 };
 
 const strategy = (
-  price,
-  candles,
-  pricePrecision,
-  side,
+  price: number,
+  candles: CandleData[],
+  pricePrecision: number,
+  side: OrderSide,
   options = defaultOptions
 ) => {
   const atr = ATR.calculate({
