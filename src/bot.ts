@@ -13,7 +13,6 @@ import {
 import { decimalCeil, decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient, BINANCE_MODE } from '.';
-import { Pivots } from './indicators';
 
 // ====================================================================== //
 

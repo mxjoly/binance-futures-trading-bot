@@ -4,7 +4,7 @@
 
 ### Development
 
-Set your api keys to the environment variables for testnet in `.env`. Check https://testnet.binancefuture.com/en/futures/BTCUSDT and https://testnet.binance.vision/ to get your keys. Then run the commands:
+Set your api keys to the environment variables for testnet in `.env`. Go to https://testnet.binancefuture.com/en/futures/BTCUSDT and https://testnet.binance.vision/ to get your keys. Then run the commands:
 
 ```
 npm run build:dev

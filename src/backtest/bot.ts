@@ -369,6 +369,7 @@ export class BackTestBot {
           if (BINANCE_MODE === 'spot') {
             this.checkSpotOpenOrders(asset, base, candlesStream);
           } else {
+            this.checkPositionMargin(pair, currentPrice); // If the position margin reach 0, close the position (liquidation)
             this.checkFuturesOpenOrders(asset, base, candlesStream);
             this.updatePNL(asset, base, currentPrice);
           }
@@ -1223,6 +1224,27 @@ export class BackTestBot {
           resolve(results);
         });
     });
+  }
+
+  private checkPositionMargin(pair: string, currentPrice: number) {
+    const position = this.futuresWallet.positions.find(
+      (pos) => pos.pair === pair
+    );
+    const { margin, unrealizedProfit, size, positionSide } = position;
+
+    if (margin + unrealizedProfit <= 0) {
+      this.futuresOrderMarket(
+        pair,
+        currentPrice,
+        size,
+        positionSide === 'LONG' ? 'SELL' : 'BUY'
+      );
+
+      this.closeFuturesOpenOrders(pair);
+      this.updateProfitLossStrategyProperty(unrealizedProfit);
+      if (position.positionSide === 'LONG') this.strategyReport.longLostTrade++;
+      else this.strategyReport.shortLostTrade++;
+    }
   }
 
   private checkSpotOpenOrders(
