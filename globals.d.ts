@@ -11,6 +11,7 @@ interface TradeConfig {
   allowPyramiding?: boolean; // Allow cumulative longs/shorts to average the entry price
   maxPyramidingAllocation?: number; // Max allocation for a position in pyramiding (between 0 and 1)
   unidirectional?: boolean; // When take the profit, close the position instead of opening new position in futures
+  tradingSession?: TradingSession; // The robot trades only during these session
   buyStrategy: EntrySrategy;
   sellStrategy: EntrySrategy;
   exitStrategy?: ExitStrategy; // Placement of take profits and stop loss
@@ -73,3 +74,5 @@ type RiskManagement = (options: RiskManagementOptions) => number; // Return the 
 
 // type QueryOrderResult from the library binance-api-node
 type TradeManagement = (orderInfos: QueryOrderResult[]) => void;
+
+type TradingSession = { start: string; end: string }; // HH:mm

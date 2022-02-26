@@ -51,7 +51,7 @@ export const DEBUG = process.argv[2]
 
 // Max length of the candle arrays needed for the strategy and the calculation of indicators
 // Better to have the minimum to get a higher performance
-const MAX_LENGTH_CANDLES = 250;
+const MAX_LENGTH_CANDLES = 100;
 
 // ====================================================================== //
 
@@ -708,8 +708,10 @@ export class BackTestBot {
       sellStrategy,
       exitStrategy,
       riskManagement,
+      tradingSession,
       allowPyramiding,
       maxPyramidingAllocation,
+      loopInterval,
     } = tradeConfig;
     const pair = asset + base;
 
@@ -731,9 +733,19 @@ export class BackTestBot {
       (allowPyramiding &&
         assetBalance * currentPrice <= baseBalance * maxPyramidingAllocation);
 
+    // Check if we are in the trading sessions
+    let isSessionActive = this.isSessionsActive(
+      candles[loopInterval].openTime,
+      tradingSession
+    );
+
     // Precisions
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
+
+    // Close the open orders at the end of the session
+    if (!isSessionActive && assetBalance === 0 && currentOpenOrders.length > 0)
+      this.closeOpenOrders(pair);
 
     // Prevent remaining open orders
     if (assetBalance === 0 && currentOpenOrders.length > 0)
@@ -743,7 +755,7 @@ export class BackTestBot {
       this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
       this.closeOpenOrders(pair);
     }
-    if (canBuy && buyStrategy(candles)) {
+    if (isSessionActive && canBuy && buyStrategy(candles)) {
       const quantity = riskManagement({
         asset,
         base,
@@ -800,10 +812,12 @@ export class BackTestBot {
       exitStrategy,
       trendFilter,
       riskManagement,
+      tradingSession,
       trailingStopConfig,
       allowPyramiding,
       maxPyramidingAllocation,
       unidirectional,
+      loopInterval,
     } = tradeConfig;
     const pair = asset + base;
 
@@ -839,12 +853,23 @@ export class BackTestBot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
+    // Check if we are in the trading sessions
+    let isSessionActive = this.isSessionsActive(
+      candles[loopInterval].openTime,
+      tradingSession
+    );
+
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
       this.closeFuturesOpenOrders(pair);
     }
 
-    if (canTakeLongPosition && buyStrategy(candles)) {
+    if (
+      (isSessionActive || position.size !== 0) &&
+      (allowPyramiding || currentOpenOrders.length === 0) &&
+      canTakeLongPosition &&
+      buyStrategy(candles)
+    ) {
       // Take the profit and not open a new position
       if (hasShortPosition && unidirectional) {
         this.futuresOrderMarket(
@@ -977,7 +1002,12 @@ export class BackTestBot {
           trailingStopConfig.activation
         );
       }
-    } else if (canTakeShortPosition && sellStrategy(candles)) {
+    } else if (
+      (isSessionActive || position.size !== 0) &&
+      (allowPyramiding || currentOpenOrders.length === 0) &&
+      canTakeShortPosition &&
+      sellStrategy(candles)
+    ) {
       // Take the profit and not open a new position
       if (hasLongPosition && unidirectional) {
         this.futuresOrderMarket(
@@ -1111,6 +1141,22 @@ export class BackTestBot {
           trailingStopConfig.activation
         );
       }
+    }
+  }
+
+  private isSessionsActive(current: Date, tradingSession?: TradingSession) {
+    if (tradingSession) {
+      // Check if we are in the trading sessions
+      const currentTime = dayjs(current);
+      const currentDay = currentTime.format('YYYY-MM-DD');
+      const startSessionTime = `${currentDay} ${tradingSession.start}:00`;
+      const endSessionTime = `${currentDay} ${tradingSession.end}:00`;
+      return dayjs(currentTime.format('YYYY-MM-DD HH:mm:ss')).isBetween(
+        startSessionTime,
+        endSessionTime
+      );
+    } else {
+      return true;
     }
   }
 

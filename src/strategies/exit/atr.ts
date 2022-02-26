@@ -5,11 +5,13 @@ import { ATR } from 'technicalindicators';
 interface Options {
   takeProfitAtrRatio?: number;
   stopLossAtrRatio?: number;
+  atrPeriod?: number;
 }
 
 const defaultOptions: Options = {
   takeProfitAtrRatio: 2,
   stopLossAtrRatio: 3,
+  atrPeriod: 14,
 };
 
 const strategy = (
@@ -20,7 +22,7 @@ const strategy = (
   options = defaultOptions
 ) => {
   const atr = ATR.calculate({
-    period: 14,
+    period: options.atrPeriod,
     close: candles.map((c) => c.close),
     low: candles.map((c) => c.close),
     high: candles.map((c) => c.close),

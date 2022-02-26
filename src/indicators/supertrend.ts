@@ -11,7 +11,7 @@ const defaultOptions: Options = {
 };
 
 /**
- * Return true if the close of the last candle is over the EMA 200
+ * Calculate the fibonacci levels (retracements or extensions)
  */
 export function calculate({
   candles,

@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import {
   CandleChartInterval,
   ExchangeInfo,
@@ -12,6 +13,7 @@ import {
 import { decimalCeil, decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient, BINANCE_MODE } from '.';
+import { Pivots } from './indicators';
 
 // ====================================================================== //
 
@@ -133,8 +135,10 @@ export class Bot {
       sellStrategy,
       exitStrategy,
       riskManagement,
+      tradingSession,
       allowPyramiding,
       maxPyramidingAllocation,
+      loopInterval,
     } = tradeConfig;
     const pair = asset + base;
 
@@ -158,12 +162,22 @@ export class Bot {
       (allowPyramiding &&
         assetBalance * currentPrice <= baseBalance * maxPyramidingAllocation);
 
+    // Check if we are in the trading sessions
+    let isSessionActive = this.isSessionsActive(
+      candles[loopInterval].openTime,
+      tradingSession
+    );
+
     // Precisions
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Prevent remaining open orders
     if (assetBalance === 0 && currentOpenOrders.length > 0)
+      this.closeOpenOrders(pair);
+
+    // Close the open orders at the end of the session
+    if (!isSessionActive && assetBalance === 0 && currentOpenOrders.length > 0)
       this.closeOpenOrders(pair);
 
     if (assetBalance > 0 && sellStrategy(candles)) {
@@ -183,7 +197,7 @@ export class Bot {
           );
         })
         .catch(error);
-    } else if (canBuy && buyStrategy(candles)) {
+    } else if (isSessionActive && canBuy && buyStrategy(candles)) {
       const quantity = riskManagement({
         asset,
         base,
@@ -302,10 +316,12 @@ export class Bot {
       exitStrategy,
       trendFilter,
       riskManagement,
+      tradingSession,
       trailingStopConfig,
       allowPyramiding,
       maxPyramidingAllocation,
       unidirectional,
+      loopInterval,
     } = tradeConfig;
     const pair = asset + base;
 
@@ -345,12 +361,19 @@ export class Bot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
+    // Check if we are in the trading sessions
+    let isSessionActive = this.isSessionsActive(
+      candles[loopInterval].openTime,
+      tradingSession
+    );
+
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
       this.closeOpenOrders(pair);
     }
 
     if (
+      (isSessionActive || positionSize !== 0) &&
       canTakeLongPosition &&
       currentOpenOrders.length === 0 &&
       buyStrategy(candles)
@@ -532,6 +555,7 @@ export class Bot {
         })
         .catch(error);
     } else if (
+      (isSessionActive || positionSize !== 0) &&
       canTakeShortPosition &&
       currentOpenOrders.length === 0 &&
       sellStrategy(candles)
@@ -764,5 +788,21 @@ export class Bot {
         })
         .catch(reject);
     });
+  }
+
+  private isSessionsActive(current: Date, tradingSession?: TradingSession) {
+    if (tradingSession) {
+      // Check if we are in the trading sessions
+      const currentTime = dayjs(current);
+      const currentDay = currentTime.format('YYYY-MM-DD');
+      const startSessionTime = `${currentDay} ${tradingSession.start}:00`;
+      const endSessionTime = `${currentDay} ${tradingSession.end}:00`;
+      return dayjs(currentTime.format('YYYY-MM-DD HH:mm:ss')).isBetween(
+        startSessionTime,
+        endSessionTime
+      );
+    } else {
+      return true;
+    }
   }
 }
