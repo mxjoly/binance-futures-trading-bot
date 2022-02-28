@@ -218,7 +218,7 @@ export class BackTestBot {
   }
 
   /**
-   * Load the candle from the downloaded data
+   * Load the candles from the downloaded data
    */
   private async prepareCandleHistoric() {
     // Initialization of the arrays

@@ -58,7 +58,7 @@ type ExitStrategy = (
 type TrendFilter = (
   candles: CandlesDataMultiTimeFrames,
   options?: any
-) => Trend; // 1: up trend, -1: down trend, 0 no trend
+) => Trend;
 type Trend = 1 | -1 | 0; // 1: up trend, -1: down trend, 0: no trend
 
 interface RiskManagementOptions {
