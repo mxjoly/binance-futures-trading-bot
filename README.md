@@ -53,4 +53,4 @@ You can backtest your own strategy by running the backtest mode. To do that, you
 
 ## License
 
-[MIT.][license-url]
+[MIT.][./license]
