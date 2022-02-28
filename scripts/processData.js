@@ -36,7 +36,7 @@ function TimeFrameToMinutes(timeFrame) {
 }
 
 /**
- * Test if a date string match a time frame
+ * Test if a date string match a time frame by looking at the hours and minutes
  * @param {string} date
  * @param {string} timeFrame
  */
@@ -77,12 +77,14 @@ function dateMatchTimeFrame(date, timeFrame) {
 function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
   const loadedData = [];
 
+  // File that will be created with the nex data
   const newFile = path.join(dataDirectory, symbol, `_${newTimeFrame}.csv`);
 
   if (fs.existsSync(newFile)) {
     console.log(
       chalk.red(`${filePath} has been already transformed in ${newTimeFrame}`)
     );
+    return;
   }
 
   fs.createReadStream(filePath)
@@ -96,6 +98,7 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
       // Index to start to construct the candlestick data in the new time frame
       let startIndex = loadedData.length - 1;
 
+      // Get the highest high from the candle at index startIndex to the candle at index endIndex
       const highest = (startIndex, endIndex) => {
         let highest = loadedData[startIndex].high;
         for (let i = startIndex; i >= endIndex; i--) {
@@ -104,6 +107,7 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
         return highest;
       };
 
+      // Get the lowest low from the candle at index startIndex to the candle at index endIndex
       const lowest = (startIndex, endIndex) => {
         let lowest = loadedData[startIndex].low;
         for (let i = startIndex; i >= endIndex; i--) {
@@ -112,6 +116,7 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
         return lowest;
       };
 
+      // Get the volume of new candle by cumulating the volume of each candle from the candle at index startIndex to the candle at index endIndex
       const volume = (startIndex, endIndex) => {
         let volume = 0;
         let asset = loadedData[0].symbol.split('/')[0];
@@ -121,7 +126,7 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
         return volume;
       };
 
-      // Start to use candle at 00:00
+      // Start the new data buy with a candle starting at 00:00 (hours:minutes)
       while (
         dayjs(new Date(loadedData[startIndex].date)).format('HH:mm') !== '00:00'
       ) {
@@ -130,13 +135,14 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
       }
 
       for (let i = startIndex; i >= 0; i--) {
-        // The new high candle will be construct between these index
+        // Indexes of the new candle
         let startCandleIndex = i;
         let endCandleIndex = i;
 
+        // Ignore candles that doesn't match the new time frame pattern
         if (!dateMatchTimeFrame(loadedData[i].date, newTimeFrame)) continue;
 
-        // Find the next candles that match the time frame
+        // Find the next candle that matches the time frame
         for (let j = i - 1; j >= 0; j--) {
           if (dateMatchTimeFrame(loadedData[j].date, newTimeFrame)) {
             endCandleIndex = j + 1;
@@ -144,13 +150,14 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
           }
         }
 
-        // To get only final candles
+        // Get only final candles
         if (
           loadedData.length - (loadedData.length - startCandleIndex) <
           TimeFrameToMinutes(newTimeFrame)
         )
           break;
 
+        // Times of the new candle
         let openTime = dayjs(loadedData[startCandleIndex].date).format(
           'YYYY-MM-DD HH:mm:ss'
         );
@@ -173,6 +180,7 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
         }
       }
 
+      // Headers of new csv file created
       const headers = [
         'symbol',
         'openTime',
@@ -183,6 +191,8 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
         'close',
         'volume',
       ];
+
+      // Csv data
       const content =
         headers.join(',') +
         '\n' +
@@ -191,6 +201,7 @@ function transformDataToNewTimeFrame(filePath, symbol, newTimeFrame) {
           .reverse()
           .join('\n');
 
+      // Write the csv file
       fs.writeFile(newFile, content, (err) => {
         if (err) throw err;
         console.log(chalk.green(`${newFile} generated`));

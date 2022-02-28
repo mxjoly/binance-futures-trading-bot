@@ -4,8 +4,16 @@ import { createLogger, transports, format } from 'winston';
 import { Bot } from './bot';
 import { BackTestBot } from './backtest/bot';
 import { initializePlugins } from './utils/plugins';
+import safeRequire from 'safe-require';
 
-const BotConfig = require(`${process.cwd()}/config.json`);
+const BotConfig = safeRequire(`${process.cwd()}/config.json`);
+
+if (!BotConfig) {
+  console.error(
+    'Something is wrong. No json config file has been found at the root of the project.'
+  );
+  process.exit(1);
+}
 
 // Initialize environment variables
 require('dotenv').config();
@@ -61,10 +69,10 @@ export const binanceClient = Binance(
       }
 );
 
-// The bot will trade with the binance :
+// The bot will trade with the binance mode:
 export const BINANCE_MODE: BinanceMode = BotConfig['mode'];
 
-// Supported time frame by the robot
+// Supported time frame by the robot in development and production mode
 export const supportedTimeFrames = [
   CandleChartInterval.ONE_MINUTE,
   CandleChartInterval.FIVE_MINUTES,
@@ -79,7 +87,7 @@ export const supportedTimeFrames = [
   CandleChartInterval.ONE_WEEK,
 ];
 
-// Supported time frame by the robot in backtest
+// Supported time frame by the robot in backtest mode
 export const supportedTimeFramesBacktest = [
   CandleChartInterval.ONE_MINUTE,
   CandleChartInterval.FIVE_MINUTES,
@@ -96,6 +104,7 @@ export const supportedTimeFramesBacktest = [
 const loopTimeFramesFromConfig = StrategyConfig.map(
   (config) => config.loopInterval
 );
+
 const indicatorIntervalsFromConfig = StrategyConfig.reduce((prev, cur) => {
   return prev.concat(
     cur.indicatorIntervals

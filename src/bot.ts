@@ -23,6 +23,9 @@ export class Bot {
     this.tradeConfigs = tradeConfigs;
   }
 
+  /**
+   * Prepare the account
+   */
   public async prepare() {
     if (BINANCE_MODE === 'futures') {
       // Set the margin type and initial leverage for the futures
@@ -49,16 +52,21 @@ export class Bot {
     }
   }
 
+  /**
+   * Main function
+   */
   public async run() {
     log(
       '====================== 💵 BINANCE BOT TRADING 💵 ======================'
     );
 
+    // Get the exchange info
     const exchangeInfo =
       BINANCE_MODE === 'spot'
         ? await binanceClient.exchangeInfo()
         : await binanceClient.futuresExchangeInfo();
 
+    // Socket
     const getCandles =
       BINANCE_MODE === 'spot'
         ? binanceClient.ws.candles
@@ -70,56 +78,38 @@ export class Bot {
 
       getCandles(pair, tradeConfig.loopInterval, (candle) => {
         if (candle.isFinal) {
-          let loadTimeFrames: Promise<CandlesDataMultiTimeFrames>[] = [];
-
-          tradeConfig.indicatorIntervals.forEach(
-            (interval: CandleChartInterval) => {
-              loadTimeFrames.push(
-                new Promise<CandlesDataMultiTimeFrames>((resolve, reject) => {
-                  this.loadCandles(pair, interval, true, false)
-                    .then((candles) => {
-                      resolve({
-                        interval,
-                        candles: candles.map((candle) => ({
-                          open: Number(candle.open),
-                          high: Number(candle.high),
-                          low: Number(candle.low),
-                          close: Number(candle.close),
-                          volume: Number(candle.volume),
-                          openTime: new Date(candle.openTime),
-                          closeTime: new Date(candle.closeTime),
-                        })),
-                      });
-                    })
-                    .catch(reject);
-                })
-              );
+          // Load the candle data for each the time frames that will be use on the strategy
+          this.loadCandlesMultiTimeFrames(tradeConfig).then(
+            (candlesMultiTimeFrames) => {
+              if (BINANCE_MODE === 'spot') {
+                this.tradeWithSpot(
+                  tradeConfig,
+                  Number(candle.close),
+                  candlesMultiTimeFrames,
+                  exchangeInfo
+                );
+              } else {
+                this.tradeWithFutures(
+                  tradeConfig,
+                  Number(candle.close),
+                  candlesMultiTimeFrames,
+                  exchangeInfo
+                );
+              }
             }
           );
-
-          // For each stream event, get all the candle data in all the indicator time frames from the config
-          Promise.all(loadTimeFrames).then((candlesMultiTimeFrames) => {
-            if (BINANCE_MODE === 'spot') {
-              this.tradeWithSpot(
-                tradeConfig,
-                Number(candle.close),
-                candlesMultiTimeFrames,
-                exchangeInfo
-              );
-            } else {
-              this.tradeWithFutures(
-                tradeConfig,
-                Number(candle.close),
-                candlesMultiTimeFrames,
-                exchangeInfo
-              );
-            }
-          });
         }
       });
     });
   }
 
+  /**
+   * Main spot function (buy/sell, open/close order)
+   * @param tradeConfig
+   * @param currentPrice
+   * @param candles
+   * @param exchangeInfo
+   */
   private async tradeWithSpot(
     tradeConfig: TradeConfig,
     currentPrice: number,
@@ -162,7 +152,7 @@ export class Bot {
         assetBalance * currentPrice <= baseBalance * maxPyramidingAllocation);
 
     // Check if we are in the trading sessions
-    let isSessionActive = this.isSessionsActive(
+    let isSessionActive = this.isTradingSessionActive(
       candles[loopInterval].openTime,
       tradingSession
     );
@@ -217,8 +207,6 @@ export class Bot {
           timeInForce: 'GTC',
         })
         .then(({ price: orderPrice }) => {
-          // @NOTES => calculate the average price
-
           // Calculate the tp and sl
           const { takeProfits, stopLoss } = exitStrategy
             ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
@@ -300,6 +288,14 @@ export class Bot {
     }
   }
 
+  /**
+   * Main futures function (long/short, open/close order)
+   * @param tradeConfig
+   * @param currentPrice
+   * @param candles
+   * @param exchangeInfo
+   * @returns
+   */
   private async tradeWithFutures(
     tradeConfig: TradeConfig,
     currentPrice: number,
@@ -324,6 +320,7 @@ export class Bot {
     } = tradeConfig;
     const pair = asset + base;
 
+    // Check the trend
     const useLongPosition = trendFilter ? trendFilter(candles) === 1 : true;
     const useShortPosition = trendFilter ? trendFilter(candles) === -1 : true;
 
@@ -361,7 +358,7 @@ export class Bot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Check if we are in the trading sessions
-    let isSessionActive = this.isSessionsActive(
+    let isSessionActive = this.isTradingSessionActive(
       candles[loopInterval].openTime,
       tradingSession
     );
@@ -405,11 +402,18 @@ export class Bot {
       // Do not close the current short position built progressively in pyramiding mode
       if (allowPyramiding && hasShortPosition) return;
 
+      // Do not buy now if a take profit is already set on the last short position
+      let hasTakeProfits = currentOpenOrders.some(
+        (order) => order.price < position.entryPrice
+      );
+      if (hasShortPosition && hasTakeProfits) return;
+
       // Calculate TP and SL
       let { takeProfits, stopLoss } = exitStrategy
         ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
         : { takeProfits: [], stopLoss: null };
 
+      //Calculate the quantity for the position according to the risk management of the strategy
       let quantity = riskManagement({
         asset,
         base,
@@ -467,7 +471,6 @@ export class Bot {
           if (takeProfits.length > 0) {
             // Create the take profit orders
             takeProfits.forEach(({ price, quantityPercentage }) => {
-              // Take profit order
               binanceClient
                 .futuresOrder({
                   side: OrderSide.SELL,
@@ -501,6 +504,7 @@ export class Bot {
           }
 
           if (trailingStopConfig) {
+            // Calculate the activation price based on the config of the trailing stop
             const calculateActivationPrice = (currentPrice: number) => {
               let { percentageToTP, changePercentage } =
                 trailingStopConfig.activation;
@@ -587,12 +591,18 @@ export class Bot {
       // Do not close the current short position built progressively in pyramiding mode
       if (allowPyramiding && hasLongPosition) return;
 
+      // Do not sell now if a take profit is already set on the last long position
+      let hasTakeProfits = currentOpenOrders.some(
+        (order) => order.price > position.entryPrice
+      );
+      if (hasLongPosition && hasTakeProfits) return;
+
       // Calculate TP and SL
       let { takeProfits, stopLoss } = exitStrategy
         ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.SELL)
         : { takeProfits: [], stopLoss: null };
 
-      // Risk Management
+      // Calculate the quantity for the position according to the risk management of the strategy
       let quantity = riskManagement({
         asset,
         base,
@@ -650,7 +660,6 @@ export class Bot {
           if (takeProfits.length > 0) {
             // Create the take profit orders
             takeProfits.forEach(({ price, quantityPercentage }) => {
-              // Take profit order
               binanceClient
                 .futuresOrder({
                   side: OrderSide.BUY,
@@ -684,6 +693,7 @@ export class Bot {
           }
 
           if (trailingStopConfig) {
+            // Calculate the activation price according to the config of the trailing stop
             const calculateActivationPrice = (currentPrice: number) => {
               let { percentageToTP, changePercentage } =
                 trailingStopConfig.activation;
@@ -739,6 +749,14 @@ export class Bot {
     }
   }
 
+  /**
+   * Load the candle data for a specific time frame (or interval)
+   * @param symbol
+   * @param interval
+   * @param onlyFinalCandle
+   * @param displayLog
+   * @returns
+   */
   private loadCandles(
     symbol: string,
     interval: CandleChartInterval,
@@ -773,6 +791,53 @@ export class Bot {
     });
   }
 
+  /**
+   * Load the candle data for all the time frame needed for the strategy
+   * @param tradeConfig
+   * @returns
+   */
+  private loadCandlesMultiTimeFrames(tradeConfig: TradeConfig) {
+    return new Promise<CandlesDataMultiTimeFrames>((resolve, reject) => {
+      let loadTimeFrames: Promise<CandlesDataMultiTimeFrames>[] = [];
+
+      tradeConfig.indicatorIntervals.forEach(
+        (interval: CandleChartInterval) => {
+          loadTimeFrames.push(
+            new Promise<CandlesDataMultiTimeFrames>((resolve, reject) => {
+              this.loadCandles(
+                tradeConfig.asset + tradeConfig.base,
+                interval,
+                true,
+                false
+              )
+                .then((candles) => {
+                  resolve({
+                    interval,
+                    candles: candles.map((candle) => ({
+                      open: Number(candle.open),
+                      high: Number(candle.high),
+                      low: Number(candle.low),
+                      close: Number(candle.close),
+                      volume: Number(candle.volume),
+                      openTime: new Date(candle.openTime),
+                      closeTime: new Date(candle.closeTime),
+                    })),
+                  });
+                })
+                .catch(reject);
+            })
+          );
+        }
+      );
+
+      Promise.all(loadTimeFrames).then(resolve).catch(reject);
+    });
+  }
+
+  /**
+   *  Close all the open orders for a given symbol
+   * @param symbol
+   */
   private closeOpenOrders(symbol: string) {
     return new Promise<void>((resolve, reject) => {
       const cancel =
@@ -789,10 +854,18 @@ export class Bot {
     });
   }
 
-  private isSessionsActive(current: Date, tradingSession?: TradingSession) {
+  /**
+   * Check if we are in a trading session. If not, the robot waits, and does nothing
+   * @param currentDate
+   * @param tradingSession
+   */
+  private isTradingSessionActive(
+    currentDate: Date,
+    tradingSession?: TradingSession
+  ) {
     if (tradingSession) {
       // Check if we are in the trading sessions
-      const currentTime = dayjs(current);
+      const currentTime = dayjs(currentDate);
       const currentDay = currentTime.format('YYYY-MM-DD');
       const startSessionTime = `${currentDay} ${tradingSession.start}:00`;
       const endSessionTime = `${currentDay} ${tradingSession.end}:00`;

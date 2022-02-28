@@ -33,7 +33,16 @@ You can backtest your own strategy by running the backtest mode. To do that, you
 3. Tap the commands `npm build:test` and `npm run test` to run the backtest.
 4. When the backtest ends, it generates a log file in the folder `logs` and an html report in `reports`. You can consulting these to evaluate the performance and profitability of your strategy.
 
-![demo](./demo/report.png)
+![demo](./demo/report-preview.png)
+
+## Todo
+
+- [ ] Calculation of the average buying price of an asset in spot
+- [ ] Implement machine learning (NEAT algorithm) to increase considerably the performance of the strategy
+- [ ] Add custom Telegram channel with the notifications of the robot when an action is executed
+- [ ] Trade management
+- [ ] Add a trade configuration property to limited the holding duration of a trade or position
+- [ ] Spot portfolio arbitrage in spot
 
 ## Documentation
 
@@ -41,3 +50,7 @@ You can backtest your own strategy by running the backtest mode. To do that, you
 - https://github.com/Ashlar/binance-api-node/blob/master/README.md
 - https://binance-docs.github.io/apidocs/spot/en/
 - https://binance-docs.github.io/apidocs/futures/en/
+
+## License
+
+[MIT.][license-url]

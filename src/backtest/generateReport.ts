@@ -1,6 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 
+/**
+ * Generate the strategy report with an html file
+ * @param strategyName
+ * @param strategyReport
+ * @param labels
+ * @param lineData
+ */
 export default function (
   strategyName: string,
   strategyReport: StrategyReport,
@@ -131,11 +138,11 @@ export default function (
             </tr>
             <tr>
               <td><b>Max consecutive wins (count):</b></td>
-              <td>${strategyReport.maxConsecutiveWins}</td>
+              <td>${strategyReport.maxConsecutiveWinsCount}</td>
             </tr>
             <tr>
               <td><b>Max consecutive losses (count):</b></td>
-              <td>${strategyReport.maxConsecutiveLosses}</td>
+              <td>${strategyReport.maxConsecutiveLossesCount}</td>
             </tr>
           </table>
         </div>

@@ -95,6 +95,6 @@ interface StrategyReport {
   maxLoss?: number;
   maxConsecutiveProfit?: number;
   maxConsecutiveLoss?: number;
-  maxConsecutiveWins?: number;
-  maxConsecutiveLosses?: number;
+  maxConsecutiveWinsCount?: number;
+  maxConsecutiveLossesCount?: number;
 }

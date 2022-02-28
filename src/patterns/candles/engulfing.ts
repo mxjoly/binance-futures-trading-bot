@@ -18,6 +18,12 @@ const getBody = (candle: CandleData) =>
 const hasWhiteBody = (candle: CandleData) => candle.open < candle.close;
 const hasBlackBody = (candle: CandleData) => candle.open > candle.close;
 
+/**
+ * Detect an engulfing candle based on Trading View default indicator
+ * @param candles
+ * @param index
+ * @param options
+ */
 export const isBullEngulfing = (
   candles: CandleData[],
   index = candles.length - 1,

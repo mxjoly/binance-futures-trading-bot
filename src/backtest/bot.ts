@@ -6,6 +6,7 @@ import csv from 'csv-parser';
 import dayjs from 'dayjs';
 import fs from 'fs';
 import path from 'path';
+import safeRequire from 'safe-require';
 import { binanceClient, BINANCE_MODE } from '..';
 import { decimalCeil, decimalFloor } from '../utils/math';
 import { clone } from '../utils';
@@ -24,7 +25,17 @@ import { createDatabase, saveFuturesState, saveState } from './db';
 import { debugLastCandle, debugWallet, log, printDateBanner } from './debug';
 import generateHTMLReport from './generateReport';
 
-const BotConfig = require(`${process.cwd()}/config.json`);
+// ====================================================================== //
+
+const BotConfig = safeRequire(`${process.cwd()}/config.json`);
+
+if (!BotConfig) {
+  console.error(
+    'Something is wrong. No json config file has been found at the root of the project.'
+  );
+  process.exit(1);
+}
+
 const BacktestConfig = BotConfig['backtest'];
 
 // ====================================================================== //
@@ -88,14 +99,14 @@ export class BackTestBot {
   private openOrders: OpenOrder[];
   private futuresOpenOrders: FuturesOpenOrder[];
 
-  // For the strategy report
+  // For the calculation of some properties of the strategy report
   private strategyReport: StrategyReport;
   private maxBalance: number;
   private maxDrawdown: number;
   private maxProfit: number;
   private maxLoss: number;
-  private maxConsecutiveWins: number;
-  private maxConsecutiveLosses: number;
+  private maxConsecutiveWinsCount: number;
+  private maxConsecutiveLossesCount: number;
   private maxConsecutiveProfitCount: number;
   private maxConsecutiveLossCount: number;
 
@@ -123,8 +134,8 @@ export class BackTestBot {
     this.maxDrawdown = 1;
     this.maxProfit = 0;
     this.maxLoss = 0;
-    this.maxConsecutiveWins = 0;
-    this.maxConsecutiveLosses = 0;
+    this.maxConsecutiveWinsCount = 0;
+    this.maxConsecutiveLossesCount = 0;
     this.maxConsecutiveProfitCount = 0;
     this.maxConsecutiveLossCount = 0;
 
@@ -132,9 +143,13 @@ export class BackTestBot {
     this.chartData = [];
   }
 
+  /**
+   * Prepare the mock account data, the open orders, and initialize some properties of the strategy report
+   */
   public prepare() {
     if (SAVE_HISTORY) createDatabase(this.strategyName);
 
+    // Variable used to get the number of total assets for the strategy report
     let numberAssetsInBalance = 0;
 
     if (BINANCE_MODE === 'spot') {
@@ -179,7 +194,7 @@ export class BackTestBot {
       this.futuresOpenOrders = [];
     }
 
-    // Initialize some property of strategy result
+    // Initialize some properties of the strategy report
     this.strategyReport.initialCapital = this.initialCapital;
     this.strategyReport.numberSymbol =
       BINANCE_MODE === 'spot'
@@ -198,11 +213,12 @@ export class BackTestBot {
     this.strategyReport.shortLostTrade = 0;
     this.strategyReport.maxConsecutiveProfit = 0;
     this.strategyReport.maxConsecutiveLoss = 0;
-    this.strategyReport.maxConsecutiveWins = 0;
-    this.strategyReport.maxConsecutiveLosses = 0;
+    this.strategyReport.maxConsecutiveWinsCount = 0;
+    this.strategyReport.maxConsecutiveLossesCount = 0;
   }
 
   private async prepareCandleHistoric() {
+    // Initialization of the arrays
     this.tradeConfigs.forEach(
       ({ asset, base, loopInterval, indicatorIntervals }) => {
         this.historicCandleDataMultiTimeFrames[asset + base] = {};
@@ -212,7 +228,7 @@ export class BackTestBot {
       }
     );
 
-    // Load the candle data streams
+    // Load the candle data according to the time frame of the trading configuration
     let loadPairTimeFrame = [];
     this.tradeConfigs.forEach(
       ({ asset, base, loopInterval, indicatorIntervals }) => {
@@ -232,10 +248,9 @@ export class BackTestBot {
         });
       }
     );
-
     await Promise.all(loadPairTimeFrame);
 
-    // Check if the candle data are available on the specified period
+    // Check if the candles has been loaded successfully. If not, stop the backtesting
     let historyError = false;
     this.tradeConfigs.forEach(({ asset, base }) => {
       Object.keys(this.historicCandleDataMultiTimeFrames[asset + base]).forEach(
@@ -260,7 +275,7 @@ export class BackTestBot {
     });
     if (historyError) return process.exit();
 
-    // Check the start date and end date comparing to the historic date period downloaded
+    // Check the start date and end date comparing to the date range of the historic data downloaded
     Object.keys(this.historicCandleDataMultiTimeFrames).forEach((pair) => {
       let candles = this.historicCandleDataMultiTimeFrames[pair];
       Object.keys(this.historicCandleDataMultiTimeFrames[pair]).forEach(
@@ -289,6 +304,9 @@ export class BackTestBot {
     });
   }
 
+  /**
+   * Main function
+   */
   public async run() {
     log(
       '====================== 💵 BINANCE TRADING BOT (BACKTEST) 💵 ======================'
@@ -300,15 +318,15 @@ export class BackTestBot {
         ? await binanceClient.exchangeInfo()
         : await binanceClient.futuresExchangeInfo();
 
-    // Prepare the candle historic
+    // Prepare the candle data that will be used in the backtester
     await this.prepareCandleHistoric();
 
-    // Get the smaller loop time frame in the trade configs
+    // Get the smaller loop time frame in the trade configs.
     const smallerTimeFrame = this.tradeConfigs
       .map(({ loopInterval }) => loopInterval)
       .sort((tf1, tf2) => compareTimeFrame(tf1, tf2))[0];
 
-    // Duration of the backtest period in minutes
+    // Duration of the backtest in the nit of the smaller time frame
     const duration = durationBetweenDates(
       this.startDate,
       this.endDate,
@@ -321,10 +339,12 @@ export class BackTestBot {
     // Initiation of CLI Progress bar
     if (!DEBUG) bar.start(duration, 0);
 
-    // Index to generated candle arrays progressively
+    // Indexes to generate candle data arrays progressively (real time)
     let indexes: {
       [pair: string]: { [timeFrame: string]: { start: number; end: number } };
     } = {};
+
+    // Initialize the indexes
     this.tradeConfigs.forEach(
       ({ asset, base, indicatorIntervals, loopInterval }) => {
         indexes[asset + base] = {};
@@ -334,8 +354,10 @@ export class BackTestBot {
       }
     );
 
-    // Time loop
+    // Mock date fir the backtesting
     let currentDate = this.startDate;
+
+    // Time loop
     while (dayjs(currentDate).isSameOrBefore(this.endDate)) {
       printDateBanner(currentDate);
 
@@ -343,9 +365,9 @@ export class BackTestBot {
         const { base, asset, loopInterval, indicatorIntervals } = config;
         const pair = asset + base;
 
-        // Update the candle data array on multiple time frame
+        // Update the indexes of the candle data array for each time frames
         new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
-          let { indexStart, indexEnd } = this.updateCandleHistoricIndex(
+          let { indexStart, indexEnd } = this.updateCandleDataIndexes(
             indexes[pair][interval].start,
             indexes[pair][interval].end,
             pair,
@@ -356,7 +378,9 @@ export class BackTestBot {
           indexes[pair][interval].end = indexEnd;
         });
 
-        let candles = this.generateCandleHistoric(pair, indexes[pair]);
+        // Use two arrays, one containing all the data for each time frames, the second
+        // with only the candle data on the loop time frame specified in the trade configuration
+        let candles = this.generateCandleDataFromIndexes(pair, indexes[pair]);
         let candlesStream: CandleData[] = candles[pair][loopInterval];
 
         if (candlesStream.length > 0) {
@@ -365,7 +389,7 @@ export class BackTestBot {
 
           debugLastCandle(currentCandle);
 
-          // Check if an open order has been activated
+          // Check the current trades/positions
           if (BINANCE_MODE === 'spot') {
             this.checkSpotOpenOrders(asset, base, candlesStream);
           } else {
@@ -374,6 +398,7 @@ export class BackTestBot {
             this.updatePNL(asset, base, currentPrice);
           }
 
+          // The loop time frames could be different of the smaller time frame for all the trading configurations
           if (dateMatchTimeFrame(currentDate, config.loopInterval)) {
             if (BINANCE_MODE === 'spot') {
               this.tradeWithSpot(
@@ -395,9 +420,13 @@ export class BackTestBot {
         }
       });
 
+      // Save the current state to the db
       this.saveStateToDB(currentDate);
+
+      // Update the max drawdown and max balance property for the strategy report
       this.updateMaxDrawdownMaxBalance();
 
+      // Debugging
       debugWallet(this.wallet, this.futuresWallet);
       log(''); // \n
 
@@ -406,7 +435,7 @@ export class BackTestBot {
           date: dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
         });
 
-      // Preparing chart data
+      // Preparing chart data for the strategy report in html
       this.chartLabels.push(dayjs(currentDate).format('YYYY-MM-DD'));
       this.chartData.push(
         BINANCE_MODE === 'spot'
@@ -414,6 +443,7 @@ export class BackTestBot {
           : this.futuresWallet.totalWalletBalance
       );
 
+      // Increment the date with the smaller time frame (interval)
       currentDate = dayjs(currentDate)
         .add(timeFrameToMinutes(smallerTimeFrame), 'minute')
         .toDate();
@@ -421,7 +451,7 @@ export class BackTestBot {
 
     if (!DEBUG) bar.stop();
 
-    // Strategy results
+    // Display the strategy report
     this.calculateStrategyStats();
     this.displayStrategyResults();
     generateHTMLReport(
@@ -432,16 +462,21 @@ export class BackTestBot {
     );
   }
 
-  private generateCandleHistoric(
+  /**
+   * Update all date range of the current candle data (used the main loop) from the initial historic data downloaded.
+   */
+  private generateCandleDataFromIndexes(
     pair: string,
     pairIndexes: { [timeFrame: string]: { start: number; end: number } }
   ) {
     let candles: {
       [symbol: string]: CandlesDataMultiTimeFrames;
     } = {};
+
     Object.keys(this.historicCandleDataMultiTimeFrames).forEach(
       (pair) => (candles[pair] = {})
     );
+
     Object.entries(this.historicCandleDataMultiTimeFrames[pair]).forEach(
       ([timeFrame, data]: [CandleChartInterval, CandleData[]]) => {
         candles[pair][timeFrame] = data.slice(
@@ -450,10 +485,19 @@ export class BackTestBot {
         );
       }
     );
+
     return candles;
   }
 
-  private updateCandleHistoricIndex(
+  /**
+   * Get the new index (start and end) for the candle data of a pair and a time frame
+   * @param indexStart
+   * @param indexEnd
+   * @param pair
+   * @param timeFrame
+   * @param currentDate
+   */
+  private updateCandleDataIndexes(
     indexStart: number,
     indexEnd: number,
     pair: string,
@@ -466,15 +510,23 @@ export class BackTestBot {
       i++
     ) {
       let pairCandles = this.historicCandleDataMultiTimeFrames[pair][timeFrame];
+
+      // When the date of candle data at the index end is after the current date, stop the loop because the end index has been found
       if (dayjs(pairCandles[i].closeTime).isAfter(currentDate) && i > 0) {
         indexEnd = i - 1;
         break;
       }
+
+      // Update the index start to have the same range between the index start and index end
       if (i - indexStart > MAX_LENGTH_CANDLES) indexStart++;
     }
+
     return { indexStart, indexEnd };
   }
 
+  /**
+   * Calculations / adjustments before displaying the strategy report
+   */
   private calculateStrategyStats() {
     let {
       totalLongTrades,
@@ -551,8 +603,9 @@ export class BackTestBot {
       totalLoss / (longLostTrade + shortLostTrade),
       2
     );
-    this.strategyReport.maxConsecutiveWins = this.maxConsecutiveWins;
-    this.strategyReport.maxConsecutiveLosses = this.maxConsecutiveLosses;
+    this.strategyReport.maxConsecutiveWinsCount = this.maxConsecutiveWinsCount;
+    this.strategyReport.maxConsecutiveLossesCount =
+      this.maxConsecutiveLossesCount;
     this.strategyReport.maxConsecutiveProfit = decimalFloor(
       this.maxConsecutiveProfitCount,
       2
@@ -563,6 +616,9 @@ export class BackTestBot {
     );
   }
 
+  /**
+   * Function that displays the strategy report
+   */
   private displayStrategyResults() {
     const {
       testPeriod,
@@ -589,8 +645,8 @@ export class BackTestBot {
       maxDrawdown,
       maxConsecutiveProfit,
       maxConsecutiveLoss,
-      maxConsecutiveWins,
-      maxConsecutiveLosses,
+      maxConsecutiveWinsCount,
+      maxConsecutiveLossesCount,
     } = this.strategyReport;
 
     let strategyReportString = `\n========================= STRATEGY REPORT =========================\n
@@ -616,26 +672,33 @@ export class BackTestBot {
     Average loss: ${avgLoss}
     Max consecutive profit: ${maxConsecutiveProfit}
     Max consecutive loss: ${maxConsecutiveLoss}
-    Max consecutive wins (count): ${maxConsecutiveWins}
-    Max consecutive losses (count): ${maxConsecutiveLosses}
+    Max consecutive wins (count): ${maxConsecutiveWinsCount}
+    Max consecutive losses (count): ${maxConsecutiveLossesCount}
     `;
     console.log(strategyReportString);
   }
 
+  /**
+   * Update the max drawdown and max balance with the current state of the wallet
+   */
   private updateMaxDrawdownMaxBalance() {
     if (BINANCE_MODE === 'spot') {
+      // Max balance update
       let currentWalletValue = this.evaluateSpotWalletBaseValue();
       if (currentWalletValue > this.maxBalance) {
         this.maxBalance = currentWalletValue;
       }
+      // Max drawdown update
       let drawdown = currentWalletValue / this.maxBalance;
       if (drawdown < this.maxDrawdown) {
         this.maxDrawdown = drawdown;
       }
     } else {
+      // Max balance update
       if (this.futuresWallet.totalWalletBalance > this.maxBalance) {
         this.maxBalance = this.futuresWallet.totalWalletBalance;
       }
+      // Max drawdown update
       let drawdown = this.futuresWallet.totalWalletBalance / this.maxBalance;
       if (drawdown < this.maxDrawdown) {
         this.maxDrawdown = drawdown;
@@ -643,37 +706,62 @@ export class BackTestBot {
     }
   }
 
+  /**
+   * Update the properties of the strategy report linked to the calculation of profit and loss
+   * (total profit/loss, max consecutive wins/losses count, max consecutive win/ loss)
+   * @param pnl the current pnl
+   */
   private updateProfitLossStrategyProperty(pnl: number) {
     if (pnl > 0) {
       this.strategyReport.totalProfit += pnl;
-      this.strategyReport.maxConsecutiveWins++;
+      this.strategyReport.maxConsecutiveWinsCount++;
       this.strategyReport.maxConsecutiveProfit += Math.abs(pnl);
-      if (this.strategyReport.maxConsecutiveLosses > this.maxConsecutiveLosses)
-        this.maxConsecutiveLosses = this.strategyReport.maxConsecutiveLosses;
+
+      if (
+        this.strategyReport.maxConsecutiveLossesCount >
+        this.maxConsecutiveLossesCount
+      )
+        this.maxConsecutiveLossesCount =
+          this.strategyReport.maxConsecutiveLossesCount;
+
       if (this.strategyReport.maxConsecutiveLoss > this.maxConsecutiveLossCount)
         this.maxConsecutiveLossCount = this.strategyReport.maxConsecutiveLoss;
-      this.strategyReport.maxConsecutiveLosses = 0;
+
+      this.strategyReport.maxConsecutiveLossesCount = 0;
       this.strategyReport.maxConsecutiveLoss = 0;
+
       if (Math.abs(pnl) > this.maxProfit) this.maxProfit = Math.abs(pnl);
     }
+
     if (pnl < 0) {
       this.strategyReport.totalLoss += pnl;
-      this.strategyReport.maxConsecutiveLosses++;
+      this.strategyReport.maxConsecutiveLossesCount++;
       this.strategyReport.maxConsecutiveLoss += Math.abs(pnl);
-      if (this.strategyReport.maxConsecutiveWins > this.maxConsecutiveWins)
-        this.maxConsecutiveWins = this.strategyReport.maxConsecutiveWins;
+
+      if (
+        this.strategyReport.maxConsecutiveWinsCount >
+        this.maxConsecutiveWinsCount
+      )
+        this.maxConsecutiveWinsCount =
+          this.strategyReport.maxConsecutiveWinsCount;
+
       if (
         this.strategyReport.maxConsecutiveProfit >
         this.maxConsecutiveProfitCount
       )
         this.maxConsecutiveProfitCount =
           this.strategyReport.maxConsecutiveProfit;
-      this.strategyReport.maxConsecutiveWins = 0;
+
+      this.strategyReport.maxConsecutiveWinsCount = 0;
       this.strategyReport.maxConsecutiveProfit = 0;
+
       if (Math.abs(pnl) > this.maxLoss) this.maxLoss = Math.abs(pnl);
     }
   }
 
+  /**
+   * Save the current account state in the json database
+   */
   private saveStateToDB(currentDate: Date) {
     if (BINANCE_MODE === 'spot') {
       if (SAVE_HISTORY) {
@@ -695,6 +783,13 @@ export class BackTestBot {
     }
   }
 
+  /**
+   * Main function for the spot mode
+   * @param tradeConfig
+   * @param currentPrice
+   * @param candles
+   * @param exchangeInfo
+   */
   private tradeWithSpot(
     tradeConfig: TradeConfig,
     currentPrice: number,
@@ -728,14 +823,14 @@ export class BackTestBot {
       (order) => order.pair === pair
     );
 
-    // Conditions
+    // Conditions to buy
     const canBuy =
       !allowPyramiding ||
       (allowPyramiding &&
         assetBalance * currentPrice <= baseBalance * maxPyramidingAllocation);
 
     // Check if we are in the trading sessions
-    let isSessionActive = this.isSessionsActive(
+    let isTradingSessionActive = this.isTradingSessionActive(
       candles[loopInterval].openTime,
       tradingSession
     );
@@ -745,7 +840,11 @@ export class BackTestBot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Close the open orders at the end of the session
-    if (!isSessionActive && assetBalance === 0 && currentOpenOrders.length > 0)
+    if (
+      !isTradingSessionActive &&
+      assetBalance === 0 &&
+      currentOpenOrders.length > 0
+    )
       this.closeOpenOrders(pair);
 
     // Prevent remaining open orders
@@ -756,7 +855,8 @@ export class BackTestBot {
       this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
       this.closeOpenOrders(pair);
     }
-    if (isSessionActive && canBuy && buyStrategy(candles)) {
+
+    if (isTradingSessionActive && canBuy && buyStrategy(candles)) {
       const quantity = riskManagement({
         asset,
         base,
@@ -798,6 +898,13 @@ export class BackTestBot {
     }
   }
 
+  /**
+   * Main function for the futures mode
+   * @param tradeConfig
+   * @param currentPrice
+   * @param candles
+   * @param exchangeInfo
+   */
   private tradeWithFutures(
     tradeConfig: TradeConfig,
     currentPrice: number,
@@ -822,6 +929,7 @@ export class BackTestBot {
     } = tradeConfig;
     const pair = asset + base;
 
+    // Check the trend
     const useLongPosition = trendFilter ? trendFilter(candles) === 1 : true;
     const useShortPosition = trendFilter ? trendFilter(candles) === -1 : true;
 
@@ -855,7 +963,7 @@ export class BackTestBot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Check if we are in the trading sessions
-    let isSessionActive = this.isSessionsActive(
+    let isTradingSessionActive = this.isTradingSessionActive(
       candles[loopInterval].openTime,
       tradingSession
     );
@@ -866,7 +974,7 @@ export class BackTestBot {
     }
 
     if (
-      (isSessionActive || position.size !== 0) &&
+      (isTradingSessionActive || position.size !== 0) &&
       (allowPyramiding || currentOpenOrders.length === 0) &&
       canTakeLongPosition &&
       buyStrategy(candles)
@@ -892,12 +1000,19 @@ export class BackTestBot {
       // Do not close the current short position built progressively in pyramiding mode
       if (allowPyramiding && hasShortPosition) return;
 
+      // Do not buy now if a take profit is already set on the last short position
+      let hasTakeProfits = currentOpenOrders.some(
+        (order) => order.price < position.entryPrice
+      );
+      if (hasShortPosition && hasTakeProfits) return;
+
       // Calculate TP and SL
       let { takeProfits, stopLoss } =
         !allowPyramiding && exitStrategy
           ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
           : { takeProfits: [], stopLoss: null };
 
+      // Calculation of the quantity for the position according to the risk management
       let quantity = riskManagement({
         asset,
         base,
@@ -949,7 +1064,6 @@ export class BackTestBot {
       if (takeProfits.length > 0) {
         // Create the take profit orders
         takeProfits.forEach(({ price, quantityPercentage }) => {
-          // Take profit order
           this.futuresOrderLimit(
             pair,
             price,
@@ -960,7 +1074,7 @@ export class BackTestBot {
       }
 
       if (stopLoss) {
-        // Stop loss order
+        // Limit order as SL
         this.futuresOrderLimit(
           pair,
           stopLoss,
@@ -970,6 +1084,7 @@ export class BackTestBot {
       }
 
       if (trailingStopConfig) {
+        // Calculate the activation price for the trailing stop according tot the trailing stop configuration
         const calculateActivationPrice = (currentPrice: number) => {
           let { percentageToTP, changePercentage } =
             trailingStopConfig.activation;
@@ -999,12 +1114,11 @@ export class BackTestBot {
           calculateActivationPrice(position.entryPrice),
           Math.abs(position.size),
           'SHORT',
-          trailingStopConfig.callbackRate,
-          trailingStopConfig.activation
+          trailingStopConfig
         );
       }
     } else if (
-      (isSessionActive || position.size !== 0) &&
+      (isTradingSessionActive || position.size !== 0) &&
       (allowPyramiding || currentOpenOrders.length === 0) &&
       canTakeShortPosition &&
       sellStrategy(candles)
@@ -1030,7 +1144,7 @@ export class BackTestBot {
       // Do not close the current long position built progressively in pyramiding mode
       if (allowPyramiding && hasLongPosition) return;
 
-      // Do not sell if a take profit is set on the last long positions
+      // Do not sell now if a take profit is already set on the last long position
       let hasTakeProfits = currentOpenOrders.some(
         (order) => order.price > position.entryPrice
       );
@@ -1041,7 +1155,7 @@ export class BackTestBot {
         ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.SELL)
         : { takeProfits: [], stopLoss: null };
 
-      // Risk Management
+      // Calculation of the quantity for the position according to the risk management
       let quantity = riskManagement({
         asset,
         base,
@@ -1093,7 +1207,6 @@ export class BackTestBot {
       if (takeProfits.length > 0) {
         // Create the take profit orders
         takeProfits.forEach(({ price, quantityPercentage }) => {
-          // Take profit order
           this.futuresOrderLimit(
             pair,
             price,
@@ -1104,11 +1217,12 @@ export class BackTestBot {
       }
 
       if (stopLoss) {
-        // Stop loss order
+        // Limit order as SL
         this.futuresOrderLimit(pair, stopLoss, Math.abs(position.size), 'LONG');
       }
 
       if (trailingStopConfig) {
+        // Calculate the activation price for the trailing stop according tot the trailing stop configuration
         const calculateActivationPrice = (currentPrice: number) => {
           let { percentageToTP, changePercentage } =
             trailingStopConfig.activation;
@@ -1138,16 +1252,22 @@ export class BackTestBot {
           calculateActivationPrice(position.entryPrice),
           Math.abs(position.size),
           'LONG',
-          trailingStopConfig.callbackRate,
-          trailingStopConfig.activation
+          trailingStopConfig
         );
       }
     }
   }
 
-  private isSessionsActive(current: Date, tradingSession?: TradingSession) {
+  /**
+   * Check if we are in the trading sessions and if the robot can trade
+   * @param current
+   * @param tradingSession
+   */
+  private isTradingSessionActive(
+    current: Date,
+    tradingSession?: TradingSession
+  ) {
     if (tradingSession) {
-      // Check if we are in the trading sessions
       const currentTime = dayjs(current);
       const currentDay = currentTime.format('YYYY-MM-DD');
       const startSessionTime = `${currentDay} ${tradingSession.start}:00`;
@@ -1161,6 +1281,12 @@ export class BackTestBot {
     }
   }
 
+  /**
+   * Load the candle data on a symbol and a specific time frames
+   * @param symbol The symbol to load the candles
+   * @param interval The time frame to load
+   * @param onlyFinalCandle If true, load only the final candles (in final version)
+   */
   private loadCandles(
     symbol: string,
     interval: CandleChartInterval,
@@ -1226,6 +1352,11 @@ export class BackTestBot {
     });
   }
 
+  /**
+   * Check if the margin for all the positions (futures) is always valid. If not, the position is liquidated
+   * @param pair
+   * @param currentPrice The current price in the main loop
+   */
   private checkPositionMargin(pair: string, currentPrice: number) {
     const position = this.futuresWallet.positions.find(
       (pos) => pos.pair === pair
@@ -1242,11 +1373,15 @@ export class BackTestBot {
 
       this.closeFuturesOpenOrders(pair);
       this.updateProfitLossStrategyProperty(unrealizedProfit);
+
       if (position.positionSide === 'LONG') this.strategyReport.longLostTrade++;
       else this.strategyReport.shortLostTrade++;
     }
   }
 
+  /**
+   * Check the spot open orders based on the current price. If the price crosses an order, this latter is activated.
+   */
   private checkSpotOpenOrders(
     asset: string,
     base: string,
@@ -1263,12 +1398,11 @@ export class BackTestBot {
       const baseBalance = balance.find((bal) => bal.symbol === base);
       const assetBalance = balance.find((bal) => bal.symbol === asset);
 
-      // Check if a buy order has been activated on the last candle
       buyOrders.forEach(({ id, price, quantity }) => {
-        // Price crossed the buy limit order
+        // Price crossed the buy limit order, it is thus activated
         if (lastCandle.high > price && lastCandle.low < price) {
           let fees = quantity * price * (MAKER_FEES / 100);
-          let baseCost = quantity * price;
+          let baseCost = quantity * price; // Base resources needed to execute the order
 
           // If have enough base to buy asset including fees
           if (baseBalance.quantity >= baseCost + fees) {
@@ -1295,7 +1429,7 @@ export class BackTestBot {
 
       // Check if a sell order has been activated on the last candle
       sellOrders.forEach(({ id, price, quantity }) => {
-        // Price crossed the sell limit order
+        // Price crossed the sell limit order, it is thus activated
         if (lastCandle.high > price && lastCandle.low < price) {
           // If have enough asset quantity to sell
           if (assetBalance.quantity >= quantity) {
@@ -1314,6 +1448,7 @@ export class BackTestBot {
               this.strategyReport.totalLoss += netBaseReturn - fees;
 
             this.updateProfitLossStrategyProperty(netBaseReturn);
+
             if (assetBalance.quantity === 0) assetBalance.avgPrice = 0;
             this.strategyReport.totalFees += fees;
 
@@ -1331,6 +1466,12 @@ export class BackTestBot {
     }
   }
 
+  /**
+   * Check the futures open orders based on the current price. If the price crosses an order, this latter is activated.
+   * @param asset
+   * @param base
+   * @param candles
+   */
   private checkFuturesOpenOrders(
     asset: string,
     base: string,
@@ -1361,9 +1502,10 @@ export class BackTestBot {
 
       // Check if a long order has been activated on the last candle
       longOrders
-        .sort((order1, order2) => order2.price - order1.price) // sort order from nearest to furthest
+        .sort((order1, order2) => order2.price - order1.price) // sort order from nearest price to furthest price
         .every(({ id, price, quantity, type, trailingStop }) => {
-          let { entryPrice, size, leverage } = position;
+          const { entryPrice, size, leverage } = position;
+          const fees = quantity * price * (MAKER_FEES / 100);
 
           // Price crossed the buy limit order
           if (
@@ -1374,7 +1516,6 @@ export class BackTestBot {
             if (type === 'LIMIT') {
               // Average the position
               if (position.positionSide === 'LONG') {
-                let fees = quantity * price * (MAKER_FEES / 100);
                 let baseCost = (price * quantity) / leverage;
                 // If there is enough available base
                 if (wallet.availableBalance >= baseCost + fees) {
@@ -1399,9 +1540,6 @@ export class BackTestBot {
               } else if (position.positionSide === 'SHORT') {
                 let hadPosition = position.size < 0;
 
-                // Fees
-                let fees = quantity * price * (MAKER_FEES / 100);
-
                 // Update wallet
                 let pnl = this.getPositionPNL(position, price);
                 wallet.availableBalance += position.margin + pnl - fees;
@@ -1414,11 +1552,13 @@ export class BackTestBot {
                 position.size += quantity;
                 position.margin = Math.abs(position.size * price) / leverage;
 
+                // The position has been closed
                 if (position.size === 0) {
                   position.entryPrice = 0;
                   position.unrealizedProfit = 0;
                 }
 
+                // The position side has been changed
                 if (position.size > 0) {
                   position.entryPrice = price;
                   position.positionSide = 'LONG';
@@ -1455,6 +1595,7 @@ export class BackTestBot {
           if (type === 'TRAILING_STOP_MARKET') {
             let activationPrice = price;
             let { status, callbackRate } = trailingStop;
+
             if (status === 'PENDING' && lastCandle.low <= activationPrice) {
               status = 'ACTIVE';
             }
@@ -1463,7 +1604,6 @@ export class BackTestBot {
               // Trailing stop loss is activated
               if (lastCandle.high >= stopLossPrice) {
                 let pnl = this.getPositionPNL(position, price);
-                let fees = quantity * price * (MAKER_FEES / 100);
 
                 wallet.availableBalance += position.margin + pnl - fees;
                 wallet.totalWalletBalance += pnl - fees;
@@ -1471,6 +1611,7 @@ export class BackTestBot {
                 position.margin = Math.abs(position.size * price) / leverage;
 
                 this.updateProfitLossStrategyProperty(pnl);
+
                 this.strategyReport.totalFees += fees;
                 if (price <= entryPrice)
                   this.strategyReport.shortWinningTrade++;
@@ -1497,9 +1638,10 @@ export class BackTestBot {
         });
 
       shortOrders
-        .sort((order1, order2) => order1.price - order2.price) // sort order from nearest to furthest
+        .sort((order1, order2) => order1.price - order2.price) // sort order from nearest price to furthest price
         .every(({ id, price, quantity, type, trailingStop }) => {
-          let { entryPrice, size, leverage } = position;
+          const { entryPrice, size, leverage } = position;
+          const fees = quantity * price * (MAKER_FEES / 100);
 
           // Price crossed the sell limit order
           if (
@@ -1511,7 +1653,6 @@ export class BackTestBot {
             if (type === 'LIMIT') {
               // Average the position
               if (position.positionSide === 'SHORT') {
-                let fees = quantity * price * (MAKER_FEES / 100);
                 let baseCost = (price * quantity) / leverage;
                 // If there is enough available base
                 if (wallet.availableBalance >= baseCost + fees) {
@@ -1538,9 +1679,6 @@ export class BackTestBot {
               } else if (position.positionSide === 'LONG') {
                 let hadPosition = position.size > 0;
 
-                // Fees
-                let fees = quantity * price * (MAKER_FEES / 100);
-
                 // Update wallet
                 let pnl = this.getPositionPNL(position, price);
                 wallet.availableBalance += position.margin + pnl - fees;
@@ -1553,11 +1691,13 @@ export class BackTestBot {
                 position.size -= quantity;
                 position.margin = Math.abs(position.size * price) / leverage;
 
+                // The position has been closed
                 if (position.size === 0) {
                   position.entryPrice = 0;
                   position.unrealizedProfit = 0;
                 }
 
+                // The position side has been changed
                 if (position.size < 0) {
                   position.entryPrice = price;
                   position.positionSide = 'SHORT';
@@ -1602,7 +1742,6 @@ export class BackTestBot {
               // Trailing stop loss is activated
               if (lastCandle.low <= stopLossPrice) {
                 let pnl = this.getPositionPNL(position, price);
-                let fees = quantity * price * (MAKER_FEES / 100);
 
                 wallet.availableBalance += position.margin + pnl - fees;
                 wallet.totalWalletBalance += pnl - fees;
@@ -1610,6 +1749,7 @@ export class BackTestBot {
                 position.margin = Math.abs(position.size * price) / leverage;
 
                 this.updateProfitLossStrategyProperty(pnl);
+
                 this.strategyReport.totalFees += fees;
                 if (price >= entryPrice) this.strategyReport.longWinningTrade++;
                 else this.strategyReport.longLostTrade++;
@@ -1636,6 +1776,9 @@ export class BackTestBot {
     }
   }
 
+  /**
+   * @returns The balance value in units of base currency
+   */
   private evaluateSpotWalletBaseValue() {
     return this.wallet.balances.reduce(
       (prev, cur) => prev + cur.avgPrice * cur.quantity,
@@ -1643,6 +1786,11 @@ export class BackTestBot {
     );
   }
 
+  /**
+   * Get the pnl of a position according to a price
+   * @param position
+   * @param currentPrice
+   */
   private getPositionPNL(position: Position, currentPrice: number) {
     const entryPrice = position.entryPrice;
     const delta = (currentPrice - entryPrice) / entryPrice;
@@ -1658,6 +1806,12 @@ export class BackTestBot {
     }
   }
 
+  /**
+   * Update the pnl of the position object
+   * @param asset
+   * @param base
+   * @param currentPrice
+   */
   private updatePNL(asset: string, base: string, currentPrice: number) {
     let positions = this.futuresWallet.positions;
     let indexAsset = positions.findIndex((pos) => pos.pair === asset + base);
@@ -1665,6 +1819,9 @@ export class BackTestBot {
     position.unrealizedProfit = this.getPositionPNL(position, currentPrice);
   }
 
+  /**
+   * Update the total unrealized profit property of the futures wallet object
+   */
   private updateTotalPNL() {
     let totalPNL = 0;
     this.futuresWallet.positions
@@ -1678,11 +1835,19 @@ export class BackTestBot {
     this.futuresWallet.totalUnrealizedProfit = totalPNL;
   }
 
+  /**
+   * Close a spot open order by its id
+   * @param orderId The id of the order to close
+   */
   private closeOpenOrder(orderId: string) {
     this.openOrders = this.openOrders.filter((order) => order.id !== orderId);
     log(`Close the open order #${orderId}`, chalk.cyan);
   }
 
+  /**
+   *  Close a futures open order by its id
+   * @param orderId The id of the order to close
+   */
   private closeFutureOpenOrder(orderId: string) {
     this.futuresOpenOrders = this.futuresOpenOrders.filter(
       (order) => order.id !== orderId
@@ -1690,11 +1855,19 @@ export class BackTestBot {
     log(`Close the open order #${orderId}`, chalk.cyan);
   }
 
+  /**
+   * Close all the spot open orders for a given pair
+   * @param pair
+   */
   private closeOpenOrders(pair: string) {
     this.openOrders = this.openOrders.filter((order) => order.pair !== pair);
     log(`Close all the open orders on the pair ${pair}`, chalk.cyan);
   }
 
+  /**
+   * Close all the futures open orders for a given pair
+   * @param pair
+   */
   private closeFuturesOpenOrders(pair: string) {
     this.futuresOpenOrders = this.futuresOpenOrders.filter(
       (order) => order.pair !== pair
@@ -1702,6 +1875,14 @@ export class BackTestBot {
     log(`Close all the open orders on the pair ${pair}`, chalk.cyan);
   }
 
+  /**
+   * Spot market order execution
+   * @param asset
+   * @param base
+   * @param price
+   * @param quantity
+   * @param side
+   */
   private spotOrderMarket(
     asset: string,
     base: string,
@@ -1717,9 +1898,9 @@ export class BackTestBot {
     if (side === 'BUY') {
       let baseCost = quantity * price;
 
-      // If have enough base to buy asset including fees
+      // If have enough base currency to buy asset currency including fees
       if (baseBalance.quantity >= baseCost + fees) {
-        // Convert base to asset with fees
+        // Convert base currency to asset currency with fees
         baseBalance.quantity -= baseCost + fees;
         assetBalance.avgPrice =
           (assetBalance.avgPrice * assetBalance.quantity + price * quantity) /
@@ -1747,7 +1928,7 @@ export class BackTestBot {
         let brutBaseReturn = quantity * price;
         let netBaseReturn = quantity * price - quantity * assetBalance.avgPrice;
 
-        // Convert asset to base including fees
+        // Convert asset currency to base currency including fees
         assetBalance.quantity -= quantity;
         baseBalance.quantity += brutBaseReturn - fees;
 
@@ -1773,6 +1954,14 @@ export class BackTestBot {
     }
   }
 
+  /**
+   * Place a limit order
+   * @param asset
+   * @param base
+   * @param price
+   * @param quantity
+   * @param side
+   */
   private spotOrderLimit(
     asset: string,
     base: string,
@@ -1788,7 +1977,8 @@ export class BackTestBot {
     let canOrder =
       side === 'BUY'
         ? balance[indexBase].quantity >= quantity * price
-        : balance[indexAsset].quantity >= quantity - fees; // quantity is lower than at buy order due to the fees
+        : balance[indexAsset].quantity >= quantity - fees; // quantity is lower due to the fees at the buy order
+
     if (canOrder) {
       let order: OpenOrder = {
         id: Math.random().toString(16).slice(2),
@@ -1798,7 +1988,9 @@ export class BackTestBot {
         price,
         quantity,
       };
+
       this.openOrders.push(order);
+
       log(
         `Create a ${side.toLowerCase()} limit order #${
           order.id
@@ -1814,6 +2006,13 @@ export class BackTestBot {
     }
   }
 
+  /**
+   * Futures market order execution
+   * @param pair
+   * @param price
+   * @param quantity
+   * @param side
+   */
   private futuresOrderMarket(
     pair: string,
     price: number,
@@ -1825,7 +2024,6 @@ export class BackTestBot {
     const position = positions.find((pos) => pos.pair === pair);
     const { entryPrice, size, leverage } = position;
     const fees = price * quantity * (TAKER_FEES / 100);
-    const hadPosition = position.size !== 0;
 
     if (quantity < 0) {
       console.error(
@@ -1837,8 +2035,10 @@ export class BackTestBot {
     if (side === 'BUY') {
       if (position.positionSide === 'LONG') {
         let baseCost = (price * quantity) / leverage;
-        // If there is enough available base
+        // If there is enough available base currency
         if (wallet.availableBalance >= baseCost + fees) {
+          let hadPosition = position.size !== 0;
+
           let avgEntryPrice =
             (price * quantity + entryPrice * Math.abs(size)) /
             (quantity + Math.abs(size));
@@ -1867,18 +2067,19 @@ export class BackTestBot {
         wallet.availableBalance += position.margin + pnl - fees;
         wallet.totalWalletBalance += pnl - fees;
 
-        // Update strategy report
         this.updateProfitLossStrategyProperty(pnl);
 
         // Update position
         position.size += quantity;
         position.margin = Math.abs(position.size * price) / leverage;
 
+        // The position has been closed
         if (position.size === 0) {
           position.entryPrice = 0;
           position.unrealizedProfit = 0;
         }
 
+        // The order changes the position side of the current position
         if (position.size > 0) {
           position.entryPrice = price;
           position.positionSide = 'LONG';
@@ -1904,8 +2105,10 @@ export class BackTestBot {
       let baseCost = (price * quantity) / leverage;
 
       if (position.positionSide === 'SHORT') {
-        // If there is enough available base
+        // If there is enough available base currency
         if (wallet.availableBalance >= baseCost + fees) {
+          let hadPosition = position.size !== 0;
+
           let avgEntryPrice =
             (price * quantity + entryPrice * Math.abs(size)) /
             (quantity + Math.abs(size));
@@ -1934,18 +2137,19 @@ export class BackTestBot {
         wallet.availableBalance += position.margin + pnl - fees;
         wallet.totalWalletBalance += pnl - fees;
 
-        // Update strategy report
         this.updateProfitLossStrategyProperty(pnl);
 
         // Update position
         position.size -= quantity;
         position.margin = Math.abs(position.size * price) / leverage;
 
+        // The position has been closed
         if (position.size === 0) {
           position.entryPrice = 0;
           position.unrealizedProfit = 0;
         }
 
+        // The order changes the position side of the current order
         if (position.size < 0) {
           position.entryPrice = price;
           position.positionSide = 'SHORT';
@@ -1970,6 +2174,13 @@ export class BackTestBot {
     }
   }
 
+  /**
+   * Place a futures limit order
+   * @param pair
+   * @param price
+   * @param quantity
+   * @param positionSide
+   */
   private futuresOrderLimit(
     pair: string,
     price: number,
@@ -2016,14 +2227,22 @@ export class BackTestBot {
     }
   }
 
+  /**
+   * Place a trailing stop order
+   * @param asset
+   * @param base
+   * @param price
+   * @param quantity
+   * @param positionSide
+   * @param trailingStopConfig
+   */
   private futuresOrderTrailingStop(
     asset: string,
     base: string,
     price: number,
     quantity: number,
     positionSide: 'LONG' | 'SHORT',
-    callbackRate: number,
-    activation: { changePercentage?: number; percentageToTP: number }
+    trailingStopConfig: TrailingStopConfig
   ) {
     const wallet = this.futuresWallet;
     const positions = wallet.positions;
@@ -2048,10 +2267,10 @@ export class BackTestBot {
         quantity,
         trailingStop: {
           status: 'PENDING',
-          callbackRate,
+          callbackRate: trailingStopConfig.callbackRate,
           activation: {
-            changePercentage: activation.changePercentage,
-            percentageToTP: activation.changePercentage,
+            changePercentage: trailingStopConfig.activation.changePercentage,
+            percentageToTP: trailingStopConfig.activation.changePercentage,
           },
         },
       };
