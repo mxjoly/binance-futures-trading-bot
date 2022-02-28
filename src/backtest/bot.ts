@@ -217,6 +217,9 @@ export class BackTestBot {
     this.strategyReport.maxConsecutiveLossesCount = 0;
   }
 
+  /**
+   * Load the candle from the downloaded data
+   */
   private async prepareCandleHistoric() {
     // Initialization of the arrays
     this.tradeConfigs.forEach(
