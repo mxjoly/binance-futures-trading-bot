@@ -64,8 +64,6 @@ export const DEBUG = process.argv[2]
 // Better to have the minimum to get a higher performance
 const MAX_LENGTH_CANDLES = 100;
 
-// ====================================================================== //
-
 // Exchange fee info
 const TAKER_FEES =
   BINANCE_MODE === 'spot'
@@ -75,6 +73,12 @@ const MAKER_FEES =
   BINANCE_MODE === 'spot'
     ? BacktestConfig['maker_fees_spot']
     : BacktestConfig['maker_fees_futures']; // %
+
+// ====================================================================== //
+
+let tempHistoricCandleDataMultiTimeFrames: {
+  [symbol: string]: CandlesDataMultiTimeFrames;
+} = null;
 
 // ====================================================================== //
 
@@ -102,7 +106,8 @@ export class BackTestBot {
   // For the calculation of some properties of the strategy report
   private strategyReport: StrategyReport;
   private maxBalance: number;
-  private maxDrawdown: number;
+  private maxAbsoluteDrawdown: number;
+  private maxRelativeDrawdown: number;
   private maxProfit: number;
   private maxLoss: number;
   private maxConsecutiveWinsCount: number;
@@ -131,7 +136,8 @@ export class BackTestBot {
 
     this.strategyReport = {};
     this.maxBalance = initialCapital;
-    this.maxDrawdown = 1;
+    this.maxAbsoluteDrawdown = 1;
+    this.maxRelativeDrawdown = 1;
     this.maxProfit = 0;
     this.maxLoss = 0;
     this.maxConsecutiveWinsCount = 0;
@@ -221,43 +227,45 @@ export class BackTestBot {
    * Load the candles from the downloaded data
    */
   private async prepareCandleHistoric() {
-    // Initialization of the arrays
-    this.tradeConfigs.forEach(
-      ({ asset, base, loopInterval, indicatorIntervals }) => {
-        this.historicCandleDataMultiTimeFrames[asset + base] = {};
-        new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
-          this.historicCandleDataMultiTimeFrames[asset + base][interval] = [];
-        });
-      }
-    );
+    if (!tempHistoricCandleDataMultiTimeFrames) {
+      // Initialization of the arrays
+      this.tradeConfigs.forEach(
+        ({ asset, base, loopInterval, indicatorIntervals }) => {
+          this.historicCandleDataMultiTimeFrames[asset + base] = {};
+          new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
+            this.historicCandleDataMultiTimeFrames[asset + base][interval] = [];
+          });
+        }
+      );
 
-    // Load the candle data according to the time frame of the trading configuration
-    let loadPairTimeFrame = [];
-    this.tradeConfigs.forEach(
-      ({ asset, base, loopInterval, indicatorIntervals }) => {
-        new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
-          loadPairTimeFrame.push(
-            new Promise<void>((resolve, reject) => {
-              this.loadCandles(asset + base, interval)
-                .then((candles) => {
-                  this.historicCandleDataMultiTimeFrames[asset + base][
-                    interval
-                  ] = candles;
-                  resolve();
-                })
-                .catch(reject);
-            })
-          );
-        });
-      }
-    );
-    await Promise.all(loadPairTimeFrame);
+      // Load the candle data according to the time frame of the trading configuration
+      let loadPairTimeFrame = [];
+      this.tradeConfigs.forEach(
+        ({ asset, base, loopInterval, indicatorIntervals }) => {
+          new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
+            loadPairTimeFrame.push(
+              new Promise<void>((resolve, reject) => {
+                this.loadCandles(asset + base, interval)
+                  .then((candles) => {
+                    this.historicCandleDataMultiTimeFrames[asset + base][
+                      interval
+                    ] = candles;
+                    resolve();
+                  })
+                  .catch(reject);
+              })
+            );
+          });
+        }
+      );
+      await Promise.all(loadPairTimeFrame);
 
-    // Check if the candles has been loaded successfully. If not, stop the backtesting
-    let historyError = false;
-    this.tradeConfigs.forEach(({ asset, base }) => {
-      Object.keys(this.historicCandleDataMultiTimeFrames[asset + base]).forEach(
-        (interval) => {
+      // Check if the candles has been loaded successfully. If not, stop the backtesting
+      let historyError = false;
+      this.tradeConfigs.forEach(({ asset, base }) => {
+        Object.keys(
+          this.historicCandleDataMultiTimeFrames[asset + base]
+        ).forEach((interval) => {
           if (
             this.historicCandleDataMultiTimeFrames[asset + base][interval]
               .length === 0
@@ -273,38 +281,41 @@ export class BackTestBot {
               )}`
             );
           }
-        }
-      );
-    });
-    if (historyError) return process.exit();
+        });
+      });
+      if (historyError) return process.exit();
 
-    // Check the start date and end date comparing to the date range of the historic data downloaded
-    Object.keys(this.historicCandleDataMultiTimeFrames).forEach((pair) => {
-      let candles = this.historicCandleDataMultiTimeFrames[pair];
-      Object.keys(this.historicCandleDataMultiTimeFrames[pair]).forEach(
-        (timeFrame) => {
-          let candleTimeFrame = candles[timeFrame];
-          let startDate = candleTimeFrame[0].openTime;
-          let endDate = dayjs(
-            candleTimeFrame[candleTimeFrame.length - 1].closeTime
-          ).add(1, 'minute');
-          if (dayjs(this.startDate).isBefore(startDate)) {
-            console.warn(
-              `Your start date is too old comparing to your downloaded candle data for ${pair} in ${timeFrame}. The earliest possible date is ${dayjs(
-                startDate
-              ).format('YYYY-MM-DD HH:mm:ss')}\n`
-            );
+      // Check the start date and end date comparing to the date range of the historic data downloaded
+      Object.keys(this.historicCandleDataMultiTimeFrames).forEach((pair) => {
+        let candles = this.historicCandleDataMultiTimeFrames[pair];
+        Object.keys(this.historicCandleDataMultiTimeFrames[pair]).forEach(
+          (timeFrame) => {
+            let candleTimeFrame = candles[timeFrame];
+            let startDate = candleTimeFrame[0].openTime;
+            let endDate = dayjs(
+              candleTimeFrame[candleTimeFrame.length - 1].closeTime
+            ).add(1, 'minute');
+            if (dayjs(this.startDate).isBefore(startDate)) {
+              console.warn(
+                `Your start date is too old comparing to your downloaded candle data for ${pair} in ${timeFrame}. The earliest possible date is ${dayjs(
+                  startDate
+                ).format('YYYY-MM-DD HH:mm:ss')}\n`
+              );
+            }
+            if (dayjs(this.endDate).isAfter(endDate)) {
+              console.warn(
+                `Your start date is too recent comparing to your downloaded candle data for ${pair} in ${timeFrame}. The latest possible date is ${dayjs(
+                  endDate
+                ).format('YYYY-MM-DD HH:mm:ss')}\n`
+              );
+            }
           }
-          if (dayjs(this.endDate).isAfter(endDate)) {
-            console.warn(
-              `Your start date is too recent comparing to your downloaded candle data for ${pair} in ${timeFrame}. The latest possible date is ${dayjs(
-                endDate
-              ).format('YYYY-MM-DD HH:mm:ss')}\n`
-            );
-          }
-        }
-      );
-    });
+        );
+      });
+    } else {
+      this.historicCandleDataMultiTimeFrames =
+        tempHistoricCandleDataMultiTimeFrames;
+    }
   }
 
   /**
@@ -360,8 +371,11 @@ export class BackTestBot {
     // Mock date fir the backtesting
     let currentDate = this.startDate;
 
+    // Boolean to stop the loop
+    let stop = false;
+
     // Time loop
-    while (dayjs(currentDate).isSameOrBefore(this.endDate)) {
+    while (dayjs(currentDate).isSameOrBefore(this.endDate) && !stop) {
       printDateBanner(currentDate);
 
       this.tradeConfigs.forEach((config) => {
@@ -541,7 +555,6 @@ export class BackTestBot {
       totalTrades,
       totalProfit,
       totalLoss,
-      totalFees,
     } = this.strategyReport;
 
     this.strategyReport.testPeriod = `${dayjs(this.startDate).format(
@@ -579,8 +592,12 @@ export class BackTestBot {
         2
       )
     );
-    this.strategyReport.maxDrawdown = -decimalFloor(
-      (1 - this.maxDrawdown) * 100,
+    this.strategyReport.maxAbsoluteDrawdown = -decimalFloor(
+      (1 - this.maxAbsoluteDrawdown) * 100,
+      2
+    );
+    this.strategyReport.maxRelativeDrawdown = -decimalFloor(
+      1 - this.maxRelativeDrawdown,
       2
     );
 
@@ -645,7 +662,8 @@ export class BackTestBot {
       maxLoss,
       avgProfit,
       avgLoss,
-      maxDrawdown,
+      maxAbsoluteDrawdown,
+      maxRelativeDrawdown,
       maxConsecutiveProfit,
       maxConsecutiveLoss,
       maxConsecutiveWinsCount,
@@ -663,7 +681,8 @@ export class BackTestBot {
     Total loss: ${totalLoss}
     Total fees: ${totalFees}
     Profit factor: ${profitFactor}
-    Max drawdown: ${maxDrawdown}%
+    Max absolute drawdown: ${maxAbsoluteDrawdown}%
+    Max relative drawdown: ${maxRelativeDrawdown}%
     ----------------------------------------------------------
     Total trades: ${totalTrades}
     Total win rate: ${totalWinRate}%
@@ -691,20 +710,34 @@ export class BackTestBot {
       if (currentWalletValue > this.maxBalance) {
         this.maxBalance = currentWalletValue;
       }
-      // Max drawdown update
-      let drawdown = currentWalletValue / this.maxBalance;
-      if (drawdown < this.maxDrawdown) {
-        this.maxDrawdown = drawdown;
+      // Max absolute drawdown update
+      let absoluteDrawdown = currentWalletValue / this.maxBalance;
+      if (absoluteDrawdown < this.maxAbsoluteDrawdown) {
+        this.maxAbsoluteDrawdown = absoluteDrawdown;
+      }
+      // Max relative drawdown update
+      let relativeDrawdown =
+        (currentWalletValue - this.maxBalance) / this.maxBalance;
+      if (relativeDrawdown < this.maxRelativeDrawdown) {
+        this.maxRelativeDrawdown = relativeDrawdown;
       }
     } else {
       // Max balance update
       if (this.futuresWallet.totalWalletBalance > this.maxBalance) {
         this.maxBalance = this.futuresWallet.totalWalletBalance;
       }
-      // Max drawdown update
-      let drawdown = this.futuresWallet.totalWalletBalance / this.maxBalance;
-      if (drawdown < this.maxDrawdown) {
-        this.maxDrawdown = drawdown;
+      // Max absolute drawdown update
+      let absoluteDrawdown =
+        this.futuresWallet.totalWalletBalance / this.maxBalance;
+      if (absoluteDrawdown < this.maxAbsoluteDrawdown) {
+        this.maxAbsoluteDrawdown = absoluteDrawdown;
+      }
+      // Max relative drawdown update
+      let relativeDrawdown =
+        (this.futuresWallet.totalWalletBalance - this.maxBalance) /
+        this.maxBalance;
+      if (relativeDrawdown < this.maxRelativeDrawdown) {
+        this.maxRelativeDrawdown = relativeDrawdown;
       }
     }
   }

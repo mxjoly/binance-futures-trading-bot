@@ -93,8 +93,12 @@ export default function (
               <td>${strategyReport.profitFactor}</td>
             </tr>
             <tr>
-              <td><b>Max drawdown:</b></td>
-              <td>${strategyReport.maxDrawdown}%</td>
+              <td><b>Max absolute drawdown:</b></td>
+              <td>${strategyReport.maxAbsoluteDrawdown}%</td>
+            </tr>
+            <tr>
+              <td><b>Max relative drawdown:</b></td>
+              <td>${strategyReport.maxRelativeDrawdown}%</td>
             </tr>
           </table>
         </div>

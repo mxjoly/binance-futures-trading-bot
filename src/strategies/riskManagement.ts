@@ -1,4 +1,4 @@
-import { BINANCE_MODE } from '../';
+import { BINANCE_MODE } from '..';
 import {
   getQuantityPrecision,
   getLotSizeQuantityRules,

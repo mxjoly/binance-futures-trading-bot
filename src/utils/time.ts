@@ -8,6 +8,7 @@ import dayjs from 'dayjs';
  */
 export function dateMatchTimeFrame(date: Date, timeFrame: CandleChartInterval) {
   let dateFormat = dayjs(new Date(date)).format('HH:mm');
+
   switch (timeFrame) {
     case CandleChartInterval.ONE_MINUTE:
       return /^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/.test(dateFormat);
@@ -89,10 +90,13 @@ export function compareTimeFrame(
  * @param unit
  */
 export function durationBetweenDates(
-  startDate: Date,
-  endDate: Date,
+  start: Date,
+  end: Date,
   unit: CandleChartInterval
 ) {
+  let startDate = start instanceof Date ? start : new Date(start);
+  let endDate = start instanceof Date ? end : new Date(end);
+
   switch (unit) {
     case CandleChartInterval.ONE_MINUTE:
       return Math.round((endDate.getTime() - startDate.getTime()) / 60000);

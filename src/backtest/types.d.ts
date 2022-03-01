@@ -81,7 +81,8 @@ interface StrategyReport {
   profitFactor?: number;
   totalProfit?: number;
   totalLoss?: number;
-  maxDrawdown?: number;
+  maxAbsoluteDrawdown?: number;
+  maxRelativeDrawdown?: number;
   totalWinRate?: number;
   longWinRate?: number;
   shortWinRate?: number;

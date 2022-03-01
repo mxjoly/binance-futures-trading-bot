@@ -12,8 +12,8 @@ interface TradeConfig {
   maxPyramidingAllocation?: number; // Max allocation for a position in pyramiding (between 0 and 1)
   unidirectional?: boolean; // When take the profit, close the position instead of opening new position in futures
   tradingSession?: TradingSession; // The robot trades only during these session
-  buyStrategy: EntrySrategy;
-  sellStrategy: EntrySrategy;
+  buyStrategy: EntryStrategy;
+  sellStrategy: EntryStrategy;
   exitStrategy?: ExitStrategy; // Placement of take profits and stop loss
   trendFilter?: TrendFilter; // Trend filter - If the trend is up, only take long, else take only short
   riskManagement: RiskManagement;
@@ -21,7 +21,7 @@ interface TradeConfig {
 }
 
 type CandlesDataMultiTimeFrames = {
-  [timeframe: CandleChartInterval]: CandleData[];
+  [timeFrame: CandleChartInterval]: CandleData[];
 };
 
 interface CandleData {
@@ -34,7 +34,7 @@ interface CandleData {
   closeTime: Date;
 }
 
-type EntrySrategy = (candles: CandlesDataMultiTimeFrames) => boolean;
+type EntryStrategy = (candles: CandlesDataMultiTimeFrames) => boolean;
 
 type TrailingStopConfig = {
   // Activation price of trailing stop calculated by :
