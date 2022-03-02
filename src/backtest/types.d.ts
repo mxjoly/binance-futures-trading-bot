@@ -1,6 +1,4 @@
-// Database Scheme
-
-interface DB {
+interface Database {
   history: {
     [date: string]: MockAccount;
   };

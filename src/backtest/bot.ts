@@ -2,28 +2,28 @@ import colors from 'ansi-colors';
 import { CandleChartInterval, ExchangeInfo, OrderSide } from 'binance-api-node';
 import chalk from 'chalk';
 import cliProgress from 'cli-progress';
-import csv from 'csv-parser';
 import dayjs from 'dayjs';
-import fs from 'fs';
-import path from 'path';
 import safeRequire from 'safe-require';
-import { binanceClient, BINANCE_MODE } from '..';
+import { binanceClient, BINANCE_MODE } from '../init';
 import { decimalCeil, decimalFloor } from '../utils/math';
-import { clone } from '../utils';
+import { clone } from '../utils/object';
+import { loadCandlesMultiTimeFramesFromCSV } from '../utils/candleData';
+import { createDatabase, saveFuturesState, saveState } from './database';
+import { debugLastCandle, debugWallet, log, printDateBanner } from './debug';
+import generateHTMLReport from './generateReport';
+import { NeuralNetwork } from '../lib/neuralNetwork';
 import {
   getPricePrecision,
   getQuantityPrecision,
   isValidQuantity,
-} from '../utils/rules';
+} from '../utils/currencyInfo';
 import {
   compareTimeFrame,
   dateMatchTimeFrame,
   durationBetweenDates,
   timeFrameToMinutes,
-} from '../utils/time';
-import { createDatabase, saveFuturesState, saveState } from './db';
-import { debugLastCandle, debugWallet, log, printDateBanner } from './debug';
-import generateHTMLReport from './generateReport';
+} from '../utils/timeFrame';
+import { getOutputs } from '../ai';
 
 // ====================================================================== //
 
@@ -76,12 +76,6 @@ const MAKER_FEES =
 
 // ====================================================================== //
 
-let tempHistoricCandleDataMultiTimeFrames: {
-  [symbol: string]: CandlesDataMultiTimeFrames;
-} = null;
-
-// ====================================================================== //
-
 export class BackTestBot {
   // Configuration
   private tradeConfigs: TradeConfig[];
@@ -119,12 +113,16 @@ export class BackTestBot {
   private chartLabels: string[];
   private chartData: number[];
 
+  // Neural network
+  private brain: NeuralNetwork;
+
   constructor(
     tradeConfigs: TradeConfig[],
     strategyName: string,
     startDate: Date,
     endDate: Date,
-    initialCapital: number
+    initialCapital: number,
+    brain?: NeuralNetwork
   ) {
     this.tradeConfigs = tradeConfigs;
     this.strategyName = strategyName;
@@ -147,6 +145,8 @@ export class BackTestBot {
 
     this.chartLabels = [];
     this.chartData = [];
+
+    this.brain = brain;
   }
 
   /**
@@ -226,46 +226,20 @@ export class BackTestBot {
   /**
    * Load the candles from the downloaded data
    */
-  private async prepareCandleHistoric() {
-    if (!tempHistoricCandleDataMultiTimeFrames) {
-      // Initialization of the arrays
-      this.tradeConfigs.forEach(
-        ({ asset, base, loopInterval, indicatorIntervals }) => {
-          this.historicCandleDataMultiTimeFrames[asset + base] = {};
-          new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
-            this.historicCandleDataMultiTimeFrames[asset + base][interval] = [];
-          });
-        }
+  private async prepareCandleHistoric(tradeConfigs: TradeConfig[]) {
+    // Load all the data
+    this.historicCandleDataMultiTimeFrames =
+      await loadCandlesMultiTimeFramesFromCSV(
+        tradeConfigs,
+        this.startDate,
+        this.endDate
       );
 
-      // Load the candle data according to the time frame of the trading configuration
-      let loadPairTimeFrame = [];
-      this.tradeConfigs.forEach(
-        ({ asset, base, loopInterval, indicatorIntervals }) => {
-          new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
-            loadPairTimeFrame.push(
-              new Promise<void>((resolve, reject) => {
-                this.loadCandles(asset + base, interval)
-                  .then((candles) => {
-                    this.historicCandleDataMultiTimeFrames[asset + base][
-                      interval
-                    ] = candles;
-                    resolve();
-                  })
-                  .catch(reject);
-              })
-            );
-          });
-        }
-      );
-      await Promise.all(loadPairTimeFrame);
-
-      // Check if the candles has been loaded successfully. If not, stop the backtesting
-      let historyError = false;
-      this.tradeConfigs.forEach(({ asset, base }) => {
-        Object.keys(
-          this.historicCandleDataMultiTimeFrames[asset + base]
-        ).forEach((interval) => {
+    // Check if the candles has been loaded successfully. If not, stop the backtesting
+    let historyError = false;
+    this.tradeConfigs.forEach(({ asset, base }) => {
+      Object.keys(this.historicCandleDataMultiTimeFrames[asset + base]).forEach(
+        (interval) => {
           if (
             this.historicCandleDataMultiTimeFrames[asset + base][interval]
               .length === 0
@@ -281,41 +255,38 @@ export class BackTestBot {
               )}`
             );
           }
-        });
-      });
-      if (historyError) return process.exit();
+        }
+      );
+    });
+    if (historyError) return process.exit();
 
-      // Check the start date and end date comparing to the date range of the historic data downloaded
-      Object.keys(this.historicCandleDataMultiTimeFrames).forEach((pair) => {
-        let candles = this.historicCandleDataMultiTimeFrames[pair];
-        Object.keys(this.historicCandleDataMultiTimeFrames[pair]).forEach(
-          (timeFrame) => {
-            let candleTimeFrame = candles[timeFrame];
-            let startDate = candleTimeFrame[0].openTime;
-            let endDate = dayjs(
-              candleTimeFrame[candleTimeFrame.length - 1].closeTime
-            ).add(1, 'minute');
-            if (dayjs(this.startDate).isBefore(startDate)) {
-              console.warn(
-                `Your start date is too old comparing to your downloaded candle data for ${pair} in ${timeFrame}. The earliest possible date is ${dayjs(
-                  startDate
-                ).format('YYYY-MM-DD HH:mm:ss')}\n`
-              );
-            }
-            if (dayjs(this.endDate).isAfter(endDate)) {
-              console.warn(
-                `Your start date is too recent comparing to your downloaded candle data for ${pair} in ${timeFrame}. The latest possible date is ${dayjs(
-                  endDate
-                ).format('YYYY-MM-DD HH:mm:ss')}\n`
-              );
-            }
+    // Check the start date and end date comparing to the date range of the historic data downloaded
+    Object.keys(this.historicCandleDataMultiTimeFrames).forEach((pair) => {
+      let candles = this.historicCandleDataMultiTimeFrames[pair];
+      Object.keys(this.historicCandleDataMultiTimeFrames[pair]).forEach(
+        (timeFrame) => {
+          let candleTimeFrame = candles[timeFrame];
+          let startDate = candleTimeFrame[0].openTime;
+          let endDate = dayjs(
+            candleTimeFrame[candleTimeFrame.length - 1].closeTime
+          ).add(1, 'minute');
+          if (dayjs(this.startDate).isBefore(startDate)) {
+            console.warn(
+              `Your start date is too old comparing to your downloaded candle data for ${pair} in ${timeFrame}. The earliest possible date is ${dayjs(
+                startDate
+              ).format('YYYY-MM-DD HH:mm:ss')}\n`
+            );
           }
-        );
-      });
-    } else {
-      this.historicCandleDataMultiTimeFrames =
-        tempHistoricCandleDataMultiTimeFrames;
-    }
+          if (dayjs(this.endDate).isAfter(endDate)) {
+            console.warn(
+              `Your start date is too recent comparing to your downloaded candle data for ${pair} in ${timeFrame}. The latest possible date is ${dayjs(
+                endDate
+              ).format('YYYY-MM-DD HH:mm:ss')}\n`
+            );
+          }
+        }
+      );
+    });
   }
 
   /**
@@ -333,7 +304,7 @@ export class BackTestBot {
         : await binanceClient.futuresExchangeInfo();
 
     // Prepare the candle data that will be used in the backtester
-    await this.prepareCandleHistoric();
+    await this.prepareCandleHistoric(this.tradeConfigs);
 
     // Get the smaller loop time frame in the trade configs.
     const smallerTimeFrame = this.tradeConfigs
@@ -371,11 +342,8 @@ export class BackTestBot {
     // Mock date fir the backtesting
     let currentDate = this.startDate;
 
-    // Boolean to stop the loop
-    let stop = false;
-
     // Time loop
-    while (dayjs(currentDate).isSameOrBefore(this.endDate) && !stop) {
+    while (dayjs(currentDate).isSameOrBefore(this.endDate)) {
       printDateBanner(currentDate);
 
       this.tradeConfigs.forEach((config) => {
@@ -412,7 +380,6 @@ export class BackTestBot {
           } else {
             this.checkPositionMargin(pair, currentPrice); // If the position margin reach 0, close the position (liquidation)
             this.checkFuturesOpenOrders(asset, base, candlesStream);
-            this.updatePNL(asset, base, currentPrice);
           }
 
           // The loop time frames could be different of the smaller time frame for all the trading configurations
@@ -437,11 +404,14 @@ export class BackTestBot {
         }
       });
 
-      // Save the current state to the db
-      this.saveStateToDB(currentDate);
-
       // Update the max drawdown and max balance property for the strategy report
       this.updateMaxDrawdownMaxBalance();
+
+      // UPdate the total unrealized pnl on the futures account
+      if (BINANCE_MODE === 'futures') this.updateTotalPNL();
+
+      // Save the current state to the db
+      if (SAVE_HISTORY) this.saveStateToDB(currentDate);
 
       // Debugging
       debugWallet(this.wallet, this.futuresWallet);
@@ -596,8 +566,8 @@ export class BackTestBot {
       (1 - this.maxAbsoluteDrawdown) * 100,
       2
     );
-    this.strategyReport.maxRelativeDrawdown = -decimalFloor(
-      1 - this.maxRelativeDrawdown,
+    this.strategyReport.maxRelativeDrawdown = decimalCeil(
+      this.maxRelativeDrawdown * 100,
       2
     );
 
@@ -697,6 +667,7 @@ export class BackTestBot {
     Max consecutive wins (count): ${maxConsecutiveWinsCount}
     Max consecutive losses (count): ${maxConsecutiveLossesCount}
     `;
+
     console.log(strategyReportString);
   }
 
@@ -800,22 +771,17 @@ export class BackTestBot {
    */
   private saveStateToDB(currentDate: Date) {
     if (BINANCE_MODE === 'spot') {
-      if (SAVE_HISTORY) {
-        saveState(
-          dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
-          clone(this.wallet),
-          clone(this.openOrders)
-        );
-      }
+      saveState(
+        dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
+        clone(this.wallet),
+        clone(this.openOrders)
+      );
     } else {
-      this.updateTotalPNL();
-      if (SAVE_HISTORY) {
-        saveFuturesState(
-          dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
-          clone(this.futuresWallet),
-          clone(this.futuresOpenOrders)
-        );
-      }
+      saveFuturesState(
+        dayjs(currentDate).format('YYYY-MM-DD HH:mm'),
+        clone(this.futuresWallet),
+        clone(this.futuresOpenOrders)
+      );
     }
   }
 
@@ -867,32 +833,35 @@ export class BackTestBot {
 
     // Check if we are in the trading sessions
     let isTradingSessionActive = this.isTradingSessionActive(
-      candles[loopInterval].openTime,
+      candles[loopInterval][candles[loopInterval].length - 1].closeTime,
       tradingSession
     );
 
-    // Precisions
+    // Currency infos
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    // Close the open orders at the end of the session
-    if (
-      !isTradingSessionActive &&
-      assetBalance === 0 &&
-      currentOpenOrders.length > 0
-    )
-      this.closeOpenOrders(pair);
+    // Strategy
+    const isBuySignal = this.brain
+      ? this.think(asset, candles[loopInterval]) === 'BUY'
+      : buyStrategy(candles);
+    const isSellSignal = this.brain
+      ? this.think(asset, candles[loopInterval]) === 'SELL'
+      : sellStrategy(candles);
+    const closePosition = this.brain
+      ? this.think(asset, candles[loopInterval]) === 'CLOSE'
+      : false;
 
     // Prevent remaining open orders
     if (assetBalance === 0 && currentOpenOrders.length > 0)
       this.closeOpenOrders(pair);
 
-    if (assetBalance > 0 && sellStrategy(candles)) {
+    if (assetBalance > 0 && (isSellSignal || closePosition)) {
       this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
       this.closeOpenOrders(pair);
     }
 
-    if (isTradingSessionActive && canBuy && buyStrategy(candles)) {
+    if (isTradingSessionActive && canBuy && isBuySignal) {
       const quantity = riskManagement({
         asset,
         base,
@@ -994,26 +963,43 @@ export class BackTestBot {
       (order) => order.pair === pair
     );
 
-    // Precisions
+    // Currency infos
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Check if we are in the trading sessions
     let isTradingSessionActive = this.isTradingSessionActive(
-      candles[loopInterval].openTime,
+      candles[loopInterval][candles[loopInterval].length - 1].closeTime,
       tradingSession
     );
+
+    // Strategy
+    const isBuySignal = this.brain
+      ? this.think(pair, candles[loopInterval]) === 'BUY'
+      : buyStrategy(candles);
+    const isSellSignal = this.brain
+      ? this.think(pair, candles[loopInterval]) === 'SELL'
+      : sellStrategy(candles);
+    const closePosition = this.brain
+      ? this.think(pair, candles[loopInterval]) === 'CLOSE'
+      : false;
 
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
       this.closeFuturesOpenOrders(pair);
     }
 
+    // The neural network wants to close the position
+    if (closePosition) {
+      this.closeFuturesOpenOrders(pair);
+      return;
+    }
+
     if (
       (isTradingSessionActive || position.size !== 0) &&
       (allowPyramiding || currentOpenOrders.length === 0) &&
       canTakeLongPosition &&
-      buyStrategy(candles)
+      isBuySignal
     ) {
       // Take the profit and not open a new position
       if (hasShortPosition && unidirectional) {
@@ -1157,7 +1143,7 @@ export class BackTestBot {
       (isTradingSessionActive || position.size !== 0) &&
       (allowPyramiding || currentOpenOrders.length === 0) &&
       canTakeShortPosition &&
-      sellStrategy(candles)
+      isSellSignal
     ) {
       // Take the profit and not open a new position
       if (hasLongPosition && unidirectional) {
@@ -1315,77 +1301,6 @@ export class BackTestBot {
     } else {
       return true;
     }
-  }
-
-  /**
-   * Load the candle data on a symbol and a specific time frames
-   * @param symbol The symbol to load the candles
-   * @param interval The time frame to load
-   * @param onlyFinalCandle If true, load only the final candles (in final version)
-   */
-  private loadCandles(
-    symbol: string,
-    interval: CandleChartInterval,
-    onlyFinalCandle = true
-  ) {
-    return new Promise<CandleData[]>((resolve, reject) => {
-      let file = path.join(process.cwd(), 'data', symbol, `_${interval}.csv`);
-      let candleData: CandleData[] = [];
-      let results: CandleData[] = [];
-
-      fs.createReadStream(file)
-        .pipe(csv({ separator: ',' }))
-        .on('data', (data: CandleData) => {
-          candleData.push({
-            openTime: new Date(data.openTime),
-            closeTime: new Date(data.closeTime),
-            open: Number(data.open),
-            close: Number(data.close),
-            high: Number(data.high),
-            low: Number(data.low),
-            volume: Number(data.volume),
-          });
-        })
-        .on('end', () => {
-          candleData = candleData.reverse();
-
-          for (let i = 0; i < candleData.length; i++) {
-            if (
-              (onlyFinalCandle &&
-                dayjs(candleData[i].openTime).isBetween(
-                  this.startDate,
-                  this.endDate,
-                  'second',
-                  '[]'
-                ) &&
-                dayjs(candleData[i].closeTime).isBetween(
-                  this.startDate,
-                  this.endDate,
-                  'second',
-                  '[]'
-                )) ||
-              (!onlyFinalCandle &&
-                dayjs(candleData[i].openTime).isBetween(
-                  this.startDate,
-                  this.endDate,
-                  'second',
-                  '[]'
-                ))
-            ) {
-              results.push({
-                open: candleData[i].open,
-                close: candleData[i].close,
-                high: candleData[i].high,
-                low: candleData[i].low,
-                volume: candleData[i].volume,
-                openTime: candleData[i].openTime,
-                closeTime: candleData[i].closeTime,
-              });
-            }
-          }
-          resolve(results);
-        });
-    });
   }
 
   /**
@@ -2319,6 +2234,21 @@ export class BackTestBot {
       console.error(
         `Trailing stop order for the pair ${pair} cannot be placed`
       );
+    }
+  }
+
+  /**
+   * Search for an action with the neural network
+   * @param symbol
+   * @param candles
+   */
+  private think(symbol: string, candles: CandleData[]) {
+    if (BINANCE_MODE === 'spot') {
+      return getOutputs(symbol, candles, this.brain, { wallet: this.wallet });
+    } else {
+      return getOutputs(symbol, candles, this.brain, {
+        futuresWallet: this.futuresWallet,
+      });
     }
   }
 }

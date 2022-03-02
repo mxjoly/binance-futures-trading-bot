@@ -3,14 +3,17 @@
   "version": "1.0.0",
   "description": "A trading bot",
   "scripts": {
-    "start": "cross-env NODE_ENV=production nodemon ./build/start.js",
-    "dev": "cross-env NODE_ENV=development nodemon ./build/start.js",
+    "start": "cross-env NODE_ENV=production nodemon ./build/server.js",
+    "dev": "cross-env NODE_ENV=development nodemon ./build/server.js",
     "build:prod": "cross-env NODE_ENV=production tsc",
     "build:dev": "cross-env NODE_ENV=development tsc",
     "build:test": "cross-env NODE_ENV=test tsc",
-    "data": "node ./scripts/processData 1m,5m,15m",
+    "data": "node ./scripts/generateData 1m,5m,15m",
     "test": "cross-env NODE_ENV=test node ./build/index.js DEBUG=false",
-    "test:debug": "cross-env NODE_ENV=test node ./build/index.js DEBUG=true"
+    "test:nn": "cross-env NODE_ENV=test node ./build/index.js DEBUG=false NN=true",
+    "test:debug": "cross-env NODE_ENV=test node ./build/index.js DEBUG=true",
+    "ai:train": "cross-env NODE_ENV=test node ./build/ai/index.js RESET=false",
+    "ai:train-reset": "cross-env NODE_ENV=test node ./build/ai/index.js RESET=true"
   },
   "keywords": [],
   "author": "mxjoly <maxime.joly2808@gmail.com>",

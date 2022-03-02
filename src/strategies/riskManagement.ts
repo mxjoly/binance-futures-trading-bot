@@ -1,9 +1,9 @@
-import { BINANCE_MODE } from '..';
+import { BINANCE_MODE } from '../init';
 import {
   getQuantityPrecision,
   getLotSizeQuantityRules,
   getMinOrderQuantity,
-} from '../utils/rules';
+} from '../utils/currencyInfo';
 import { decimalCeil } from '../utils/math';
 
 /**

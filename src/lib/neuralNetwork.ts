@@ -102,7 +102,7 @@ export class NeuralNetwork {
     this.activation_function = func;
   }
 
-  train(input_array, target_array) {
+  train(input_array: number[], target_array: number[]) {
     // Generating the Hidden Outputs
     let inputs = Matrix.fromArray(input_array);
     let hidden = Matrix.multiply(this.weights_ih, inputs);
@@ -163,7 +163,7 @@ export class NeuralNetwork {
     return JSON.stringify(this);
   }
 
-  static deserialize(data) {
+  static deserialize(data: any) {
     if (typeof data == 'string') {
       data = JSON.parse(data);
     }

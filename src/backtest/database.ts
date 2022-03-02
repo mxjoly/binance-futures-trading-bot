@@ -7,12 +7,12 @@ import dayjs from 'dayjs';
  */
 export let db: JsonDB;
 
-export const createDatabase = (configName?: string) => {
+export const createDatabase = (strategyName?: string) => {
   db = new JsonDB(
     new Config(
-      `backtests/${
-        configName ? configName.toLowerCase + '-' : ''
-      }report-${dayjs(new Date()).format('YYYY-MM-DD_HH-mm-ss')}`,
+      `temp/${
+        strategyName ? strategyName.toLowerCase() + '-' : ''
+      }trace-${dayjs(new Date()).format('YYYY-MM-DD_HH-mm-ss')}`,
       true,
       true,
       '/'
@@ -20,7 +20,7 @@ export const createDatabase = (configName?: string) => {
   );
 };
 
-// General Functions
+// =================================================================
 
 export const saveState = (
   date: string,
@@ -40,7 +40,7 @@ export const saveFuturesState = (
   setFuturesOpenOrders(date, openOrders);
 };
 
-// Wallet Functions
+// =================================================================
 
 export const setWallet = (date: string, wallet: Wallet) => {
   db.push(`/${date}/wallet`, wallet, true);

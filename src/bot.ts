@@ -1,18 +1,14 @@
 import dayjs from 'dayjs';
-import {
-  CandleChartInterval,
-  ExchangeInfo,
-  OrderSide,
-  OrderType,
-} from 'binance-api-node';
+import { ExchangeInfo, OrderSide, OrderType } from 'binance-api-node';
+import { decimalCeil, decimalFloor } from './utils/math';
+import { log, error, logBuySellExecutionOrder } from './utils/log';
+import { binanceClient, BINANCE_MODE } from './init';
+import { loadCandlesMultiTimeFramesFromAPI } from './utils/candleData';
 import {
   getPricePrecision,
   getQuantityPrecision,
   isValidQuantity,
-} from './utils/rules';
-import { decimalCeil, decimalFloor } from './utils/math';
-import { log, error, logBuySellExecutionOrder } from './utils/log';
-import { binanceClient, BINANCE_MODE } from '.';
+} from './utils/currencyInfo';
 
 // ====================================================================== //
 
@@ -79,7 +75,7 @@ export class Bot {
       getCandles(pair, tradeConfig.loopInterval, (candle) => {
         if (candle.isFinal) {
           // Load the candle data for each the time frames that will be use on the strategy
-          this.loadCandlesMultiTimeFrames(tradeConfig).then(
+          loadCandlesMultiTimeFramesFromAPI(tradeConfig, binanceClient).then(
             (candlesMultiTimeFrames) => {
               if (BINANCE_MODE === 'spot') {
                 this.tradeWithSpot(
@@ -104,7 +100,7 @@ export class Bot {
   }
 
   /**
-   * Main spot function (buy/sell, open/close order)
+   * Main spot function (buy/sell, open/close orders)
    * @param tradeConfig
    * @param currentPrice
    * @param candles
@@ -152,8 +148,8 @@ export class Bot {
         assetBalance * currentPrice <= baseBalance * maxPyramidingAllocation);
 
     // Check if we are in the trading sessions
-    let isSessionActive = this.isTradingSessionActive(
-      candles[loopInterval].openTime,
+    let isTradingSessionActive = this.isTradingSessionActive(
+      candles[loopInterval][candles[loopInterval].length - 1].closeTime,
       tradingSession
     );
 
@@ -162,12 +158,9 @@ export class Bot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Prevent remaining open orders
-    if (assetBalance === 0 && currentOpenOrders.length > 0)
+    if (assetBalance === 0 && currentOpenOrders.length > 0) {
       this.closeOpenOrders(pair);
-
-    // Close the open orders at the end of the session
-    if (!isSessionActive && assetBalance === 0 && currentOpenOrders.length > 0)
-      this.closeOpenOrders(pair);
+    }
 
     if (assetBalance > 0 && sellStrategy(candles)) {
       binanceClient
@@ -186,7 +179,7 @@ export class Bot {
           );
         })
         .catch(error);
-    } else if (isSessionActive && canBuy && buyStrategy(candles)) {
+    } else if (isTradingSessionActive && canBuy && buyStrategy(candles)) {
       const quantity = riskManagement({
         asset,
         base,
@@ -289,12 +282,11 @@ export class Bot {
   }
 
   /**
-   * Main futures function (long/short, open/close order)
+   * Main futures function (long/short, open/close orders)
    * @param tradeConfig
    * @param currentPrice
    * @param candles
    * @param exchangeInfo
-   * @returns
    */
   private async tradeWithFutures(
     tradeConfig: TradeConfig,
@@ -358,8 +350,8 @@ export class Bot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Check if we are in the trading sessions
-    let isSessionActive = this.isTradingSessionActive(
-      candles[loopInterval].openTime,
+    let isTradingSessionActive = this.isTradingSessionActive(
+      candles[loopInterval][candles[loopInterval].length - 1].closeTime,
       tradingSession
     );
 
@@ -369,7 +361,7 @@ export class Bot {
     }
 
     if (
-      (isSessionActive || positionSize !== 0) &&
+      (isTradingSessionActive || positionSize !== 0) &&
       canTakeLongPosition &&
       currentOpenOrders.length === 0 &&
       buyStrategy(candles)
@@ -558,7 +550,7 @@ export class Bot {
         })
         .catch(error);
     } else if (
-      (isSessionActive || positionSize !== 0) &&
+      (isTradingSessionActive || positionSize !== 0) &&
       canTakeShortPosition &&
       currentOpenOrders.length === 0 &&
       sellStrategy(candles)
@@ -750,104 +742,19 @@ export class Bot {
   }
 
   /**
-   * Load the candle data for a specific time frame (or interval)
-   * @param symbol
-   * @param interval
-   * @param onlyFinalCandle
-   * @param displayLog
-   * @returns
-   */
-  private loadCandles(
-    symbol: string,
-    interval: CandleChartInterval,
-    onlyFinalCandle = true,
-    displayLog = true
-  ) {
-    return new Promise<CandleData[]>((resolve, reject) => {
-      const getCandles =
-        BINANCE_MODE === 'spot'
-          ? binanceClient.candles
-          : binanceClient.futuresCandles;
-
-      getCandles({ symbol, interval })
-        .then((candles) => {
-          if (displayLog)
-            log(`Load successfully the candles for the pair ${symbol}`);
-          resolve(
-            candles
-              .slice(0, onlyFinalCandle ? -1 : candles.length)
-              .map((candle) => ({
-                open: Number(candle.open),
-                high: Number(candle.high),
-                low: Number(candle.low),
-                close: Number(candle.close),
-                volume: Number(candle.volume),
-                openTime: new Date(candle.openTime),
-                closeTime: new Date(candle.closeTime),
-              }))
-          );
-        })
-        .catch(reject);
-    });
-  }
-
-  /**
-   * Load the candle data for all the time frame needed for the strategy
-   * @param tradeConfig
-   * @returns
-   */
-  private loadCandlesMultiTimeFrames(tradeConfig: TradeConfig) {
-    return new Promise<CandlesDataMultiTimeFrames>((resolve, reject) => {
-      let loadTimeFrames: Promise<CandlesDataMultiTimeFrames>[] = [];
-
-      tradeConfig.indicatorIntervals.forEach(
-        (interval: CandleChartInterval) => {
-          loadTimeFrames.push(
-            new Promise<CandlesDataMultiTimeFrames>((resolve, reject) => {
-              this.loadCandles(
-                tradeConfig.asset + tradeConfig.base,
-                interval,
-                true,
-                false
-              )
-                .then((candles) => {
-                  resolve({
-                    interval,
-                    candles: candles.map((candle) => ({
-                      open: Number(candle.open),
-                      high: Number(candle.high),
-                      low: Number(candle.low),
-                      close: Number(candle.close),
-                      volume: Number(candle.volume),
-                      openTime: new Date(candle.openTime),
-                      closeTime: new Date(candle.closeTime),
-                    })),
-                  });
-                })
-                .catch(reject);
-            })
-          );
-        }
-      );
-
-      Promise.all(loadTimeFrames).then(resolve).catch(reject);
-    });
-  }
-
-  /**
    *  Close all the open orders for a given symbol
-   * @param symbol
+   * @param pair
    */
-  private closeOpenOrders(symbol: string) {
+  private closeOpenOrders(pair: string) {
     return new Promise<void>((resolve, reject) => {
       const cancel =
         BINANCE_MODE === 'spot'
           ? binanceClient.cancelOpenOrders
           : binanceClient.futuresCancelAllOpenOrders;
 
-      cancel({ symbol })
+      cancel({ symbol: pair })
         .then(() => {
-          log(`Close all open orders for the pair ${symbol}`);
+          log(`Close all open orders for the pair ${pair}`);
           resolve();
         })
         .catch(reject);

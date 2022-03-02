@@ -12,6 +12,7 @@ interface TradeConfig {
   maxPyramidingAllocation?: number; // Max allocation for a position in pyramiding (between 0 and 1)
   unidirectional?: boolean; // When take the profit, close the position instead of opening new position in futures
   tradingSession?: TradingSession; // The robot trades only during these session
+  maxTradeDuration?: number; // Max duration of a trade in the unit of the loopInterval
   buyStrategy: EntryStrategy;
   sellStrategy: EntryStrategy;
   exitStrategy?: ExitStrategy; // Placement of take profits and stop loss

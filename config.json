@@ -5,21 +5,20 @@
   "backtest": {
     "start_date": "2021-06-01 00:00:00",
     "end_date": "2021-07-11 00:00:00",
-    "initial_capital": 1000,
+    "initial_capital": 10000,
     "taker_fees_futures": 0.04,
     "maker_fees_futures": 0.02,
     "taker_fees_spot": 0.01,
     "maker_fees_spot": 0.01,
     "save": false
   },
-  "optimization": {
+  "neat": {
     "start_date_training": "2021-01-01 00:00:00",
     "end_date_training": "2021-02-01 00:00:00",
     "start_date_test": "2021-02-01 00:00:00",
     "end_date_test": "2021-03-01 00:00:00",
-    "initial_capital": 1000,
+    "initial_capital": 10000,
     "total_population": 500,
-    "total_generation": 100,
-    "goals": {}
+    "total_generations": 100
   }
 }

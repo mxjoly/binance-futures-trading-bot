@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import chalk from 'chalk';
 import { OrderSide } from 'binance-api-node';
-import { logger, BINANCE_MODE } from '..';
+import { logger, BINANCE_MODE } from '../init';
 
 /**
  * Main function add a log
