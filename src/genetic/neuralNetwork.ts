@@ -37,24 +37,26 @@ const NEURAL_NETWORK_INPUTS = {
   VOL: IndicatorInputsConfig['VOL'] || false,
 };
 
-export const NUMBER_INPUTS =
-  Object.entries(NEURAL_NETWORK_INPUTS).filter(([, val]) => val === true)
-    .length + 1;
+export const NUMBER_INPUTS = Object.entries(NEURAL_NETWORK_INPUTS).filter(
+  ([, val]) => val === true
+).length;
 
 export const NUMBER_HIDDEN_NODES = NUMBER_INPUTS;
 
-export const NUMBER_OUTPUTS = 3;
+export const NUMBER_OUTPUTS = 2;
 
 /**
  * Generate the inputs of neural network from indicators
  * @param pair
  * @param candles
  * @param extra
+ * @param useExitStrategy
  */
 export function getInputs(
   pair: string,
   candles: CandleData[],
-  extra: { wallet?: Wallet; futuresWallet?: FuturesWallet }
+  extra: { wallet?: Wallet; futuresWallet?: FuturesWallet },
+  useExitStrategy = false
 ) {
   // EMA21
   const ema21 =
@@ -193,15 +195,18 @@ export function getInputs(
 
   // Currently holding a trade/position?
   let holdingTrade = false;
-  if (extra.wallet) {
-    const balance = extra.wallet.balances.find((bal) => bal.symbol === pair);
-    holdingTrade = balance.quantity > 0;
-  }
-  if (extra.futuresWallet) {
-    const position = extra.futuresWallet.positions.find(
-      (pos) => pos.pair === pair
-    );
-    holdingTrade = position.size !== 0;
+  // Only if the robot doesn't have an exit strategy predefined
+  if (!useExitStrategy) {
+    if (extra.wallet) {
+      const balance = extra.wallet.balances.find((bal) => bal.symbol === pair);
+      holdingTrade = balance.quantity > 0;
+    }
+    if (extra.futuresWallet) {
+      const position = extra.futuresWallet.positions.find(
+        (pos) => pos.pair === pair
+      );
+      holdingTrade = position.size !== 0;
+    }
   }
 
   // Inputs for the neural network
@@ -221,7 +226,7 @@ export function getInputs(
     volOsc,
     vol,
     priceChange,
-    holdingTrade ? 1 : 0,
+    useExitStrategy ? null : holdingTrade ? 1 : 0,
   ].filter((i) => i !== null);
 
   return inputs;
@@ -233,18 +238,20 @@ export function getInputs(
  * @param candles
  * @param brain
  * @param extra
+ * @param useExitStrategy
  */
 export function getOutputs(
   pair: string,
   candles: CandleData[],
   brain: NeuralNetwork,
-  extra: { wallet?: Wallet; futuresWallet?: FuturesWallet }
+  extra: { wallet?: Wallet; futuresWallet?: FuturesWallet },
+  useExitStrategy = false
 ) {
   // We need at maximum 100 candles to calculate all the indicators value for the inputs
   if (candles.length < 100) return;
 
   // Get the inputs
-  let inputs = getInputs(pair, candles, extra);
+  let inputs = getInputs(pair, candles, extra, useExitStrategy);
 
   // Get the outputs from the network
   let actions = brain.predict(inputs);
@@ -253,5 +260,5 @@ export function getOutputs(
 
   if (max === actions[0] && actions[0] > 0.6) return 'BUY';
   if (max === actions[1] && actions[1] > 0.6) return 'SELL';
-  if (max === actions[2] && actions[2] > 0.6) return 'CLOSE';
+  if (useExitStrategy && max === actions[2] && actions[2] > 0.6) return 'CLOSE';
 }

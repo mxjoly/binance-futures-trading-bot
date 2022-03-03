@@ -871,18 +871,26 @@ export class BackTestBot {
 
     // Decision to take ?
     const isBuySignal = this.brain
-      ? this.think(asset, candles[loopInterval]) === 'BUY'
+      ? this.think(asset, candles[loopInterval], tradeConfig) === 'BUY'
       : buyStrategy(candles);
     const isSellSignal = this.brain
-      ? this.think(asset, candles[loopInterval]) === 'SELL'
+      ? this.think(asset, candles[loopInterval], tradeConfig) === 'SELL'
       : sellStrategy(candles);
-    const closePosition = this.brain
-      ? this.think(asset, candles[loopInterval]) === 'CLOSE'
-      : false;
+    const closePosition =
+      this.brain && !exitStrategy
+        ? this.think(pair, candles[loopInterval], tradeConfig) === 'CLOSE'
+        : false;
 
     // Prevent remaining open orders
     if (assetBalance === 0 && currentOpenOrders.length > 0)
       this.closeOpenOrders(pair);
+
+    // The neural network wants to close the position
+    if (closePosition && assetBalance > 0) {
+      this.futuresOrderMarket(pair, currentPrice, assetBalance, 'SELL');
+      if (this.counters[pair]) this.counters[pair].reset();
+      return;
+    }
 
     if (assetBalance > 0 && (isSellSignal || closePosition)) {
       this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
@@ -1023,14 +1031,15 @@ export class BackTestBot {
 
     // Decision to take ?
     const isBuySignal = this.brain
-      ? this.think(pair, candles[loopInterval]) === 'BUY'
+      ? this.think(pair, candles[loopInterval], tradeConfig) === 'BUY'
       : buyStrategy(candles);
     const isSellSignal = this.brain
-      ? this.think(pair, candles[loopInterval]) === 'SELL'
+      ? this.think(pair, candles[loopInterval], tradeConfig) === 'SELL'
       : sellStrategy(candles);
-    const closePosition = this.brain
-      ? this.think(pair, candles[loopInterval]) === 'CLOSE'
-      : false;
+    const closePosition =
+      this.brain && !exitStrategy
+        ? this.think(pair, candles[loopInterval], tradeConfig) === 'CLOSE'
+        : false;
 
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
@@ -1038,8 +1047,14 @@ export class BackTestBot {
     }
 
     // The neural network wants to close the position
-    if (closePosition) {
-      this.closeFuturesOpenOrders(pair);
+    if (closePosition && (hasLongPosition || hasShortPosition)) {
+      this.futuresOrderMarket(
+        pair,
+        currentPrice,
+        Math.abs(position.size),
+        hasLongPosition ? 'SELL' : 'BUY'
+      );
+      if (this.counters[pair]) this.counters[pair].reset();
       return;
     }
 
@@ -1366,7 +1381,7 @@ export class BackTestBot {
       this.futuresOrderMarket(
         pair,
         currentPrice,
-        size,
+        Math.abs(size),
         positionSide === 'LONG' ? 'SELL' : 'BUY'
       );
 
@@ -1516,11 +1531,13 @@ export class BackTestBot {
               // Average the position
               if (position.positionSide === 'LONG') {
                 let baseCost = (price * quantity) / leverage;
+
                 // If there is enough available base
                 if (wallet.availableBalance >= baseCost + fees) {
                   let avgEntryPrice =
                     (price * quantity + entryPrice * Math.abs(size)) /
                     (quantity + Math.abs(size));
+
                   position.margin += baseCost;
                   position.size += quantity;
                   position.entryPrice = avgEntryPrice;
@@ -1537,7 +1554,7 @@ export class BackTestBot {
                   );
                 }
               } else if (position.positionSide === 'SHORT') {
-                let hadPosition = position.size < 0;
+                let hasPosition = position.size < 0;
 
                 // Update wallet
                 let pnl = this.getPositionPNL(position, price);
@@ -1568,11 +1585,11 @@ export class BackTestBot {
                   this.strategyReport.totalLongTrades++;
                 }
 
-                this.strategyReport.totalFees += fees;
-                if (hadPosition && entryPrice >= price)
+                if (hasPosition && entryPrice >= price)
                   this.strategyReport.shortWinningTrade++;
-                if (hadPosition && entryPrice < price)
+                if (hasPosition && entryPrice < price)
                   this.strategyReport.shortLostTrade++;
+                this.strategyReport.totalFees += fees;
 
                 log(
                   `${
@@ -1653,11 +1670,13 @@ export class BackTestBot {
               // Average the position
               if (position.positionSide === 'SHORT') {
                 let baseCost = (price * quantity) / leverage;
+
                 // If there is enough available base
                 if (wallet.availableBalance >= baseCost + fees) {
                   let avgEntryPrice =
                     (price * quantity + entryPrice * Math.abs(size)) /
                     (quantity + Math.abs(size));
+
                   position.margin += baseCost;
                   position.size -= quantity;
                   position.entryPrice = avgEntryPrice;
@@ -1676,7 +1695,7 @@ export class BackTestBot {
                   );
                 }
               } else if (position.positionSide === 'LONG') {
-                let hadPosition = position.size > 0;
+                let hasPosition = position.size > 0;
 
                 // Update wallet
                 let pnl = this.getPositionPNL(position, price);
@@ -1707,11 +1726,11 @@ export class BackTestBot {
                   this.strategyReport.totalShortTrades++;
                 }
 
-                this.strategyReport.totalFees += fees;
-                if (hadPosition && entryPrice <= price)
+                if (hasPosition && entryPrice <= price)
                   this.strategyReport.longWinningTrade++;
-                if (hadPosition && entryPrice > price)
+                if (hasPosition && entryPrice > price)
                   this.strategyReport.longLostTrade++;
+                this.strategyReport.totalFees += fees;
 
                 log(
                   `${
@@ -2036,21 +2055,18 @@ export class BackTestBot {
         let baseCost = (price * quantity) / leverage;
         // If there is enough available base currency
         if (wallet.availableBalance >= baseCost + fees) {
-          let hadPosition = position.size !== 0;
-
           let avgEntryPrice =
             (price * quantity + entryPrice * Math.abs(size)) /
             (quantity + Math.abs(size));
+
           position.margin += baseCost;
           position.size += quantity;
           position.entryPrice = avgEntryPrice;
           wallet.availableBalance -= baseCost + fees;
           wallet.totalWalletBalance -= fees;
 
-          if (!hadPosition) {
-            this.strategyReport.totalTrades++;
-            this.strategyReport.totalLongTrades++;
-          }
+          this.strategyReport.totalTrades++;
+          this.strategyReport.totalLongTrades++;
           this.strategyReport.totalFees += fees;
 
           log(
@@ -2089,11 +2105,11 @@ export class BackTestBot {
           this.strategyReport.totalLongTrades++;
         }
 
-        this.strategyReport.totalFees += fees;
         if (hadPosition && entryPrice >= price)
           this.strategyReport.shortWinningTrade++;
         if (hadPosition && entryPrice < price)
           this.strategyReport.shortLostTrade++;
+        this.strategyReport.totalFees += fees;
 
         log(
           `Take a long position on ${pair} with a size of ${quantity} at ${price}. Fees: ${fees}`,
@@ -2106,21 +2122,18 @@ export class BackTestBot {
       if (position.positionSide === 'SHORT') {
         // If there is enough available base currency
         if (wallet.availableBalance >= baseCost + fees) {
-          let hadPosition = position.size !== 0;
-
           let avgEntryPrice =
             (price * quantity + entryPrice * Math.abs(size)) /
             (quantity + Math.abs(size));
+
           position.margin += baseCost;
           position.size -= quantity;
           position.entryPrice = avgEntryPrice;
           wallet.availableBalance -= baseCost + fees;
           wallet.totalWalletBalance -= fees;
 
-          if (!hadPosition) {
-            this.strategyReport.totalTrades++;
-            this.strategyReport.totalShortTrades++;
-          }
+          this.strategyReport.totalTrades++;
+          this.strategyReport.totalShortTrades++;
           this.strategyReport.totalFees += fees;
 
           log(
@@ -2159,11 +2172,11 @@ export class BackTestBot {
           this.strategyReport.totalShortTrades++;
         }
 
-        this.strategyReport.totalFees += fees;
         if (hadPosition && entryPrice <= price)
           this.strategyReport.longWinningTrade++;
         if (hadPosition && entryPrice > price)
           this.strategyReport.longLostTrade++;
+        this.strategyReport.totalFees += fees;
 
         log(
           `Take a short position on ${pair} with a size of ${-quantity} at ${price}. Fees: ${fees}`,
@@ -2290,13 +2303,29 @@ export class BackTestBot {
    * @param symbol
    * @param candles
    */
-  private think(symbol: string, candles: CandleData[]) {
+  private think(
+    symbol: string,
+    candles: CandleData[],
+    tradeConfig: TradeConfig
+  ) {
     if (BINANCE_MODE === 'spot') {
-      return getOutputs(symbol, candles, this.brain, { wallet: this.wallet });
+      return getOutputs(
+        symbol,
+        candles,
+        this.brain,
+        { wallet: this.wallet },
+        tradeConfig.exitStrategy ? true : false
+      );
     } else {
-      return getOutputs(symbol, candles, this.brain, {
-        futuresWallet: this.futuresWallet,
-      });
+      return getOutputs(
+        symbol,
+        candles,
+        this.brain,
+        {
+          futuresWallet: this.futuresWallet,
+        },
+        tradeConfig.exitStrategy ? true : false
+      );
     }
   }
 }

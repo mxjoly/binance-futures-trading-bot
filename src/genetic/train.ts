@@ -41,8 +41,12 @@ function displayBestTraderStats(bestTrader: Trader) {
     totalLoss,
     totalFees,
     wallet,
-    totalWinningTrades,
-    numberTrades,
+    winningTrades,
+    totalTrades,
+    longWinningTrades,
+    shortWinningTrades,
+    longLostTrades,
+    shortLostTrades,
   } = bestTrader;
 
   score = decimalFloor(score, 2);
@@ -51,22 +55,33 @@ function displayBestTraderStats(bestTrader: Trader) {
   totalFees = decimalFloor(Math.abs(bestTrader.totalFees), 2);
   let profitRatio = decimalFloor(totalProfit / (totalLoss + totalFees), 2);
   let totalBalance = decimalFloor(wallet.totalWalletBalance, 2);
-  let winRate = decimalFloor((totalWinningTrades / numberTrades) * 100, 2);
+  let winRate = decimalFloor((winningTrades / totalTrades) * 100, 2);
   let roi = decimalFloor(
     ((wallet.totalWalletBalance - initialCapital) * 100) / initialCapital,
     2
   );
 
+  let totalWinningTrades = longWinningTrades + shortWinningTrades;
+  let totalLostTrades = longLostTrades + shortLostTrades;
+  let averageProfit = decimalFloor(totalProfit / totalWinningTrades, 2);
+  let averageLoss = decimalFloor(totalLoss / totalLostTrades, 2);
+
   console.log(`------------ Best Trader ------------`);
   console.log(`Score: ${score}`);
   console.log(`ROI: ${roi}%`);
   console.log(`Balance: ${totalBalance}`);
-  console.log(`Trades: ${numberTrades}`);
+  console.log(`Trades: ${totalTrades}`);
+  console.log(`Trades won: ${totalWinningTrades}`);
+  console.log(`Trades lost: ${totalLostTrades}`);
   console.log(`Win rate: ${winRate}%`);
+  console.log(`Longs: ${longWinningTrades + longLostTrades}`);
+  console.log(`Shorts: ${shortWinningTrades + shortLostTrades}`);
   console.log(`Profit Ratio: ${profitRatio}`);
   console.log(`Total Profit: ${totalProfit}`);
   console.log(`Total Loss: -${totalLoss}`);
   console.log(`Total Fees: -${totalFees}`);
+  console.log(`Average profit: ${averageProfit}`);
+  console.log(`Average loss: ${averageLoss}`);
   console.log(`-------------------------------------`);
   console.log(``);
 }
