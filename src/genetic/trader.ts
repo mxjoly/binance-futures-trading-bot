@@ -16,6 +16,7 @@ import {
   NUMBER_OUTPUTS,
 } from './neuralNetwork';
 import { timeFrameToMinutes } from '../utils/timeFrame';
+import { decimalCeil, decimalFloor } from '../utils/math';
 
 // ==================================================================
 
@@ -162,12 +163,27 @@ class Trader {
     candles: CandleData[],
     exchangeInfo: ExchangeInfo
   ) {
-    const { asset, base, risk, tradingSession, riskManagement, exitStrategy } =
-      tradeConfig;
+    const {
+      asset,
+      base,
+      risk,
+      allowPyramiding,
+      maxPyramidingAllocation,
+      tradingSession,
+      riskManagement,
+      exitStrategy,
+      trendFilter,
+      unidirectional,
+      trailingStopConfig,
+    } = tradeConfig;
     const pair = asset + base;
 
+    // Check the trend
+    const useLongPosition = trendFilter ? trendFilter(candles) === 1 : true;
+    const useShortPosition = trendFilter ? trendFilter(candles) === -1 : true;
+
     // Balance information
-    const totalBalance = this.wallet.totalWalletBalance;
+    const assetBalance = this.wallet.totalWalletBalance;
     const availableBalance = this.wallet.availableBalance;
 
     // Position information
@@ -177,8 +193,19 @@ class Trader {
     const hasShortPosition = position.size < 0;
 
     // Conditions to take or not a position
-    const canTakeLongPosition = !hasLongPosition;
-    const canTakeShortPosition = !hasShortPosition;
+    const canAddToPosition = allowPyramiding
+      ? position.margin + assetBalance * risk <=
+        assetBalance * maxPyramidingAllocation
+      : false;
+    const canTakeLongPosition =
+      (!allowPyramiding && !hasLongPosition) || allowPyramiding;
+    const canTakeShortPosition =
+      (!allowPyramiding && !hasShortPosition) || allowPyramiding;
+
+    // Open orders
+    const currentOpenOrders = this.openOrders.filter(
+      (order) => order.pair === pair
+    );
 
     // Currency infos
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
@@ -228,9 +255,32 @@ class Trader {
 
     if (
       (isTradingSessionActive || position.size !== 0) &&
+      (allowPyramiding || currentOpenOrders.length === 0) &&
       canTakeLongPosition &&
       isBuySignal
     ) {
+      // Take the profit and not open a new position
+      if (hasShortPosition && unidirectional) {
+        this.orderMarket(pair, currentPrice, Math.abs(position.size), 'BUY');
+        this.closeFuturesOpenOrders(pair);
+        return;
+      }
+
+      // Do not trade with long position if the trend is down
+      if (!useLongPosition) return;
+
+      // Do not add to the current position if the allocation is over the max allocation
+      if (allowPyramiding && hasLongPosition && !canAddToPosition) return;
+
+      // Do not close the current short position built progressively in pyramiding mode
+      if (allowPyramiding && hasShortPosition) return;
+
+      // Do not buy now if a take profit is already set on the last short position
+      let hasTakeProfits = currentOpenOrders.some(
+        (order) => order.price < position.entryPrice
+      );
+      if (hasShortPosition && hasTakeProfits) return;
+
       // Calculate TP and SL
       let { takeProfits, stopLoss } = exitStrategy
         ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
@@ -240,7 +290,9 @@ class Trader {
       let quantity = riskManagement({
         asset,
         base,
-        balance: Number(availableBalance),
+        balance: allowPyramiding
+          ? Number(assetBalance)
+          : Number(availableBalance),
         risk,
         enterPrice: currentPrice,
         stopLossPrice: stopLoss,
@@ -263,6 +315,26 @@ class Trader {
 
       this.orderMarket(pair, currentPrice, quantity, 'BUY');
 
+      // Cancel the previous orders to update them
+      if (currentOpenOrders.length > 0) {
+        this.closeFuturesOpenOrders(pair);
+      }
+
+      // In pyramiding mode, update the take profits and stop loss
+      if (allowPyramiding && hasLongPosition) {
+        let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
+          exitStrategy
+            ? exitStrategy(
+                position.entryPrice,
+                candles,
+                pricePrecision,
+                OrderSide.BUY
+              )
+            : { takeProfits: [], stopLoss: null };
+        takeProfits = updatedTakeProfits;
+        stopLoss = updatedStopLoss;
+      }
+
       if (takeProfits.length > 0) {
         // Create the take profit orders
         takeProfits.forEach(({ price, quantityPercentage }) => {
@@ -278,11 +350,69 @@ class Trader {
       if (stopLoss) {
         this.orderLimit(pair, stopLoss, Math.abs(position.size), 'SHORT');
       }
+
+      if (trailingStopConfig) {
+        // Calculate the activation price for the trailing stop according tot the trailing stop configuration
+        const calculateActivationPrice = (currentPrice: number) => {
+          let { percentageToTP, changePercentage } =
+            trailingStopConfig.activation;
+
+          if (takeProfits.length > 0 && percentageToTP) {
+            const nearestTakeProfitPrice = Math.min(
+              ...takeProfits.map((tp) => tp.price)
+            );
+            let delta = Math.abs(nearestTakeProfitPrice - currentPrice);
+            return decimalFloor(
+              currentPrice + delta * percentageToTP,
+              pricePrecision
+            );
+          } else if (changePercentage) {
+            return decimalFloor(
+              currentPrice * (1 + changePercentage),
+              pricePrecision
+            );
+          } else {
+            return currentPrice;
+          }
+        };
+
+        this.orderTrailingStop(
+          asset,
+          base,
+          calculateActivationPrice(position.entryPrice),
+          Math.abs(position.size),
+          'SHORT',
+          trailingStopConfig
+        );
+      }
     } else if (
       (isTradingSessionActive || position.size !== 0) &&
+      (allowPyramiding || currentOpenOrders.length === 0) &&
       canTakeShortPosition &&
       isSellSignal
     ) {
+      // Take the profit and not open a new position
+      if (hasLongPosition && unidirectional) {
+        this.orderMarket(pair, currentPrice, Math.abs(position.size), 'SELL');
+        this.closeFuturesOpenOrders(pair);
+        return;
+      }
+
+      // Do not trade with short position if the trend is up
+      if (!useShortPosition) return;
+
+      // Do not add to the current position if the allocation is over the max allocation
+      if (allowPyramiding && hasShortPosition && !canAddToPosition) return;
+
+      // Do not close the current long position built progressively in pyramiding mode
+      if (allowPyramiding && hasLongPosition) return;
+
+      // Do not sell now if a take profit is already set on the last long position
+      let hasTakeProfits = currentOpenOrders.some(
+        (order) => order.price > position.entryPrice
+      );
+      if (hasLongPosition && hasTakeProfits) return;
+
       // Calculate TP and SL
       let { takeProfits, stopLoss } = exitStrategy
         ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.SELL)
@@ -292,7 +422,9 @@ class Trader {
       let quantity = riskManagement({
         asset,
         base,
-        balance: Number(availableBalance),
+        balance: allowPyramiding
+          ? Number(assetBalance)
+          : Number(availableBalance),
         risk,
         enterPrice: currentPrice,
         stopLossPrice: stopLoss,
@@ -315,6 +447,26 @@ class Trader {
 
       this.orderMarket(pair, currentPrice, quantity, 'SELL');
 
+      // Cancel the previous orders to update them
+      if (currentOpenOrders.length > 0) {
+        this.closeFuturesOpenOrders(pair);
+      }
+
+      // In pyramiding mode, update the take profits and stop loss
+      if (allowPyramiding && hasLongPosition) {
+        let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
+          exitStrategy
+            ? exitStrategy(
+                position.entryPrice,
+                candles,
+                pricePrecision,
+                OrderSide.BUY
+              )
+            : { takeProfits: [], stopLoss: null };
+        takeProfits = updatedTakeProfits;
+        stopLoss = updatedStopLoss;
+      }
+
       if (takeProfits.length > 0) {
         // Create the take profit orders
         takeProfits.forEach(({ price, quantityPercentage }) => {
@@ -329,6 +481,41 @@ class Trader {
 
       if (stopLoss) {
         this.orderLimit(pair, stopLoss, Math.abs(position.size), 'LONG');
+      }
+
+      if (trailingStopConfig) {
+        // Calculate the activation price for the trailing stop according tot the trailing stop configuration
+        const calculateActivationPrice = (currentPrice: number) => {
+          let { percentageToTP, changePercentage } =
+            trailingStopConfig.activation;
+
+          if (takeProfits.length > 0 && percentageToTP) {
+            const nearestTakeProfitPrice = Math.max(
+              ...takeProfits.map((tp) => tp.price)
+            );
+            let delta = Math.abs(currentPrice - nearestTakeProfitPrice);
+            return decimalCeil(
+              currentPrice - delta * percentageToTP,
+              pricePrecision
+            );
+          } else if (changePercentage) {
+            return decimalCeil(
+              currentPrice * (1 - changePercentage),
+              pricePrecision
+            );
+          } else {
+            return currentPrice;
+          }
+        };
+
+        this.orderTrailingStop(
+          asset,
+          base,
+          calculateActivationPrice(position.entryPrice),
+          Math.abs(position.size),
+          'LONG',
+          trailingStopConfig
+        );
       }
     }
   }
@@ -367,12 +554,16 @@ class Trader {
       // Check if a long order has been activated on the last candle
       longOrders
         .sort((order1, order2) => order2.price - order1.price) // sort order from nearest price to furthest price
-        .every(({ id, price, quantity, type }) => {
+        .every(({ id, price, quantity, type, trailingStop }) => {
           const { entryPrice, size, leverage } = position;
           const fees = quantity * price * (MAKER_FEES / 100);
 
           // Price crossed the buy limit order
-          if (lastCandle.high > price && lastCandle.low < price) {
+          if (
+            type !== 'TRAILING_STOP_MARKET' &&
+            lastCandle.high > price &&
+            lastCandle.low < price
+          ) {
             if (type === 'LIMIT') {
               // Average the position
               if (position.positionSide === 'LONG') {
@@ -442,6 +633,39 @@ class Trader {
             }
           }
 
+          // Trailing stops
+          if (type === 'TRAILING_STOP_MARKET') {
+            let activationPrice = price;
+            let { status, callbackRate } = trailingStop;
+
+            if (status === 'PENDING' && lastCandle.low <= activationPrice) {
+              status = 'ACTIVE';
+            }
+            if (status === 'ACTIVE') {
+              let stopLossPrice = lastCandle.open * (1 + callbackRate);
+              // Trailing stop loss is activated
+              if (lastCandle.high >= stopLossPrice) {
+                let pnl = this.getPositionPNL(position, price);
+
+                this.wallet.availableBalance += position.margin + pnl - fees;
+                this.wallet.totalWalletBalance += pnl - fees;
+                position.size += quantity;
+                position.margin = Math.abs(position.size * price) / leverage;
+
+                if (pnl >= 0) {
+                  this.totalProfit += pnl;
+                  this.shortWinningTrades++;
+                  this.winningTrades++;
+                } else {
+                  this.totalLoss += pnl;
+                  this.shortLostTrades++;
+                  this.lostTrades++;
+                }
+                this.totalFees += fees;
+              }
+            }
+          }
+
           // If an order close the position, do not continue to check the other orders.
           // Prevent to have multiple orders touches at the same time
           if (position.size === 0) {
@@ -454,12 +678,16 @@ class Trader {
 
       shortOrders
         .sort((order1, order2) => order1.price - order2.price) // sort order from nearest price to furthest price
-        .every(({ id, price, quantity, type }) => {
+        .every(({ id, price, quantity, type, trailingStop }) => {
           const { entryPrice, size, leverage } = position;
           const fees = quantity * price * (MAKER_FEES / 100);
 
           // Price crossed the sell limit order
-          if (lastCandle.high > price && lastCandle.low < price) {
+          if (
+            type !== 'TRAILING_STOP_MARKET' &&
+            lastCandle.high > price &&
+            lastCandle.low < price
+          ) {
             // If there is enough available base
             if (type === 'LIMIT') {
               // Average the position
@@ -527,6 +755,38 @@ class Trader {
               }
 
               this.closeOpenOrder(id);
+            }
+          }
+
+          // Trailing stops
+          if (type === 'TRAILING_STOP_MARKET') {
+            let activationPrice = price;
+            let { status, callbackRate } = trailingStop;
+            if (status === 'PENDING' && lastCandle.high >= activationPrice) {
+              status = 'ACTIVE';
+            }
+            if (status === 'ACTIVE') {
+              let stopLossPrice = lastCandle.open * (1 - callbackRate);
+              // Trailing stop loss is activated
+              if (lastCandle.low <= stopLossPrice) {
+                let pnl = this.getPositionPNL(position, price);
+
+                this.wallet.availableBalance += position.margin + pnl - fees;
+                this.wallet.totalWalletBalance += pnl - fees;
+                position.size += quantity;
+                position.margin = Math.abs(position.size * price) / leverage;
+
+                if (pnl >= 0) {
+                  this.totalProfit += pnl;
+                  this.longWinningTrades++;
+                  this.winningTrades++;
+                } else {
+                  this.totalLoss += pnl;
+                  this.longLostTrades++;
+                  this.lostTrades++;
+                }
+                this.totalFees += fees;
+              }
             }
           }
 
@@ -737,6 +997,60 @@ class Trader {
     } else {
       console.error(
         `Limit order for the pair ${pair} cannot be placed. quantity=${quantity} price=${price}`
+      );
+    }
+  }
+
+  /**
+   * Place a trailing stop order
+   * @param asset
+   * @param base
+   * @param price
+   * @param quantity
+   * @param positionSide
+   * @param trailingStopConfig
+   */
+  private orderTrailingStop(
+    asset: string,
+    base: string,
+    price: number,
+    quantity: number,
+    positionSide: 'LONG' | 'SHORT',
+    trailingStopConfig: TrailingStopConfig
+  ) {
+    const positions = this.wallet.positions;
+    const position = positions.find((pos) => pos.pair === asset);
+    const pair = asset + base;
+
+    if (quantity < 0) {
+      console.error(
+        `Cannot execute the trailing stop order for ${pair}. The quantity is malformed: ${quantity}`
+      );
+      return;
+    }
+
+    let canOrder = quantity <= Math.abs(position.size);
+    if (canOrder) {
+      let order: FuturesOpenOrder = {
+        id: Math.random().toString(16).slice(2),
+        pair,
+        type: 'TRAILING_STOP_MARKET',
+        positionSide,
+        price, // activation price
+        quantity,
+        trailingStop: {
+          status: 'PENDING',
+          callbackRate: trailingStopConfig.callbackRate,
+          activation: {
+            changePercentage: trailingStopConfig.activation.changePercentage,
+            percentageToTP: trailingStopConfig.activation.changePercentage,
+          },
+        },
+      };
+      this.openOrders.push(order);
+    } else {
+      console.error(
+        `Trailing stop order for the pair ${pair} cannot be placed`
       );
     }
   }

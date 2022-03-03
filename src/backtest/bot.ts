@@ -102,7 +102,7 @@ export class BackTestBot {
   private futuresOpenOrders: FuturesOpenOrder[];
 
   // For the calculation of some properties of the strategy report
-  private strategyReport: StrategyReport;
+  public strategyReport: StrategyReport;
   private maxBalance: number;
   private maxAbsoluteDrawdown: number;
   private maxRelativeDrawdown: number;

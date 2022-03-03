@@ -98,6 +98,15 @@ export async function train(reset?: boolean) {
 
   const exchangeInfo = await binanceClient.futuresExchangeInfo();
 
+  if (Config.length > 1) {
+    console.error('You can use only one config in the genetic optimization.');
+    return;
+  }
+  if (Config.length === 0) {
+    console.error('No config has been found.');
+    return;
+  }
+
   const candles = await loadCandlesFromCSV(
     Config[0].asset + Config[0].base,
     Config[0].loopInterval,

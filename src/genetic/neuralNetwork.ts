@@ -43,7 +43,7 @@ export const NUMBER_INPUTS = Object.entries(NEURAL_NETWORK_INPUTS).filter(
 
 export const NUMBER_HIDDEN_NODES = NUMBER_INPUTS;
 
-export const NUMBER_OUTPUTS = 2;
+export const NUMBER_OUTPUTS = 2; // Buy / Sell
 
 /**
  * Generate the inputs of neural network from indicators

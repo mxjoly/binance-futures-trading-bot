@@ -14,7 +14,7 @@
   },
   "genetic": {
     "start_date_training": "2021-01-01 00:00:00",
-    "end_date_training": "2021-01-10 00:00:00",
+    "end_date_training": "2021-06-01 00:00:00",
     "start_date_test": "2021-02-01 00:00:00",
     "end_date_test": "2021-03-01 00:00:00",
     "initial_capital": 10000,
