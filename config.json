@@ -1,24 +1,40 @@
 {
   "mode": "futures",
-  "strategy_config_file_name": "volume",
-  "strategy_name": "Volume Oscillator",
+  "strategy_config_file_name": "ai",
+  "strategy_name": "Neuro Evolution",
+  "taker_fees_futures": 0.04,
+  "maker_fees_futures": 0.02,
+  "taker_fees_spot": 0.01,
+  "maker_fees_spot": 0.01,
   "backtest": {
-    "start_date": "2021-06-01 00:00:00",
-    "end_date": "2021-07-11 00:00:00",
+    "start_date": "2021-01-01 00:00:00",
+    "end_date": "2021-03-31 00:00:00",
     "initial_capital": 10000,
-    "taker_fees_futures": 0.04,
-    "maker_fees_futures": 0.02,
-    "taker_fees_spot": 0.01,
-    "maker_fees_spot": 0.01,
     "save": false
   },
-  "neat": {
+  "genetic": {
     "start_date_training": "2021-01-01 00:00:00",
-    "end_date_training": "2021-02-01 00:00:00",
+    "end_date_training": "2021-01-31 00:00:00",
     "start_date_test": "2021-02-01 00:00:00",
     "end_date_test": "2021-03-01 00:00:00",
     "initial_capital": 10000,
-    "total_population": 500,
-    "total_generations": 100
+    "population": 500,
+    "generations": 100,
+    "neural_network_inputs": {
+      "EMA21": true,
+      "EMA50": false,
+      "EMA100": false,
+      "ADX": false,
+      "AO": false,
+      "CCI": false,
+      "MFI": false,
+      "ROC": false,
+      "RSI": true,
+      "WILLIAM_R": false,
+      "KIJUN": false,
+      "VWAP": false,
+      "VOL_OSC": false,
+      "VOL": true
+    }
   }
 }

@@ -12,6 +12,8 @@ import { createDatabase, saveFuturesState, saveState } from './database';
 import { debugLastCandle, debugWallet, log, printDateBanner } from './debug';
 import generateHTMLReport from './generateReport';
 import { NeuralNetwork } from '../lib/neuralNetwork';
+import { getOutputs } from '../genetic/neuralNetwork';
+import { Counter } from '../tools/counter';
 import {
   getPricePrecision,
   getQuantityPrecision,
@@ -23,7 +25,6 @@ import {
   durationBetweenDates,
   timeFrameToMinutes,
 } from '../utils/timeFrame';
-import { getOutputs } from '../ai';
 
 // ====================================================================== //
 
@@ -67,12 +68,12 @@ const MAX_LENGTH_CANDLES = 100;
 // Exchange fee info
 const TAKER_FEES =
   BINANCE_MODE === 'spot'
-    ? BacktestConfig['taker_fees_spot']
-    : BacktestConfig['taker_fees_futures']; // %
+    ? BotConfig['taker_fees_spot']
+    : BotConfig['taker_fees_futures']; // %
 const MAKER_FEES =
   BINANCE_MODE === 'spot'
-    ? BacktestConfig['maker_fees_spot']
-    : BacktestConfig['maker_fees_futures']; // %
+    ? BotConfig['maker_fees_spot']
+    : BotConfig['maker_fees_futures']; // %
 
 // ====================================================================== //
 
@@ -85,6 +86,9 @@ export class BackTestBot {
   private historicCandleDataMultiTimeFrames: {
     [symbol: string]: CandlesDataMultiTimeFrames;
   };
+
+  // Counter to fix the max duration of each trade
+  private counters: { [symbol: string]: Counter };
 
   // Initial parameters
   private startDate: Date;
@@ -131,6 +135,7 @@ export class BackTestBot {
     this.initialCapital = initialCapital;
 
     this.historicCandleDataMultiTimeFrames = {};
+    this.counters = {};
 
     this.strategyReport = {};
     this.maxBalance = initialCapital;
@@ -199,6 +204,12 @@ export class BackTestBot {
       };
       this.futuresOpenOrders = [];
     }
+
+    // Initialize the counters
+    this.tradeConfigs.forEach(({ asset, base, maxTradeDuration }) => {
+      if (maxTradeDuration)
+        this.counters[asset + base] = new Counter(maxTradeDuration);
+    });
 
     // Initialize some properties of the strategy report
     this.strategyReport.initialCapital = this.initialCapital;
@@ -810,6 +821,7 @@ export class BackTestBot {
       allowPyramiding,
       maxPyramidingAllocation,
       loopInterval,
+      maxTradeDuration,
     } = tradeConfig;
     const pair = asset + base;
 
@@ -841,7 +853,23 @@ export class BackTestBot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    // Strategy
+    // The current trade is too long ?
+    if (maxTradeDuration && assetBalance > 0 && this.counters[pair]) {
+      this.counters[pair].decrement();
+      if (this.counters[pair].getValue() == 0) {
+        this.spotOrderMarket(
+          asset,
+          base,
+          currentPrice,
+          Math.abs(assetBalance),
+          'SELL'
+        );
+        this.counters[pair].reset();
+        return;
+      }
+    }
+
+    // Decision to take ?
     const isBuySignal = this.brain
       ? this.think(asset, candles[loopInterval]) === 'BUY'
       : buyStrategy(candles);
@@ -931,6 +959,7 @@ export class BackTestBot {
       maxPyramidingAllocation,
       unidirectional,
       loopInterval,
+      maxTradeDuration,
     } = tradeConfig;
     const pair = asset + base;
 
@@ -973,7 +1002,26 @@ export class BackTestBot {
       tradingSession
     );
 
-    // Strategy
+    // The current position is too long ?
+    if (
+      maxTradeDuration &&
+      (hasShortPosition || hasLongPosition) &&
+      this.counters[pair]
+    ) {
+      this.counters[pair].decrement();
+      if (this.counters[pair].getValue() == 0) {
+        this.futuresOrderMarket(
+          pair,
+          currentPrice,
+          Math.abs(position.size),
+          hasLongPosition ? 'SELL' : 'BUY'
+        );
+        this.counters[pair].reset();
+        return;
+      }
+    }
+
+    // Decision to take ?
     const isBuySignal = this.brain
       ? this.think(pair, candles[loopInterval]) === 'BUY'
       : buyStrategy(candles);
@@ -1304,7 +1352,7 @@ export class BackTestBot {
   }
 
   /**
-   * Check if the margin for all the positions (futures) is always valid. If not, the position is liquidated
+   * Check if the margin is enough to maintain the position. If not, the position is liquidated
    * @param pair
    * @param currentPrice The current price in the main loop
    */
@@ -2043,9 +2091,9 @@ export class BackTestBot {
 
         this.strategyReport.totalFees += fees;
         if (hadPosition && entryPrice >= price)
-          this.strategyReport.longWinningTrade++;
+          this.strategyReport.shortWinningTrade++;
         if (hadPosition && entryPrice < price)
-          this.strategyReport.longLostTrade++;
+          this.strategyReport.shortLostTrade++;
 
         log(
           `Take a long position on ${pair} with a size of ${quantity} at ${price}. Fees: ${fees}`,
@@ -2113,9 +2161,9 @@ export class BackTestBot {
 
         this.strategyReport.totalFees += fees;
         if (hadPosition && entryPrice <= price)
-          this.strategyReport.shortWinningTrade++;
+          this.strategyReport.longWinningTrade++;
         if (hadPosition && entryPrice > price)
-          this.strategyReport.shortLostTrade++;
+          this.strategyReport.longLostTrade++;
 
         log(
           `Take a short position on ${pair} with a size of ${-quantity} at ${price}. Fees: ${fees}`,

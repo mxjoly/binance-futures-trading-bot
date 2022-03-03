@@ -4,6 +4,7 @@ import { decimalCeil, decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient, BINANCE_MODE } from './init';
 import { loadCandlesMultiTimeFramesFromAPI } from './utils/candleData';
+import { Counter } from './tools/counter';
 import {
   getPricePrecision,
   getQuantityPrecision,
@@ -15,8 +16,12 @@ import {
 export class Bot {
   private tradeConfigs: TradeConfig[];
 
+  // Counter to fix the max duration of each trade
+  private counters: { [symbol: string]: Counter };
+
   constructor(tradeConfigs: TradeConfig[]) {
     this.tradeConfigs = tradeConfigs;
+    this.counters = {};
   }
 
   /**
@@ -46,6 +51,12 @@ export class Bot {
           .catch(error);
       });
     }
+
+    // Initialize the counters
+    this.tradeConfigs.forEach(({ asset, base, maxTradeDuration }) => {
+      if (maxTradeDuration)
+        this.counters[asset + base] = new Counter(maxTradeDuration);
+    });
   }
 
   /**
@@ -156,6 +167,26 @@ export class Bot {
     // Precisions
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
+
+    // The current trade is too long ?
+    if (assetBalance > 0 && this.counters[pair]) {
+      this.counters[pair].decrement();
+      if (this.counters[pair].getValue() == 0) {
+        binanceClient
+          .order({
+            symbol: pair,
+            type: OrderType.MARKET,
+            quantity: String(assetBalance),
+            side: OrderSide.SELL,
+          })
+          .then(() => {
+            this.counters[pair].reset();
+            log(`The trade on ${pair} has been closed because of its duration`);
+          })
+          .catch(error);
+        return;
+      }
+    }
 
     // Prevent remaining open orders
     if (assetBalance === 0 && currentOpenOrders.length > 0) {
@@ -355,6 +386,28 @@ export class Bot {
       tradingSession
     );
 
+    // The current position is too long ?
+    if ((hasShortPosition || hasLongPosition) && this.counters[pair]) {
+      this.counters[pair].decrement();
+      if (this.counters[pair].getValue() == 0) {
+        binanceClient
+          .futuresOrder({
+            symbol: pair,
+            type: OrderType.MARKET,
+            quantity: String(positionSize),
+            side: hasLongPosition ? OrderSide.SELL : OrderSide.BUY,
+          })
+          .then(() => {
+            this.counters[pair].reset();
+            log(
+              `The position on ${pair} has been closed because of its duration`
+            );
+          })
+          .catch(error);
+        return;
+      }
+    }
+
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
       this.closeOpenOrders(pair);
@@ -374,7 +427,6 @@ export class Bot {
             type: OrderType.MARKET,
             symbol: pair,
             quantity: String(positionSize),
-            recvWindow: 60000,
           })
           .then(() => {
             this.closeOpenOrders(pair);
@@ -436,7 +488,6 @@ export class Bot {
           type: OrderType.MARKET,
           symbol: pair,
           quantity: String(quantity),
-          recvWindow: 60000,
         })
         .then(() => {
           // Cancel the previous orders to update them

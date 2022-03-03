@@ -2,7 +2,7 @@ export class Counter {
   private value: number;
   private initialValue: number;
 
-  constructor(initialValue: number) {
+  constructor(initialValue = 0) {
     this.value = initialValue;
     this.initialValue = initialValue;
   }

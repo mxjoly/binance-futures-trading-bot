@@ -38,6 +38,18 @@ export function randomGaussian(val = 1) {
 }
 
 /**
+ * Calculate the average of an array of number
+ * @param val
+ */
+export function average(val: number[]) {
+  let sum = 0;
+  for (let i = 0; i < val.length; i++) {
+    sum += val[i];
+  }
+  return sum / val.length;
+}
+
+/**
  * Normalizes a value from one range (current) to another (new).
  * @param val
  * @param minVal

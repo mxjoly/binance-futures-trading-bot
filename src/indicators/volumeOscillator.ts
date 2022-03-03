@@ -22,7 +22,7 @@ export function calculate({
   longLength?: number;
   shortLength?: number;
 }) {
-  let results = [];
+  let results: number[] = [];
 
   let emaVolLong = EMA.calculate({
     period: longLength,

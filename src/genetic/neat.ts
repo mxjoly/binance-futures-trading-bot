@@ -1,4 +1,4 @@
-import { randomIntFromInterval } from '../utils/math';
+import { randomGaussian, randomIntFromInterval } from '../utils/math';
 import Trader from './trader';
 
 /**
@@ -55,5 +55,19 @@ export function select(traders: Trader[]) {
     if (runningSum > rand) {
       return traders[i].copy();
     }
+  }
+}
+
+/**
+ * Mutate a gene of the trade
+ * @param x
+ */
+export function mutate(x: number) {
+  if (Math.random() < 0.1) {
+    let offset = randomGaussian() * 0.5;
+    let newx = x + offset;
+    return newx;
+  } else {
+    return x;
   }
 }

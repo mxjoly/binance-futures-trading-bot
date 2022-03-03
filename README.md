@@ -35,6 +35,17 @@ You can backtest your own strategy by running the backtest mode. To do that, you
 
 ![demo](./demo/report-preview.png)
 
+## Neuro Evolution (NEAT)
+
+Find the best genome to your robot by tapping the commands:
+
+```
+npm run build:test
+npm run genetic:train
+```
+
+In the json config file, you can configure more.
+
 ## Todo
 
 - [ ] Calculation of the average buying price of an asset in spot
