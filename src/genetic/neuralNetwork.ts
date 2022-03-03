@@ -44,7 +44,7 @@ const NEURAL_NETWORK_INPUTS = {
 
 export const NUMBER_INPUTS =
   NEURAL_NETWORK_INPUTS_MODE === 'candles'
-    ? 21
+    ? CANDLE_LENGTH_INPUTS + 1
     : Object.entries(NEURAL_NETWORK_INPUTS).filter(([, val]) => val === true)
         .length + 1;
 
@@ -258,9 +258,13 @@ export function getInputsFromCandles(
     else return candles.map((c) => c.close);
   };
 
-  return getCandleSource(candles)
-    .slice(-length)
-    .concat([holdingTrade ? 1 : 0]);
+  if (candles.length < length) {
+    return new Array(length + 1).fill(0);
+  } else {
+    return getCandleSource(candles)
+      .slice(-length)
+      .concat([holdingTrade ? 1 : 0]);
+  }
 }
 
 /**
