@@ -15,41 +15,50 @@ import {
 } from 'technicalindicators';
 
 const GeneticConfig = BotConfig['genetic'];
-const NeuralNetworkInputsConfig = GeneticConfig['neural_network_inputs'];
+const NeuralNetworkConfig = GeneticConfig['neural_network'];
+const CandleInputsConfig = NeuralNetworkConfig['candle_inputs'];
+const IndicatorInputsConfig = NeuralNetworkConfig['indicator_inputs'];
+
+const NEURAL_NETWORK_INPUTS_MODE = NeuralNetworkConfig['inputs_mode'];
+
+const CANDLE_LENGTH_INPUTS = CandleInputsConfig['length'];
+const CANDLE_SOURCE = CandleInputsConfig['source'];
 
 // Configure the inputs of the neural network
 const NEURAL_NETWORK_INPUTS = {
-  EMA21: NeuralNetworkInputsConfig['EMA21'] || false,
-  EMA50: NeuralNetworkInputsConfig['EMA50'] || false,
-  EMA100: NeuralNetworkInputsConfig['EMA100'] || false,
-  ADX: NeuralNetworkInputsConfig['ADX'] || false,
-  AO: NeuralNetworkInputsConfig['AO'] || false,
-  CCI: NeuralNetworkInputsConfig['CCI'] || false,
-  MFI: NeuralNetworkInputsConfig['MFI'] || false,
-  ROC: NeuralNetworkInputsConfig['ROC'] || false,
-  RSI: NeuralNetworkInputsConfig['RSI'] || false,
-  WILLIAM_R: NeuralNetworkInputsConfig['WILLIAM_R'] || false,
-  KIJUN: NeuralNetworkInputsConfig['EMA21'] || false,
-  VWAP: NeuralNetworkInputsConfig['VWAP'] || false,
-  VOL_OSC: NeuralNetworkInputsConfig['VOL_OSC'] || false,
-  VOL: NeuralNetworkInputsConfig['VOL'] || false,
+  EMA21: IndicatorInputsConfig['EMA21'] || false,
+  EMA50: IndicatorInputsConfig['EMA50'] || false,
+  EMA100: IndicatorInputsConfig['EMA100'] || false,
+  ADX: IndicatorInputsConfig['ADX'] || false,
+  AO: IndicatorInputsConfig['AO'] || false,
+  CCI: IndicatorInputsConfig['CCI'] || false,
+  MFI: IndicatorInputsConfig['MFI'] || false,
+  ROC: IndicatorInputsConfig['ROC'] || false,
+  RSI: IndicatorInputsConfig['RSI'] || false,
+  WILLIAM_R: IndicatorInputsConfig['WILLIAM_R'] || false,
+  KIJUN: IndicatorInputsConfig['EMA21'] || false,
+  VWAP: IndicatorInputsConfig['VWAP'] || false,
+  VOL_OSC: IndicatorInputsConfig['VOL_OSC'] || false,
+  VOL: IndicatorInputsConfig['VOL'] || false,
 };
 
 export const NUMBER_INPUTS =
-  Object.entries(NEURAL_NETWORK_INPUTS).filter(([, val]) => val === true)
-    .length + 1;
+  NEURAL_NETWORK_INPUTS_MODE === 'candles'
+    ? 21
+    : Object.entries(NEURAL_NETWORK_INPUTS).filter(([, val]) => val === true)
+        .length + 1;
 
 export const NUMBER_HIDDEN_NODES = NUMBER_INPUTS;
 
 export const NUMBER_OUTPUTS = 3;
 
 /**
- * Calculate the inputs for the neural network
+ * Generate the inputs of neural network from indicators
  * @param pair
  * @param candles
  * @param extra
  */
-export function getInputs(
+export function getInputsFromIndicators(
   pair: string,
   candles: CandleData[],
   extra: { wallet?: Wallet; futuresWallet?: FuturesWallet }
@@ -217,6 +226,44 @@ export function getInputs(
 }
 
 /**
+ * Generate the inputs of neural network from candles
+ * @param candles
+ */
+export function getInputsFromCandles(
+  pair: string,
+  candles: CandleData[],
+  length: number,
+  extra: { wallet?: Wallet; futuresWallet?: FuturesWallet }
+) {
+  // Currently holding a trade/position?
+  let holdingTrade = false;
+  if (extra.wallet) {
+    const balance = extra.wallet.balances.find((bal) => bal.symbol === pair);
+    holdingTrade = balance.quantity > 0;
+  }
+  if (extra.futuresWallet) {
+    const position = extra.futuresWallet.positions.find(
+      (pos) => pos.pair === pair
+    );
+    holdingTrade = position.size !== 0;
+  }
+
+  const getCandleSource = (candles: CandleData[]) => {
+    if (CANDLE_SOURCE === 'open') return candles.map((c) => c.open);
+    else if (CANDLE_SOURCE === 'close') return candles.map((c) => c.close);
+    else if (CANDLE_SOURCE === 'high') return candles.map((c) => c.high);
+    else if (CANDLE_SOURCE === 'low') return candles.map((c) => c.low);
+    else if (CANDLE_SOURCE === 'hl2')
+      return candles.map((c) => (c.high + c.low) / 2);
+    else return candles.map((c) => c.close);
+  };
+
+  return getCandleSource(candles)
+    .slice(-length)
+    .concat([holdingTrade ? 1 : 0]);
+}
+
+/**
  * Function to get the outputs of the neural network according to the inputs
  * @param pair
  * @param candles
@@ -230,7 +277,10 @@ export function getOutputs(
   extra: { wallet?: Wallet; futuresWallet?: FuturesWallet }
 ) {
   // Get the inputs
-  let inputs = getInputs(pair, candles, extra);
+  let inputs =
+    NEURAL_NETWORK_INPUTS_MODE === 'candles'
+      ? getInputsFromCandles(pair, candles, 20, extra)
+      : getInputsFromIndicators(pair, candles, extra);
 
   // Get the outputs from the network
   let actions = brain.predict(inputs);

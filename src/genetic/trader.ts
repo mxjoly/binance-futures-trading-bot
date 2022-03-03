@@ -11,6 +11,7 @@ import {
   NUMBER_INPUTS,
   NUMBER_OUTPUTS,
 } from './neuralNetwork';
+import { timeFrameToMinutes } from '../utils/timeFrame';
 
 // ==================================================================
 
@@ -474,13 +475,28 @@ class Trader {
    * Evaluate the score of the trader
    */
   private evaluate() {
-    if (this.totalProfit >= this.totalLoss) {
-      let profitRatio =
-        this.totalProfit / (Math.abs(this.totalLoss) + this.totalFees);
-      let totalNetProfit =
-        this.totalProfit - (Math.abs(this.totalLoss) + this.totalFees);
-      return totalNetProfit * profitRatio;
-    }
+    const totalDays = Math.round(
+      (timeFrameToMinutes(this.tradeConfig.loopInterval) *
+        this.historicCandleData.length) /
+        1440
+    );
+    const minimumTrades = totalDays * 1.5;
+    const maximumTrades = totalDays * 3;
+
+    if (this.numberTrades < minimumTrades || this.numberTrades > maximumTrades)
+      return 0;
+
+    if (this.totalProfit < this.totalLoss) return 0;
+
+    let profitRatio =
+      this.totalProfit / (Math.abs(this.totalLoss) + this.totalFees);
+    let totalNetProfit =
+      this.totalProfit - (Math.abs(this.totalLoss) + this.totalFees);
+    let winRate = this.totalWinningTrades / this.numberTrades;
+
+    return Math.round(
+      (totalNetProfit * profitRatio * winRate * this.numberTrades) / 100
+    );
   }
 }
 

@@ -52,7 +52,7 @@ const bar = new cliProgress.SingleBar(
 // ====================================================================== //
 
 // Save the backtest history to the database
-const SAVE_HISTORY = BacktestConfig['save'];
+const SAVE_HISTORY = BacktestConfig['save_db'];
 
 // Debug mode with console.log
 export const DEBUG = process.argv[2]

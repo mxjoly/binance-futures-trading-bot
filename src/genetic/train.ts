@@ -51,19 +51,18 @@ function displayBestTraderStats(bestTrader: Trader) {
   totalFees = decimalFloor(Math.abs(bestTrader.totalFees), 2);
   let profitRatio = decimalFloor(totalProfit / (totalLoss + totalFees), 2);
   let totalBalance = decimalFloor(wallet.totalWalletBalance, 2);
-  let winningRate = decimalFloor(totalWinningTrades / numberTrades, 2) * 100;
-  let roi =
-    decimalFloor(
-      (wallet.totalWalletBalance - initialCapital) / initialCapital,
-      2
-    ) * 100;
+  let winRate = decimalFloor((totalWinningTrades / numberTrades) * 100, 2);
+  let roi = decimalFloor(
+    ((wallet.totalWalletBalance - initialCapital) * 100) / initialCapital,
+    2
+  );
 
   console.log(`------------ Best Trader ------------`);
   console.log(`Score: ${score}`);
   console.log(`ROI: ${roi}%`);
   console.log(`Balance: ${totalBalance}`);
   console.log(`Trades: ${numberTrades}`);
-  console.log(`Win rate: ${winningRate}%`);
+  console.log(`Win rate: ${winRate}%`);
   console.log(`Profit Ratio: ${profitRatio}`);
   console.log(`Total Profit: ${totalProfit}`);
   console.log(`Total Loss: -${totalLoss}`);

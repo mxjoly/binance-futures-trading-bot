@@ -10,7 +10,7 @@
     "start_date": "2021-01-01 00:00:00",
     "end_date": "2021-03-31 00:00:00",
     "initial_capital": 10000,
-    "save": false
+    "save_db": false
   },
   "genetic": {
     "start_date_training": "2021-01-01 00:00:00",
@@ -19,22 +19,29 @@
     "end_date_test": "2021-03-01 00:00:00",
     "initial_capital": 10000,
     "population": 500,
-    "generations": 100,
-    "neural_network_inputs": {
-      "EMA21": true,
-      "EMA50": true,
-      "EMA100": true,
-      "ADX": false,
-      "AO": false,
-      "CCI": false,
-      "MFI": false,
-      "ROC": false,
-      "RSI": true,
-      "WILLIAM_R": false,
-      "KIJUN": false,
-      "VWAP": false,
-      "VOL_OSC": true,
-      "VOL": true
+    "generations": 300,
+    "neural_network": {
+      "inputs_mode": "candles",
+      "candle_inputs": {
+        "length": 20,
+        "source": "close"
+      },
+      "indicator_inputs": {
+        "EMA21": true,
+        "EMA50": false,
+        "EMA100": false,
+        "ADX": false,
+        "AO": false,
+        "CCI": false,
+        "MFI": false,
+        "ROC": false,
+        "RSI": true,
+        "WILLIAM_R": false,
+        "KIJUN": false,
+        "VWAP": false,
+        "VOL_OSC": false,
+        "VOL": true
+      }
     }
   }
 }
