@@ -117,7 +117,7 @@ class Trader {
       );
       let currentPrice = candles[candles.length - 1].close;
 
-      if (this.wallet.totalWalletBalance <= 0) {
+      if (this.wallet.totalWalletBalance <= this.initialCapital * 0.9) {
         break;
       } else {
         this.checkPositionMargin(asset + base, currentPrice);
@@ -299,8 +299,10 @@ class Trader {
         // Update profit and loss
         if (pnl >= 0) {
           this.totalProfit += pnl;
+          this.score += pnl;
         } else {
           this.totalLoss += pnl;
+          this.score += pnl;
         }
 
         // Update position
@@ -355,8 +357,10 @@ class Trader {
         // Update profit and loss
         if (pnl >= 0) {
           this.totalProfit += pnl;
+          this.score += pnl;
         } else {
           this.totalLoss += pnl;
+          this.score += pnl;
         }
 
         // Update position
@@ -481,7 +485,7 @@ class Trader {
         1440
     );
     const minimumTrades = totalDays * 1.5;
-    const maximumTrades = totalDays * 3;
+    const maximumTrades = totalDays * 4;
 
     if (this.numberTrades < minimumTrades || this.numberTrades > maximumTrades)
       return 0;
@@ -495,7 +499,9 @@ class Trader {
     let winRate = this.totalWinningTrades / this.numberTrades;
 
     return Math.round(
-      (totalNetProfit * profitRatio * winRate * this.numberTrades) / 100
+      (Math.pow(totalNetProfit, 2) * profitRatio * winRate) /
+        this.numberTrades /
+        100
     );
   }
 }

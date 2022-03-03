@@ -63,7 +63,7 @@ export const DEBUG = process.argv[2]
 
 // Max length of the candle arrays needed for the strategy and the calculation of indicators
 // Better to have the minimum to get a higher performance
-const MAX_LENGTH_CANDLES = 100;
+const MAX_LENGTH_CANDLES = 150;
 
 // Exchange fee info
 const TAKER_FEES =

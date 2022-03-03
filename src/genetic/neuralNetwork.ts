@@ -16,13 +16,7 @@ import {
 
 const GeneticConfig = BotConfig['genetic'];
 const NeuralNetworkConfig = GeneticConfig['neural_network'];
-const CandleInputsConfig = NeuralNetworkConfig['candle_inputs'];
 const IndicatorInputsConfig = NeuralNetworkConfig['indicator_inputs'];
-
-const NEURAL_NETWORK_INPUTS_MODE = NeuralNetworkConfig['inputs_mode'];
-
-const CANDLE_LENGTH_INPUTS = CandleInputsConfig['length'];
-const CANDLE_SOURCE = CandleInputsConfig['source'];
 
 // Configure the inputs of the neural network
 const NEURAL_NETWORK_INPUTS = {
@@ -36,17 +30,16 @@ const NEURAL_NETWORK_INPUTS = {
   ROC: IndicatorInputsConfig['ROC'] || false,
   RSI: IndicatorInputsConfig['RSI'] || false,
   WILLIAM_R: IndicatorInputsConfig['WILLIAM_R'] || false,
-  KIJUN: IndicatorInputsConfig['EMA21'] || false,
+  KIJUN: IndicatorInputsConfig['KIJUN'] || false,
   VWAP: IndicatorInputsConfig['VWAP'] || false,
   VOL_OSC: IndicatorInputsConfig['VOL_OSC'] || false,
+  PRICE_CHANGE: IndicatorInputsConfig['PRICE_CHANGE'] || false,
   VOL: IndicatorInputsConfig['VOL'] || false,
 };
 
 export const NUMBER_INPUTS =
-  NEURAL_NETWORK_INPUTS_MODE === 'candles'
-    ? CANDLE_LENGTH_INPUTS + 1
-    : Object.entries(NEURAL_NETWORK_INPUTS).filter(([, val]) => val === true)
-        .length + 1;
+  Object.entries(NEURAL_NETWORK_INPUTS).filter(([, val]) => val === true)
+    .length + 1;
 
 export const NUMBER_HIDDEN_NODES = NUMBER_INPUTS;
 
@@ -58,18 +51,19 @@ export const NUMBER_OUTPUTS = 3;
  * @param candles
  * @param extra
  */
-export function getInputsFromIndicators(
+export function getInputs(
   pair: string,
   candles: CandleData[],
   extra: { wallet?: Wallet; futuresWallet?: FuturesWallet }
 ) {
   // EMA21
-  const ema21 = NEURAL_NETWORK_INPUTS.EMA21
-    ? EMA.calculate({
-        period: 21,
-        values: candles.map((c) => c.close).slice(-21),
-      }).slice(-1)[0]
-    : null;
+  const ema21 =
+    NEURAL_NETWORK_INPUTS.EMA21 === true
+      ? EMA.calculate({
+          period: 21,
+          values: candles.map((c) => c.close).slice(-21),
+        }).slice(-1)[0]
+      : null;
 
   // EMA50
   const ema50 = NEURAL_NETWORK_INPUTS.EMA50
@@ -91,9 +85,9 @@ export function getInputsFromIndicators(
   const adx = NEURAL_NETWORK_INPUTS.ADX
     ? ADX.calculate({
         period: 14,
-        close: candles.map((c) => c.close).slice(-15),
-        high: candles.map((c) => c.high).slice(-15),
-        low: candles.map((c) => c.low).slice(-15),
+        close: candles.map((c) => c.close).slice(-28),
+        high: candles.map((c) => c.high).slice(-28),
+        low: candles.map((c) => c.low).slice(-28),
       }).slice(-1)[0].adx
     : null;
 
@@ -190,6 +184,13 @@ export function getInputsFromIndicators(
     ? candles[candles.length - 1].volume
     : null;
 
+  // Price change
+  const currentPrice = candles[candles.length - 1].close;
+  const olderPrice = candles[candles.length - 10].close;
+  const priceChange = NEURAL_NETWORK_INPUTS.PRICE_CHANGE
+    ? (currentPrice - olderPrice) / olderPrice
+    : null;
+
   // Currently holding a trade/position?
   let holdingTrade = false;
   if (extra.wallet) {
@@ -219,52 +220,11 @@ export function getInputsFromIndicators(
     kijun,
     volOsc,
     vol,
+    priceChange,
     holdingTrade ? 1 : 0,
   ].filter((i) => i !== null);
 
   return inputs;
-}
-
-/**
- * Generate the inputs of neural network from candles
- * @param candles
- */
-export function getInputsFromCandles(
-  pair: string,
-  candles: CandleData[],
-  length: number,
-  extra: { wallet?: Wallet; futuresWallet?: FuturesWallet }
-) {
-  // Currently holding a trade/position?
-  let holdingTrade = false;
-  if (extra.wallet) {
-    const balance = extra.wallet.balances.find((bal) => bal.symbol === pair);
-    holdingTrade = balance.quantity > 0;
-  }
-  if (extra.futuresWallet) {
-    const position = extra.futuresWallet.positions.find(
-      (pos) => pos.pair === pair
-    );
-    holdingTrade = position.size !== 0;
-  }
-
-  const getCandleSource = (candles: CandleData[]) => {
-    if (CANDLE_SOURCE === 'open') return candles.map((c) => c.open);
-    else if (CANDLE_SOURCE === 'close') return candles.map((c) => c.close);
-    else if (CANDLE_SOURCE === 'high') return candles.map((c) => c.high);
-    else if (CANDLE_SOURCE === 'low') return candles.map((c) => c.low);
-    else if (CANDLE_SOURCE === 'hl2')
-      return candles.map((c) => (c.high + c.low) / 2);
-    else return candles.map((c) => c.close);
-  };
-
-  if (candles.length < length) {
-    return new Array(length + 1).fill(0);
-  } else {
-    return getCandleSource(candles)
-      .slice(-length)
-      .concat([holdingTrade ? 1 : 0]);
-  }
 }
 
 /**
@@ -280,11 +240,11 @@ export function getOutputs(
   brain: NeuralNetwork,
   extra: { wallet?: Wallet; futuresWallet?: FuturesWallet }
 ) {
+  // We need at maximum 100 candles to calculate all the indicators value for the inputs
+  if (candles.length < 100) return;
+
   // Get the inputs
-  let inputs =
-    NEURAL_NETWORK_INPUTS_MODE === 'candles'
-      ? getInputsFromCandles(pair, candles, 20, extra)
-      : getInputsFromIndicators(pair, candles, extra);
+  let inputs = getInputs(pair, candles, extra);
 
   // Get the outputs from the network
   let actions = brain.predict(inputs);
