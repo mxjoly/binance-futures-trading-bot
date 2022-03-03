@@ -190,7 +190,7 @@ export default function (
   `;
 
   const directory = path.join(process.cwd(), 'reports');
-  let file = path.join(directory, `${strategyName}_strategy-report.html`);
+  let file = path.join(directory, `${strategyName}-report-${Date.now()}.html`);
 
   if (!fs.existsSync(directory)) fs.mkdirSync(directory);
   if (fs.existsSync(file)) fs.unlinkSync(file);

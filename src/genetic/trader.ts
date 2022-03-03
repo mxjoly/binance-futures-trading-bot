@@ -11,7 +11,6 @@ import {
   NUMBER_OUTPUTS,
 } from './neuralNetwork';
 import { timeFrameToMinutes } from '../utils/timeFrame';
-import { decimalCeil, decimalFloor } from '../utils/math';
 import { calculateActivationPrice } from '../utils/trailingStop';
 import {
   getPricePrecision,

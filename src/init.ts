@@ -1,7 +1,7 @@
 import fs from 'fs';
 import Binance, { CandleChartInterval } from 'binance-api-node';
 import { createLogger, transports, format } from 'winston';
-import { initializePlugins } from './utils/plugins';
+import { initializePlugins } from './utils/dayjsPlugins';
 import safeRequire from 'safe-require';
 
 export const BotConfig = safeRequire(`${process.cwd()}/config.json`);

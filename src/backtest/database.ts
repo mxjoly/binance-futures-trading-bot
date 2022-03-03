@@ -1,22 +1,14 @@
 import { JsonDB } from 'node-json-db';
 import { Config } from 'node-json-db/dist/lib/JsonDBConfig';
-import dayjs from 'dayjs';
 
 /**
  * See the declaration file types.ts to see the scheme of database
  */
 export let db: JsonDB;
 
-export const createDatabase = (strategyName?: string) => {
+export const createDatabase = (strategyName: string) => {
   db = new JsonDB(
-    new Config(
-      `temp/${
-        strategyName ? strategyName.toLowerCase() + '-' : ''
-      }trace-${dayjs(new Date()).format('YYYY-MM-DD_HH-mm-ss')}`,
-      true,
-      true,
-      '/'
-    )
+    new Config(`temp/${strategyName}-trace-${Date.now()}`, true, true, '/')
   );
 };
 

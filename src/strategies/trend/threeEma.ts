@@ -15,7 +15,21 @@ const defaultOptions: Options = {
 /**
  * Return true if the close of the last candle is over the EMA 200
  */
-export function getTrend(candles: CandleData[], options = defaultOptions) {
+export function getTrend(
+  candles: CandleData[],
+  options = defaultOptions
+): Trend {
+  if (
+    candles.length <=
+    Math.max(
+      options.emaShortPeriod,
+      options.emaMediumPeriod,
+      options.emaLongPeriod
+    )
+  ) {
+    return 0;
+  }
+
   const emaShort = EMA.calculate({
     values: candles.map((candle) => candle.close),
     period: options.emaShortPeriod,

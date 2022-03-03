@@ -62,7 +62,8 @@ type TrendFilter = (
   candles: CandlesDataMultiTimeFrames,
   options?: any
 ) => Trend;
-type Trend = 1 | -1 | 0; // 1: up trend, -1: down trend, 0: no trend
+
+type Trend = 1 | -1 | 0; // 1: up trend, -1: down trend, 0: neutral
 
 interface RiskManagementOptions {
   asset: string;

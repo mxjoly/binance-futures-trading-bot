@@ -3,7 +3,7 @@ import path from 'path';
 import { NeuralNetwork } from '../lib/neuralNetwork';
 
 const tempDirectory = path.resolve(process.cwd(), 'temp');
-const saveFile = path.join(tempDirectory, 'nn-save.json');
+const saveFile = path.join(tempDirectory, `nn-save-${Date.now()}.json`);
 
 /**
  * Save the neural network in a txt file
