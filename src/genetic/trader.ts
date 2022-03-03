@@ -1,11 +1,6 @@
 import dayjs from 'dayjs';
 import { Binance, ExchangeInfo, OrderSide } from 'binance-api-node';
 import { NeuralNetwork } from '../lib/neuralNetwork';
-import {
-  getPricePrecision,
-  getQuantityPrecision,
-  isValidQuantity,
-} from '../utils/currencyInfo';
 import { Counter } from '../tools/counter';
 import { mutate } from './neat';
 import { BotConfig } from '../init';
@@ -17,6 +12,12 @@ import {
 } from './neuralNetwork';
 import { timeFrameToMinutes } from '../utils/timeFrame';
 import { decimalCeil, decimalFloor } from '../utils/math';
+import { calculateActivationPrice } from '../utils/trailingStop';
+import {
+  getPricePrecision,
+  getQuantityPrecision,
+  isValidQuantity,
+} from '../utils/currencyInfo';
 
 // ==================================================================
 
@@ -352,34 +353,17 @@ class Trader {
       }
 
       if (trailingStopConfig) {
-        // Calculate the activation price for the trailing stop according tot the trailing stop configuration
-        const calculateActivationPrice = (currentPrice: number) => {
-          let { percentageToTP, changePercentage } =
-            trailingStopConfig.activation;
-
-          if (takeProfits.length > 0 && percentageToTP) {
-            const nearestTakeProfitPrice = Math.min(
-              ...takeProfits.map((tp) => tp.price)
-            );
-            let delta = Math.abs(nearestTakeProfitPrice - currentPrice);
-            return decimalFloor(
-              currentPrice + delta * percentageToTP,
-              pricePrecision
-            );
-          } else if (changePercentage) {
-            return decimalFloor(
-              currentPrice * (1 + changePercentage),
-              pricePrecision
-            );
-          } else {
-            return currentPrice;
-          }
-        };
+        let activationPrice = calculateActivationPrice(
+          trailingStopConfig,
+          position.entryPrice,
+          pricePrecision,
+          takeProfits
+        );
 
         this.orderTrailingStop(
           asset,
           base,
-          calculateActivationPrice(position.entryPrice),
+          activationPrice,
           Math.abs(position.size),
           'SHORT',
           trailingStopConfig
@@ -484,34 +468,17 @@ class Trader {
       }
 
       if (trailingStopConfig) {
-        // Calculate the activation price for the trailing stop according tot the trailing stop configuration
-        const calculateActivationPrice = (currentPrice: number) => {
-          let { percentageToTP, changePercentage } =
-            trailingStopConfig.activation;
-
-          if (takeProfits.length > 0 && percentageToTP) {
-            const nearestTakeProfitPrice = Math.max(
-              ...takeProfits.map((tp) => tp.price)
-            );
-            let delta = Math.abs(currentPrice - nearestTakeProfitPrice);
-            return decimalCeil(
-              currentPrice - delta * percentageToTP,
-              pricePrecision
-            );
-          } else if (changePercentage) {
-            return decimalCeil(
-              currentPrice * (1 - changePercentage),
-              pricePrecision
-            );
-          } else {
-            return currentPrice;
-          }
-        };
+        let activationPrice = calculateActivationPrice(
+          trailingStopConfig,
+          position.entryPrice,
+          pricePrecision,
+          takeProfits
+        );
 
         this.orderTrailingStop(
           asset,
           base,
-          calculateActivationPrice(position.entryPrice),
+          activationPrice,
           Math.abs(position.size),
           'LONG',
           trailingStopConfig

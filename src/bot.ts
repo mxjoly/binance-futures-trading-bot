@@ -5,6 +5,7 @@ import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient, BINANCE_MODE } from './init';
 import { loadCandlesMultiTimeFramesFromAPI } from './utils/candleData';
 import { Counter } from './tools/counter';
+import { calculateActivationPrice } from './utils/trailingStop';
 import {
   getPricePrecision,
   getQuantityPrecision,
@@ -547,29 +548,12 @@ export class Bot {
           }
 
           if (trailingStopConfig) {
-            // Calculate the activation price based on the config of the trailing stop
-            const calculateActivationPrice = (currentPrice: number) => {
-              let { percentageToTP, changePercentage } =
-                trailingStopConfig.activation;
-
-              if (takeProfits.length > 0 && percentageToTP) {
-                const nearestTakeProfitPrice = Math.min(
-                  ...takeProfits.map((tp) => tp.price)
-                );
-                let delta = Math.abs(nearestTakeProfitPrice - currentPrice);
-                return decimalFloor(
-                  currentPrice + delta * percentageToTP,
-                  pricePrecision
-                );
-              } else if (changePercentage) {
-                return decimalFloor(
-                  currentPrice * (1 + changePercentage),
-                  pricePrecision
-                );
-              } else {
-                return currentPrice;
-              }
-            };
+            let activationPrice = calculateActivationPrice(
+              trailingStopConfig,
+              avgPrice,
+              pricePrecision,
+              takeProfits
+            );
 
             binanceClient
               .futuresOrder({
@@ -578,7 +562,7 @@ export class Bot {
                 symbol: pair,
                 quantity: String(positionTotalSize),
                 callbackRate: trailingStopConfig.callbackRate * 100,
-                activationPrice: calculateActivationPrice(avgPrice),
+                activationPrice,
               })
               .catch(error);
           }
@@ -736,29 +720,12 @@ export class Bot {
           }
 
           if (trailingStopConfig) {
-            // Calculate the activation price according to the config of the trailing stop
-            const calculateActivationPrice = (currentPrice: number) => {
-              let { percentageToTP, changePercentage } =
-                trailingStopConfig.activation;
-
-              if (takeProfits.length > 0 && percentageToTP) {
-                const nearestTakeProfitPrice = Math.max(
-                  ...takeProfits.map((tp) => tp.price)
-                );
-                let delta = Math.abs(currentPrice - nearestTakeProfitPrice);
-                return decimalCeil(
-                  currentPrice - delta * percentageToTP,
-                  pricePrecision
-                );
-              } else if (changePercentage) {
-                return decimalCeil(
-                  currentPrice * (1 - changePercentage),
-                  pricePrecision
-                );
-              } else {
-                return currentPrice;
-              }
-            };
+            let activationPrice = calculateActivationPrice(
+              trailingStopConfig,
+              avgPrice,
+              pricePrecision,
+              takeProfits
+            );
 
             binanceClient
               .futuresOrder({
@@ -767,7 +734,7 @@ export class Bot {
                 symbol: pair,
                 quantity: String(positionTotalSize),
                 callbackRate: trailingStopConfig.callbackRate * 100,
-                activationPrice: calculateActivationPrice(avgPrice),
+                activationPrice,
               })
               .catch(error);
           }

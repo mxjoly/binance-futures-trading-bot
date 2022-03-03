@@ -14,6 +14,7 @@ import generateHTMLReport from './generateReport';
 import { NeuralNetwork } from '../lib/neuralNetwork';
 import { getOutputs } from '../genetic/neuralNetwork';
 import { Counter } from '../tools/counter';
+import { calculateActivationPrice } from '../utils/trailingStop';
 import {
   getPricePrecision,
   getQuantityPrecision,
@@ -1169,34 +1170,17 @@ export class BackTestBot {
       }
 
       if (trailingStopConfig) {
-        // Calculate the activation price for the trailing stop according tot the trailing stop configuration
-        const calculateActivationPrice = (currentPrice: number) => {
-          let { percentageToTP, changePercentage } =
-            trailingStopConfig.activation;
-
-          if (takeProfits.length > 0 && percentageToTP) {
-            const nearestTakeProfitPrice = Math.min(
-              ...takeProfits.map((tp) => tp.price)
-            );
-            let delta = Math.abs(nearestTakeProfitPrice - currentPrice);
-            return decimalFloor(
-              currentPrice + delta * percentageToTP,
-              pricePrecision
-            );
-          } else if (changePercentage) {
-            return decimalFloor(
-              currentPrice * (1 + changePercentage),
-              pricePrecision
-            );
-          } else {
-            return currentPrice;
-          }
-        };
+        let activationPrice = calculateActivationPrice(
+          trailingStopConfig,
+          position.entryPrice,
+          pricePrecision,
+          takeProfits
+        );
 
         this.futuresOrderTrailingStop(
           asset,
           base,
-          calculateActivationPrice(position.entryPrice),
+          activationPrice,
           Math.abs(position.size),
           'SHORT',
           trailingStopConfig
@@ -1307,34 +1291,17 @@ export class BackTestBot {
       }
 
       if (trailingStopConfig) {
-        // Calculate the activation price for the trailing stop according tot the trailing stop configuration
-        const calculateActivationPrice = (currentPrice: number) => {
-          let { percentageToTP, changePercentage } =
-            trailingStopConfig.activation;
-
-          if (takeProfits.length > 0 && percentageToTP) {
-            const nearestTakeProfitPrice = Math.max(
-              ...takeProfits.map((tp) => tp.price)
-            );
-            let delta = Math.abs(currentPrice - nearestTakeProfitPrice);
-            return decimalCeil(
-              currentPrice - delta * percentageToTP,
-              pricePrecision
-            );
-          } else if (changePercentage) {
-            return decimalCeil(
-              currentPrice * (1 - changePercentage),
-              pricePrecision
-            );
-          } else {
-            return currentPrice;
-          }
-        };
+        let activationPrice = calculateActivationPrice(
+          trailingStopConfig,
+          position.entryPrice,
+          pricePrecision,
+          takeProfits
+        );
 
         this.futuresOrderTrailingStop(
           asset,
           base,
-          calculateActivationPrice(position.entryPrice),
+          activationPrice,
           Math.abs(position.size),
           'LONG',
           trailingStopConfig

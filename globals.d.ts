@@ -45,6 +45,8 @@ type TrailingStopConfig = {
   callbackRate: number; // Percentage between 0 and 1 - stop loss if the price increase/decrease of % from last candle
 };
 
+type TakeProfit = { price: number; quantityPercentage: number }; // quantityPercentage = 0.1 => 10%
+
 // Strategy for Take Profits and Stop Loss
 type ExitStrategy = (
   price?: number,
@@ -52,7 +54,7 @@ type ExitStrategy = (
   pricePrecision?: number,
   side: OrderSide // type from binance api lib
 ) => {
-  takeProfits: { price: number; quantityPercentage: number }[]; // quantityPercentage = 0.1 => 10%
+  takeProfits: TakeProfit[];
   stopLoss?: number;
 };
 
