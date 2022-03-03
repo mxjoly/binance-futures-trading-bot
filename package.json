@@ -12,8 +12,8 @@
     "test": "cross-env NODE_ENV=test node ./build/index.js DEBUG=false",
     "test:nn": "cross-env NODE_ENV=test node ./build/index.js DEBUG=false NN=true",
     "test:debug": "cross-env NODE_ENV=test node ./build/index.js DEBUG=true",
-    "genetic:train": "cross-env NODE_ENV=test node ./build/ai/index.js RESET=false",
-    "genetic:train-reset": "cross-env NODE_ENV=test node ./build/ai/index.js RESET=true"
+    "genetic:train": "cross-env NODE_ENV=test node ./build/genetic/index.js RESET=false",
+    "genetic:train-reset": "cross-env NODE_ENV=test node ./build/genetic/index.js RESET=true"
   },
   "keywords": [],
   "author": "mxjoly <maxime.joly2808@gmail.com>",

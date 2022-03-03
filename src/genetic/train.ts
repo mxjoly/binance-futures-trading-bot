@@ -4,7 +4,7 @@ import Binance from 'binance-api-node';
 import Trader from './trader';
 import { BotConfig } from '../init';
 import { loadCandlesFromCSV } from '../utils/candleData';
-import Config from '../configs/ai';
+import Config from '../configs/genetic';
 import { loadNeuralNetwork, saveNeuralNetwork } from './saveManager';
 import { generate, normalizeFitness } from './neat';
 import { decimalFloor } from '../utils/math';
