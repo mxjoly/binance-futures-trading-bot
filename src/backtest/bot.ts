@@ -537,6 +537,7 @@ export class BackTestBot {
       totalTrades,
       totalProfit,
       totalLoss,
+      totalFees,
     } = this.strategyReport;
 
     this.strategyReport.testPeriod = `${dayjs(this.startDate).format(
@@ -566,13 +567,9 @@ export class BackTestBot {
       this.strategyReport.totalFees,
       2
     );
-    this.strategyReport.profitFactor = Math.abs(
-      decimalFloor(
-        BINANCE_MODE === 'spot'
-          ? this.evaluateSpotWalletBaseValue() / this.initialCapital
-          : this.futuresWallet.totalWalletBalance / this.initialCapital,
-        2
-      )
+    this.strategyReport.profitFactor = decimalFloor(
+      totalProfit / (Math.abs(totalLoss) + totalFees),
+      2
     );
     this.strategyReport.maxAbsoluteDrawdown = -decimalFloor(
       (1 - this.maxAbsoluteDrawdown) * 100,
@@ -877,10 +874,9 @@ export class BackTestBot {
     const isSellSignal = this.brain
       ? this.think(asset, candles[loopInterval], tradeConfig) === 'SELL'
       : sellStrategy(candles);
-    const closePosition =
-      this.brain && !exitStrategy
-        ? this.think(pair, candles[loopInterval], tradeConfig) === 'CLOSE'
-        : false;
+    const closePosition = this.brain
+      ? this.think(pair, candles[loopInterval], tradeConfig) === 'CLOSE'
+      : false;
 
     // Prevent remaining open orders
     if (assetBalance === 0 && currentOpenOrders.length > 0)
@@ -1037,10 +1033,9 @@ export class BackTestBot {
     const isSellSignal = this.brain
       ? this.think(pair, candles[loopInterval], tradeConfig) === 'SELL'
       : sellStrategy(candles);
-    const closePosition =
-      this.brain && !exitStrategy
-        ? this.think(pair, candles[loopInterval], tradeConfig) === 'CLOSE'
-        : false;
+    const closePosition = this.brain
+      ? this.think(pair, candles[loopInterval], tradeConfig) === 'CLOSE'
+      : false;
 
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
@@ -1344,7 +1339,7 @@ export class BackTestBot {
     );
     const { margin, unrealizedProfit, size, positionSide } = position;
 
-    if (margin + unrealizedProfit <= 0) {
+    if (size !== 0 && margin + unrealizedProfit <= 0) {
       this.futuresOrderMarket(
         pair,
         currentPrice,

@@ -28,7 +28,7 @@ You can create your own strategy for your bot. The file must be placed in `src/c
 
 You can backtest your own strategy by running the backtest mode. To do that, you need to:
 
-1. Download the data for your currencies at https://www.cryptodatadownload.com/data/binance/ and move the files to the folder `data`. Run the command `npm run data` to generate your historical data on multiple time frames (1m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, 1d) that you want.
+1. Download the data for your currencies at https://www.cryptodatadownload.com/data/binance/ and move the files to the folder `data`. Delete the first line of the file content and run the command `npm run data` to generate your historical data on multiple time frames (1m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, 1d) that you want.
 2. When the data are ready, update the json file `config.json` as you want to prepare the backtest.
 3. Tap the commands `npm build:test` and `npm run test` to run the backtest.
 4. When the backtest ends, it generates a log file in the folder `logs` and an html report in `reports`. You can consulting these to evaluate the performance and profitability of your strategy.
@@ -52,7 +52,7 @@ In the json config file, you can configure more.
 - [ ] Implement machine learning (NEAT algorithm) to increase considerably the performance of the strategy
 - [ ] Add custom Telegram channel with the notifications of the robot when an action is executed
 - [ ] Trade management
-- [ ] Add a trade configuration property to limited the holding duration of a trade or position
+- [x] Add a trade configuration property to limited the holding duration of a trade or position
 - [ ] Spot portfolio arbitrage in spot
 
 ## Documentation

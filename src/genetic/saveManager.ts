@@ -1,9 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 import { NeuralNetwork } from '../lib/neuralNetwork';
+import { BotConfig } from '../init';
 
 const tempDirectory = path.resolve(process.cwd(), 'temp');
-const saveFile = path.join(tempDirectory, `nn-save-${Date.now()}.json`);
+const saveFile = path.join(
+  tempDirectory,
+  `${BotConfig['strategy_name']}-nn-save.json`
+);
 
 /**
  * Save the neural network in a txt file

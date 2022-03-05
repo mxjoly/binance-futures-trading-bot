@@ -41,18 +41,7 @@ class Trader {
   private counter: Counter; // to cut the position too long
 
   // Stats
-  public totalProfit: number;
-  public totalLoss: number;
-  public totalFees: number;
-  public totalTrades: number; // used to calculate the number trade made per day
-  public winningTrades: number;
-  public lostTrades: number;
-  public longTrades: number;
-  public shortTrades: number;
-  public longWinningTrades: number;
-  public longLostTrades: number;
-  public shortWinningTrades: number;
-  public shortLostTrades: number;
+  public stats: TraderStats;
 
   // Neat algorithm
   public brain: NeuralNetwork;
@@ -73,18 +62,22 @@ class Trader {
     this.historicCandleData = historicCandleData;
     this.initialCapital = initialCapital;
 
-    this.totalTrades = 0;
-    this.totalProfit = 0;
-    this.totalLoss = 0;
-    this.totalFees = 0;
-    this.winningTrades = 0;
-    this.lostTrades = 0;
-    this.longTrades = 0;
-    this.shortTrades = 0;
-    this.longWinningTrades = 0;
-    this.longLostTrades = 0;
-    this.shortWinningTrades = 0;
-    this.shortLostTrades = 0;
+    this.stats = {
+      totalTrades: 0,
+      totalProfit: 0,
+      totalLoss: 0,
+      totalFees: 0,
+      winningTrades: 0,
+      lostTrades: 0,
+      longTrades: 0,
+      shortTrades: 0,
+      longWinningTrades: 0,
+      longLostTrades: 0,
+      shortWinningTrades: 0,
+      shortLostTrades: 0,
+      maxBalance: initialCapital,
+      maxRelativeDrawdown: 0,
+    };
 
     this.openOrders = [];
     this.wallet = {
@@ -141,13 +134,16 @@ class Trader {
       );
       let currentPrice = candles[candles.length - 1].close;
 
-      if (this.wallet.totalWalletBalance <= this.initialCapital * 0.9) {
+      if (this.wallet.totalWalletBalance <= 0) {
         break;
       } else {
         this.checkPositionMargin(asset + base, currentPrice);
         this.checkFuturesOpenOrders(asset, base, candles);
         this.trade(this.tradeConfig, currentPrice, candles, this.exchangeInfo);
       }
+
+      // Update the max drawdown and max balance property for the strategy report
+      this.updateDrawdownMaxBalance();
     }
 
     // Default calculation of the score
@@ -237,10 +233,9 @@ class Trader {
       this.think(pair, candles) === 'BUY' && !hasShortPosition;
     const isSellSignal =
       this.think(pair, candles) === 'SELL' && !hasLongPosition;
-    const closePosition = exitStrategy
-      ? false
-      : this.think(pair, candles) === 'CLOSE' &&
-        (hasShortPosition || hasLongPosition);
+    const closePosition =
+      this.think(pair, candles) === 'CLOSE' &&
+      (hasShortPosition || hasLongPosition);
 
     // Close the current position
     if (closePosition && (hasLongPosition || hasShortPosition)) {
@@ -547,9 +542,9 @@ class Trader {
                   this.wallet.availableBalance -= baseCost + fees;
                   this.wallet.totalWalletBalance -= fees;
 
-                  this.totalTrades++;
-                  this.longTrades++;
-                  this.totalFees += fees;
+                  this.stats.totalTrades++;
+                  this.stats.longTrades++;
+                  this.stats.totalFees += fees;
                 }
               } else if (position.positionSide === 'SHORT') {
                 let hasPosition = position.size < 0;
@@ -576,23 +571,24 @@ class Trader {
                   let newPnl = this.getPositionPNL(position, price);
                   position.unrealizedProfit = newPnl;
                   this.wallet.availableBalance -= position.margin;
-                  this.totalTrades++;
-                  this.longTrades++;
+                  this.stats.totalTrades++;
+                  this.stats.longTrades++;
                 }
 
                 // Update profit and loss
                 if (pnl >= 0) {
-                  this.totalProfit += pnl;
-                  this.winningTrades++;
+                  this.stats.totalProfit += pnl;
+                  this.stats.winningTrades++;
                 } else {
-                  this.totalLoss += pnl;
-                  this.lostTrades++;
+                  this.stats.totalLoss += pnl;
+                  this.stats.lostTrades++;
                 }
 
                 if (hasPosition && entryPrice >= price)
-                  this.shortWinningTrades++;
-                if (hasPosition && entryPrice < price) this.shortLostTrades++;
-                this.totalFees += fees;
+                  this.stats.shortWinningTrades++;
+                if (hasPosition && entryPrice < price)
+                  this.stats.shortLostTrades++;
+                this.stats.totalFees += fees;
               }
 
               this.closeOpenOrder(id);
@@ -619,15 +615,15 @@ class Trader {
                 position.margin = Math.abs(position.size * price) / leverage;
 
                 if (pnl >= 0) {
-                  this.totalProfit += pnl;
-                  this.shortWinningTrades++;
-                  this.winningTrades++;
+                  this.stats.totalProfit += pnl;
+                  this.stats.shortWinningTrades++;
+                  this.stats.winningTrades++;
                 } else {
-                  this.totalLoss += pnl;
-                  this.shortLostTrades++;
-                  this.lostTrades++;
+                  this.stats.totalLoss += pnl;
+                  this.stats.shortLostTrades++;
+                  this.stats.lostTrades++;
                 }
-                this.totalFees += fees;
+                this.stats.totalFees += fees;
               }
             }
           }
@@ -672,9 +668,9 @@ class Trader {
                   this.wallet.availableBalance -= baseCost + fees;
                   this.wallet.totalWalletBalance -= fees;
 
-                  this.totalTrades++;
-                  this.shortTrades++;
-                  this.totalFees += fees;
+                  this.stats.totalTrades++;
+                  this.stats.shortTrades++;
+                  this.stats.totalFees += fees;
                 }
               } else if (position.positionSide === 'LONG') {
                 let hasPosition = position.size > 0;
@@ -701,23 +697,24 @@ class Trader {
                   let newPnl = this.getPositionPNL(position, price);
                   position.unrealizedProfit = newPnl;
                   this.wallet.availableBalance -= position.margin;
-                  this.totalTrades++;
-                  this.shortTrades++;
+                  this.stats.totalTrades++;
+                  this.stats.shortTrades++;
                 }
 
                 // Update profit and loss
                 if (pnl >= 0) {
-                  this.totalProfit += pnl;
-                  this.winningTrades++;
+                  this.stats.totalProfit += pnl;
+                  this.stats.winningTrades++;
                 } else {
-                  this.totalLoss += pnl;
-                  this.lostTrades++;
+                  this.stats.totalLoss += pnl;
+                  this.stats.lostTrades++;
                 }
 
                 if (hasPosition && entryPrice <= price)
-                  this.longWinningTrades++;
-                if (hasPosition && entryPrice > price) this.longLostTrades++;
-                this.totalFees += fees;
+                  this.stats.longWinningTrades++;
+                if (hasPosition && entryPrice > price)
+                  this.stats.longLostTrades++;
+                this.stats.totalFees += fees;
               }
 
               this.closeOpenOrder(id);
@@ -743,15 +740,15 @@ class Trader {
                 position.margin = Math.abs(position.size * price) / leverage;
 
                 if (pnl >= 0) {
-                  this.totalProfit += pnl;
-                  this.longWinningTrades++;
-                  this.winningTrades++;
+                  this.stats.totalProfit += pnl;
+                  this.stats.longWinningTrades++;
+                  this.stats.winningTrades++;
                 } else {
-                  this.totalLoss += pnl;
-                  this.longLostTrades++;
-                  this.lostTrades++;
+                  this.stats.totalLoss += pnl;
+                  this.stats.longLostTrades++;
+                  this.stats.lostTrades++;
                 }
-                this.totalFees += fees;
+                this.stats.totalFees += fees;
               }
             }
           }
@@ -805,17 +802,17 @@ class Trader {
           wallet.totalWalletBalance -= fees;
 
           if (!hasPosition) {
-            this.totalTrades++;
-            this.longTrades++;
+            this.stats.totalTrades++;
+            this.stats.longTrades++;
           }
-          this.totalFees += fees;
+          this.stats.totalFees += fees;
         }
       } else if (position.positionSide === 'SHORT') {
         // Update wallet
         let pnl = this.getPositionPNL(position, price);
         wallet.availableBalance += position.margin + pnl - fees;
         wallet.totalWalletBalance += pnl - fees;
-        this.totalFees += fees;
+        this.stats.totalFees += fees;
 
         // Update position
         position.size += quantity;
@@ -834,24 +831,24 @@ class Trader {
           let newPnl = this.getPositionPNL(position, price);
           position.unrealizedProfit = newPnl;
           wallet.availableBalance -= position.margin;
-          this.totalTrades++;
-          this.longTrades++;
+          this.stats.totalTrades++;
+          this.stats.longTrades++;
         }
 
         // Update profit and loss
         if (pnl >= 0) {
-          this.totalProfit += pnl;
+          this.stats.totalProfit += pnl;
         } else {
-          this.totalLoss += pnl;
+          this.stats.totalLoss += pnl;
         }
 
         if (hasPosition && entryPrice >= price) {
-          this.winningTrades++;
-          this.shortWinningTrades++;
+          this.stats.winningTrades++;
+          this.stats.shortWinningTrades++;
         }
         if (hasPosition && entryPrice < price) {
-          this.lostTrades++;
-          this.shortLostTrades++;
+          this.stats.lostTrades++;
+          this.stats.shortLostTrades++;
         }
       }
     } else if (side === 'SELL') {
@@ -872,17 +869,17 @@ class Trader {
           wallet.totalWalletBalance -= fees;
 
           if (!hasPosition) {
-            this.totalTrades++;
-            this.shortTrades++;
+            this.stats.totalTrades++;
+            this.stats.shortTrades++;
           }
-          this.totalFees += fees;
+          this.stats.totalFees += fees;
         }
       } else if (position.positionSide === 'LONG') {
         // Update wallet
         let pnl = this.getPositionPNL(position, price);
         wallet.availableBalance += position.margin + pnl - fees;
         wallet.totalWalletBalance += pnl - fees;
-        this.totalFees += fees;
+        this.stats.totalFees += fees;
 
         // Update position
         position.size -= quantity;
@@ -901,24 +898,24 @@ class Trader {
           let newPnl = this.getPositionPNL(position, price);
           position.unrealizedProfit = newPnl;
           wallet.availableBalance -= position.margin;
-          this.totalTrades++;
-          this.shortTrades++;
+          this.stats.totalTrades++;
+          this.stats.shortTrades++;
         }
 
         // Update profit and loss
         if (pnl >= 0) {
-          this.totalProfit += pnl;
+          this.stats.totalProfit += pnl;
         } else {
-          this.totalLoss += pnl;
+          this.stats.totalLoss += pnl;
         }
 
         if (hasPosition && entryPrice <= price) {
-          this.winningTrades++;
-          this.longWinningTrades++;
+          this.stats.winningTrades++;
+          this.stats.longWinningTrades++;
         }
         if (hasPosition && entryPrice > price) {
-          this.lostTrades++;
-          this.longLostTrades++;
+          this.stats.lostTrades++;
+          this.stats.longLostTrades++;
         }
       }
     }
@@ -1030,7 +1027,7 @@ class Trader {
     const position = this.wallet.positions.find((pos) => pos.pair === pair);
     const { margin, unrealizedProfit, size, positionSide } = position;
 
-    if (margin + unrealizedProfit <= 0) {
+    if (size !== 0 && margin + unrealizedProfit <= 0) {
       this.orderMarket(
         pair,
         currentPrice,
@@ -1100,6 +1097,23 @@ class Trader {
   }
 
   /**
+   * Update the max drawdown and max balance with the current state of the wallet
+   */
+  private updateDrawdownMaxBalance() {
+    // Max balance update
+    if (this.wallet.totalWalletBalance > this.stats.maxBalance) {
+      this.stats.maxBalance = this.wallet.totalWalletBalance;
+    }
+    // Max relative drawdown update
+    let relativeDrawdown =
+      (this.wallet.totalWalletBalance - this.stats.maxBalance) /
+      this.stats.maxBalance;
+    if (relativeDrawdown < this.stats.maxRelativeDrawdown) {
+      this.stats.maxRelativeDrawdown = relativeDrawdown;
+    }
+  }
+
+  /**
    * Search an action from the neural network
    * @param pair
    * @param candles
@@ -1142,23 +1156,40 @@ class Trader {
     const minimumTrades = totalDays * 1.5;
     const maximumTrades = totalDays * 4;
 
-    if (this.totalTrades < minimumTrades || this.totalTrades > maximumTrades)
-      return 0;
+    // The traders must have a certain number of trades
+    // if (
+    //   this.stats.totalTrades < minimumTrades ||
+    //   this.stats.totalTrades > maximumTrades
+    // )
+    //   return 0;
 
-    if (this.totalProfit < this.totalLoss) return 0;
+    // Kill the traders that are not profitable
+    if (this.stats.totalProfit < this.stats.totalLoss) return 0;
+
+    // Kill the traders with a drawdown too high
+    if (this.stats.maxRelativeDrawdown < -0.1) return 0;
 
     let profitRatio =
-      this.totalProfit / (Math.abs(this.totalLoss) + this.totalFees);
+      this.stats.totalProfit /
+      (Math.abs(this.stats.totalLoss) + this.stats.totalFees);
     let totalNetProfit =
-      this.totalProfit - (Math.abs(this.totalLoss) + this.totalFees);
-    let winRate = this.winningTrades / this.totalTrades;
+      this.stats.totalProfit -
+      (Math.abs(this.stats.totalLoss) + this.stats.totalFees);
+    let winRate = this.stats.winningTrades / this.stats.totalTrades;
+    let roi =
+      (this.wallet.totalWalletBalance - this.initialCapital) /
+      this.initialCapital;
 
+    // ========================================================= //
+    // =================== SCORE CALCULATION =================== //
+    // ========================================================= //
+    // let score = totalNetProfit * winRate * profitRatio;
+    // let score = roi * winRate * profitRatio;
+    let score = winRate * profitRatio;
     // let score = totalNetProfit;
-    // score *= winRate;
-    // score *= profitRatio;
-    // return score;
+    // ========================================================= //
 
-    return winRate * profitRatio;
+    return score;
   }
 }
 

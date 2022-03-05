@@ -16,7 +16,11 @@ import {
 
 const GeneticConfig = BotConfig['genetic'];
 const NeuralNetworkConfig = GeneticConfig['neural_network'];
+const CandleInputsConfig = NeuralNetworkConfig['candle_inputs'];
 const IndicatorInputsConfig = NeuralNetworkConfig['indicator_inputs'];
+const NEURAL_NETWORK_INPUTS_MODE = NeuralNetworkConfig['inputs_mode'];
+const CANDLE_LENGTH_INPUTS = CandleInputsConfig['length'];
+const CANDLE_SOURCE = CandleInputsConfig['source'];
 
 // Configure the inputs of the neural network
 const NEURAL_NETWORK_INPUTS = {
@@ -37,9 +41,11 @@ const NEURAL_NETWORK_INPUTS = {
   VOL: IndicatorInputsConfig['VOL'] || false,
 };
 
-export const NUMBER_INPUTS = Object.entries(NEURAL_NETWORK_INPUTS).filter(
-  ([, val]) => val === true
-).length;
+export const NUMBER_INPUTS =
+  NEURAL_NETWORK_INPUTS_MODE === 'candles'
+    ? CANDLE_LENGTH_INPUTS
+    : Object.entries(NEURAL_NETWORK_INPUTS).filter(([, val]) => val === true)
+        .length;
 
 export const NUMBER_HIDDEN_NODES = NUMBER_INPUTS;
 
@@ -52,7 +58,7 @@ export const NUMBER_OUTPUTS = 2; // Buy / Sell
  * @param extra
  * @param useExitStrategy
  */
-export function getInputs(
+export function getInputsFromIndicators(
   pair: string,
   candles: CandleData[],
   extra: { wallet?: Wallet; futuresWallet?: FuturesWallet },
@@ -233,6 +239,46 @@ export function getInputs(
 }
 
 /**
+ * Generate the inputs of neural network from candles
+ * @param candles
+ */
+export function getInputsFromCandles(
+  pair: string,
+  candles: CandleData[],
+  length: number,
+  extra: { wallet?: Wallet; futuresWallet?: FuturesWallet },
+  useExitStrategy?: boolean
+) {
+  // Currently holding a trade/position?
+  let holdingTrade = false;
+  if (extra.wallet) {
+    const balance = extra.wallet.balances.find((bal) => bal.symbol === pair);
+    holdingTrade = balance.quantity > 0;
+  }
+  if (extra.futuresWallet) {
+    const position = extra.futuresWallet.positions.find(
+      (pos) => pos.pair === pair
+    );
+    holdingTrade = position.size !== 0;
+  }
+
+  const getCandleSource = (candles: CandleData[]) => {
+    if (CANDLE_SOURCE === 'open') return candles.map((c) => c.open);
+    else if (CANDLE_SOURCE === 'close') return candles.map((c) => c.close);
+    else if (CANDLE_SOURCE === 'high') return candles.map((c) => c.high);
+    else if (CANDLE_SOURCE === 'low') return candles.map((c) => c.low);
+    else if (CANDLE_SOURCE === 'hl2')
+      return candles.map((c) => (c.high + c.low) / 2);
+    else return candles.map((c) => c.close);
+  };
+
+  return getCandleSource(candles)
+    .slice(-length)
+    .concat([!useExitStrategy ? (holdingTrade ? 1 : 0) : null])
+    .filter((v) => v !== null);
+}
+
+/**
  * Function to get the outputs of the neural network according to the inputs
  * @param pair
  * @param candles
@@ -251,14 +297,24 @@ export function getOutputs(
   if (candles.length < 100) return;
 
   // Get the inputs
-  let inputs = getInputs(pair, candles, extra, useExitStrategy);
+  let inputs =
+    NEURAL_NETWORK_INPUTS_MODE === 'candles'
+      ? getInputsFromCandles(
+          pair,
+          candles,
+          CANDLE_LENGTH_INPUTS,
+          extra,
+          useExitStrategy
+        )
+      : getInputsFromIndicators(pair, candles, extra, useExitStrategy);
 
   // Get the outputs from the network
   let actions = brain.predict(inputs);
 
   let max = Math.max(...actions);
 
-  if (max === actions[0] && actions[0] > 0.6) return 'BUY';
-  if (max === actions[1] && actions[1] > 0.6) return 'SELL';
-  if (useExitStrategy && max === actions[2] && actions[2] > 0.6) return 'CLOSE';
+  if (max === actions[0] && actions[0] > 0.5) return 'BUY';
+  if (max === actions[1] && actions[1] > 0.5) return 'SELL';
+  if (!useExitStrategy && max === actions[2] && actions[2] > 0.5)
+    return 'CLOSE';
 }

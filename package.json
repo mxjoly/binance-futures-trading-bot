@@ -8,12 +8,13 @@
     "build:prod": "cross-env NODE_ENV=production tsc",
     "build:dev": "cross-env NODE_ENV=development tsc",
     "build:test": "cross-env NODE_ENV=test tsc",
-    "data": "node ./scripts/generateData 1m,5m,15m",
+    "data": "node ./scripts/generateData 1m,5m,15m,1h,4h",
     "test": "cross-env NODE_ENV=test node ./build/index.js DEBUG=false",
     "test:nn": "cross-env NODE_ENV=test node ./build/index.js DEBUG=false NN=true",
     "test:debug": "cross-env NODE_ENV=test node ./build/index.js DEBUG=true",
     "genetic:train": "cross-env NODE_ENV=test node ./build/genetic/index.js RESET=false",
-    "genetic:train-reset": "cross-env NODE_ENV=test node ./build/genetic/index.js RESET=true"
+    "genetic:train-reset": "cross-env NODE_ENV=test node ./build/genetic/index.js RESET=true",
+    "clear-temp": "rm -rd ./temp"
   },
   "keywords": [],
   "author": "mxjoly <maxime.joly2808@gmail.com>",

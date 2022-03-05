@@ -7,7 +7,7 @@ import { loadCandlesFromCSV } from '../utils/candleData';
 import Config from '../configs/genetic';
 import { loadNeuralNetwork, saveNeuralNetwork } from './saveManager';
 import { generate, normalizeFitness } from './neat';
-import { decimalFloor } from '../utils/math';
+import { decimalCeil, decimalFloor } from '../utils/math';
 
 // ===================================================================================================
 
@@ -37,22 +37,25 @@ function createProgressBar() {
 function displayBestTraderStats(bestTrader: Trader) {
   let {
     score,
-    totalProfit,
-    totalLoss,
-    totalFees,
     wallet,
-    winningTrades,
-    totalTrades,
-    longWinningTrades,
-    shortWinningTrades,
-    longLostTrades,
-    shortLostTrades,
+    stats: {
+      totalProfit,
+      totalLoss,
+      totalFees,
+      winningTrades,
+      totalTrades,
+      longWinningTrades,
+      shortWinningTrades,
+      longLostTrades,
+      shortLostTrades,
+      maxRelativeDrawdown,
+    },
   } = bestTrader;
 
   score = decimalFloor(score, 2);
   totalProfit = decimalFloor(totalProfit, 2);
   totalLoss = decimalFloor(Math.abs(totalLoss), 2);
-  totalFees = decimalFloor(Math.abs(bestTrader.totalFees), 2);
+  totalFees = decimalFloor(Math.abs(totalFees), 2);
   let profitRatio = decimalFloor(totalProfit / (totalLoss + totalFees), 2);
   let totalBalance = decimalFloor(wallet.totalWalletBalance, 2);
   let winRate = decimalFloor((winningTrades / totalTrades) * 100, 2);
@@ -60,7 +63,7 @@ function displayBestTraderStats(bestTrader: Trader) {
     ((wallet.totalWalletBalance - initialCapital) * 100) / initialCapital,
     2
   );
-
+  let maxRelDrawdown = decimalCeil(maxRelativeDrawdown * 100, 2);
   let totalWinningTrades = longWinningTrades + shortWinningTrades;
   let totalLostTrades = longLostTrades + shortLostTrades;
   let averageProfit = decimalFloor(totalProfit / totalWinningTrades, 2);
@@ -73,15 +76,16 @@ function displayBestTraderStats(bestTrader: Trader) {
   console.log(`Trades: ${totalTrades}`);
   console.log(`Trades won: ${totalWinningTrades}`);
   console.log(`Trades lost: ${totalLostTrades}`);
+  console.log(`Max Relative Drawdown: ${maxRelDrawdown}%`);
   console.log(`Win rate: ${winRate}%`);
   console.log(`Longs: ${longWinningTrades + longLostTrades}`);
   console.log(`Shorts: ${shortWinningTrades + shortLostTrades}`);
-  console.log(`Profit Ratio: ${profitRatio}`);
+  console.log(`Profit Ratio: ${isNaN(profitRatio) ? 0 : profitRatio}`);
   console.log(`Total Profit: ${totalProfit}`);
   console.log(`Total Loss: -${totalLoss}`);
   console.log(`Total Fees: -${totalFees}`);
-  console.log(`Average profit: ${averageProfit}`);
-  console.log(`Average loss: ${averageLoss}`);
+  console.log(`Average profit: ${isNaN(averageProfit) ? 0 : averageProfit}`);
+  console.log(`Average loss: ${isNaN(averageLoss) ? 0 : averageLoss}`);
   console.log(`-------------------------------------`);
   console.log(``);
 }
