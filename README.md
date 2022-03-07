@@ -37,22 +37,41 @@ You can backtest your own strategy by running the backtest mode. To do that, you
 
 ## Neuro Evolution (NEAT)
 
-Find the best genome to your robot by tapping the commands:
+I implemented the NEAT algorithm using the template of Code-Bullet [here](https://github.com/Code-Bullet/NEAT-Template-JavaScript).
+
+### Quick Start
 
 ```
 npm run build:test
 npm run genetic:train
 ```
 
-In the json config file, you can configure more.
+### Configuration
+
+To configure the parameters of the algorithm, go to the namespace `genetic` in the file `config.json`.
+
+| Key                                   | Type / Format                         | Description                                                                                                                                    |
+| ------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start_date_training`                 | `YYYY-MM-DD HH:mm:ss`                 | The start date of the training period                                                                                                          |
+| `end_date_training`                   | `YYYY-MM-DD HH:mm:ss`                 | The end date of the training period                                                                                                            |
+| `initial_capital`                     | `number`                              | The initial capital for the players                                                                                                            |
+| `population`                          | `number`                              | The number of genomes for each generation                                                                                                      |
+| `generations`                         | `number`                              | The total number of generations                                                                                                                |
+| `goals/win_rate`                      | `number` (between 0 and 1) or `null`  | The win rate to reach by the players to keep them alive                                                                                        |
+| `goals/profit_ratio`                  | `number` (> 1) or `null`              | The profit ratio to reach by the players to keep them alive (Same as Risk Reward). It's the result of `total_profit - total_loss + total_fees` |
+| `goals/max_relative_drawdown`         | `number` (between -1 and 0) or `null` | The maximum relative drawdown authorized                                                                                                       |
+| `neural_network/inputs_mode`          | `candles` or `indicators`             | Use candles data or indicator values for the inputs of network                                                                                 |
+| `neural_network/candle_inputs/length` | `number`                              | The number of candles to use for the inputs                                                                                                    |
+| `neural_network/candle_inputs/close`  | `open`, `high`, `low`, `close`, `hl2` | The type of data used in the candles                                                                                                           |
+| `neural_network/indicator_inputs/*`   | `boolean`                             | Use or not the indicator values                                                                                                                |
 
 ## Todo
 
 - [ ] Calculation of the average buying price of an asset in spot
-- [ ] Implement machine learning (NEAT algorithm) to increase considerably the performance of the strategy
+- [x] Implement genetic algorithm (NEAT)
 - [ ] Add custom Telegram channel with the notifications of the robot when an action is executed
 - [ ] Trade managements
-- [X] Add a trade configuration property to limited the holding duration of a trade or position
+- [x] Add a trade configuration property to limited the holding duration of a trade or position
 - [ ] Spot portfolio arbitrage in spot
 
 ## Documentation

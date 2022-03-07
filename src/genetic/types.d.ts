@@ -14,3 +14,9 @@ interface TraderStats {
   maxBalance: number;
   maxRelativeDrawdown: number;
 }
+
+interface TraderGoals {
+  winRate?: number;
+  profitRatio?: number; // like the RR
+  maxRelativeDrawdown?: number;
+}

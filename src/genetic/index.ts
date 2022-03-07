@@ -18,12 +18,18 @@ import {
   VWAP,
   WilliamsR,
 } from 'technicalindicators';
-import Player from './player';
+import Trader from './player';
 
 // ===================================================================================================
 
 const GeneticConfig = BotConfig['genetic'];
-const totalGenomes = GeneticConfig['population'];
+const NeuralNetworkConfig = GeneticConfig['neural_network'];
+const CandleInputsConfig = NeuralNetworkConfig['candle_inputs'];
+const IndicatorInputsConfig = NeuralNetworkConfig['indicator_inputs'];
+const GoalsConfig = GeneticConfig['goals'];
+
+// Common parameters for the genetic algorithm
+const totalPopulation = GeneticConfig['population'];
 const totalGenerations = GeneticConfig['generations'];
 const initialCapital = GeneticConfig['initial_capital'];
 const startDateTraining = GeneticConfig['start_date_training'];
@@ -31,9 +37,10 @@ const endDateTraining = GeneticConfig['end_date_training'];
 const startDateTest = GeneticConfig['start_date_test'];
 const endDateTest = GeneticConfig['end_date_test'];
 
-const NeuralNetworkConfig = GeneticConfig['neural_network'];
-const CandleInputsConfig = NeuralNetworkConfig['candle_inputs'];
-const IndicatorInputsConfig = NeuralNetworkConfig['indicator_inputs'];
+// Goals to reach
+const winRate = GoalsConfig['win_rate'];
+const profitRatio = GoalsConfig['profit_ratio'];
+const maxRelativeDrawdown = GoalsConfig['max_relative_drawdown'];
 
 export const NEURAL_NETWORK_INPUTS_MODE = NeuralNetworkConfig['inputs_mode'];
 export const CANDLE_LENGTH_INPUTS = CandleInputsConfig['length'];
@@ -67,10 +74,12 @@ const NEURAL_NETWORK_INPUTS =
 
 const NEURAL_NETWORK_OUTPUTS = 3; // Buy / Sell / Wait
 
-const MINIMAL_CANDLES_LENGTH = 150;
-
 // ===================================================================================================
 
+/**
+ * Calculate the indicator values
+ * @param candles
+ */
 function calculateIndicators(candles: CandleData[]) {
   // EMA21
   const ema21 =
@@ -229,8 +238,12 @@ function calculateIndicators(candles: CandleData[]) {
   return inputs;
 }
 
-// ===================================================================================================
-
+/**
+ * To print a value with a color code (green when it's positive, red if it's negative)
+ * @param value
+ * @param pivotValue
+ * @param addPercentageSymbol- Add a % symbol next to the value
+ */
 function coloredValue(
   value: number,
   pivotValue = 0,
@@ -247,9 +260,13 @@ function coloredValue(
   }
 }
 
-function displayBestTraderStats(bestTrader: Player) {
+/**
+ * Display stats of the best trader
+ * @param bestTrader
+ */
+function displayBestTraderStats(bestTrader: Trader) {
   let {
-    bestScore,
+    score,
     wallet,
     stats: {
       totalProfit,
@@ -265,7 +282,7 @@ function displayBestTraderStats(bestTrader: Player) {
     },
   } = bestTrader;
 
-  bestScore = decimalFloor(bestScore, 2);
+  score = decimalFloor(score, 2);
   totalProfit = decimalFloor(totalProfit, 2);
   totalLoss = decimalFloor(Math.abs(totalLoss), 2);
   totalFees = decimalFloor(Math.abs(totalFees), 2);
@@ -283,7 +300,7 @@ function displayBestTraderStats(bestTrader: Player) {
   let averageLoss = decimalFloor(totalLoss / totalLostTrades, 2);
 
   console.log(`------------ Best Trader ------------`);
-  console.log(`Score: ${coloredValue(bestScore)}`);
+  console.log(`Score: ${coloredValue(score)}`);
   console.log(`ROI: ${coloredValue(roi, 0, true)}`);
   console.log(`Balance: ${coloredValue(totalBalance, initialCapital)}`);
   console.log(`Trades: ${totalTrades}`);
@@ -315,7 +332,7 @@ function displayBestTraderStats(bestTrader: Player) {
 }
 
 /**
- * Train the trader to get the best genomes
+ * Train the traders to get the best
  */
 export async function train() {
   const binanceClient = Binance({
@@ -344,25 +361,33 @@ export async function train() {
   );
 
   let population = new Population(
-    totalGenomes,
+    totalPopulation,
     tradeConfig.exitStrategy
       ? NEURAL_NETWORK_INPUTS
       : NEURAL_NETWORK_INPUTS + 1, // If no strategy to exit, add an input to know if the player have a position opened
     tradeConfig.exitStrategy
       ? NEURAL_NETWORK_OUTPUTS
       : NEURAL_NETWORK_OUTPUTS + 1, // If no strategy to exit, add an output to close the position
-    tradeConfig,
-    binanceClient,
-    exchangeInfo,
-    initialCapital
+    {
+      tradeConfig,
+      binanceClient,
+      exchangeInfo,
+      initialCapital,
+      goals: {
+        winRate: winRate,
+        profitRatio: profitRatio,
+        maxRelativeDrawdown: maxRelativeDrawdown,
+      },
+    }
   );
 
   for (let gen = 0; gen < totalGenerations; gen++) {
     for (let i = 0; i < historicCandleData.length; i++) {
-      if (i < MINIMAL_CANDLES_LENGTH) continue;
+      const minimalLength = 150;
+      if (i < minimalLength) continue;
 
       let candles = historicCandleData.slice(
-        i - MINIMAL_CANDLES_LENGTH < 0 ? 0 : i - MINIMAL_CANDLES_LENGTH,
+        i - minimalLength < 0 ? 0 : i - minimalLength,
         i
       );
       let currentPrice = candles[candles.length - 1].close;
@@ -383,7 +408,7 @@ export async function train() {
     }
 
     console.log(
-      `============================== Generation ${population.generation} ==============================`
+      `============================== Generation ${gen} ==============================`
     );
 
     console.log(

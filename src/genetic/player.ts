@@ -26,6 +26,7 @@ class Player {
   private binanceClient: Binance;
   private exchangeInfo: ExchangeInfo;
   private initialCapital: number;
+  private goals: TraderGoals;
 
   public wallet: FuturesWallet;
   private openOrders: FuturesOpenOrder[];
@@ -40,7 +41,7 @@ class Player {
   private lifespan: number; // how long the player lived for fitness
   public bestScore = 0; // stores the score achieved used for replay
   public dead: boolean;
-  public score: number;
+  public score: number; // the traders must respect these goals
   public generation: number;
 
   private genomeInputs: number;
@@ -53,25 +54,14 @@ class Player {
     tradeConfig: TradeConfig,
     binanceClient: Binance,
     exchangeInfo: ExchangeInfo,
-    initialCapital: number
+    initialCapital: number,
+    goals: TraderGoals
   ) {
-    this.fitness = 0;
-    this.vision = [];
-    this.decision = [];
-    this.unadjustedFitness;
-    this.lifespan = 0;
-    this.bestScore = 0;
-    this.dead = false;
-    this.score = 0;
-    this.generation = 0;
-    this.genomeInputs = genomeInputs;
-    this.genomeOutputs = genomeOutputs;
-    this.brain = new Genome(this.genomeInputs, this.genomeOutputs);
-
     this.tradeConfig = tradeConfig;
     this.binanceClient = binanceClient;
     this.exchangeInfo = exchangeInfo;
     this.initialCapital = initialCapital;
+    this.goals = goals;
 
     this.stats = {
       totalTrades: 0,
@@ -107,6 +97,20 @@ class Player {
         },
       ],
     };
+
+    // Neat stuffs
+    this.fitness = 0;
+    this.vision = [];
+    this.decision = [];
+    this.unadjustedFitness;
+    this.lifespan = 0;
+    this.bestScore = 0;
+    this.dead = false;
+    this.score = 0;
+    this.generation = 0;
+    this.genomeInputs = genomeInputs;
+    this.genomeOutputs = genomeOutputs;
+    this.brain = new Genome(this.genomeInputs, this.genomeOutputs);
   }
 
   /**
@@ -154,9 +158,23 @@ class Player {
     candles: CandleData[],
     currentPrice: number
   ) {
-    this.lifespan++;
+    let {
+      totalLoss,
+      totalProfit,
+      totalFees,
+      winningTrades,
+      totalTrades,
+      maxRelativeDrawdown,
+    } = this.stats;
 
-    let { totalLoss, totalProfit, maxRelativeDrawdown } = this.stats;
+    let profitRatio = totalProfit / (Math.abs(totalLoss) + totalFees);
+    let totalNetProfit = totalProfit - (Math.abs(totalLoss) + totalFees);
+    let winRate = winningTrades / totalTrades;
+    let roi =
+      (this.wallet.totalWalletBalance - this.initialCapital) /
+      this.initialCapital;
+
+    this.lifespan++;
 
     // // The trader open too much trades
     // if (this.stats.totalTrades > 100) {
@@ -177,7 +195,26 @@ class Player {
     }
 
     // Kill the traders that take too much risk
-    if (maxRelativeDrawdown < -0.05) {
+    if (
+      this.goals.maxRelativeDrawdown &&
+      maxRelativeDrawdown < this.goals.maxRelativeDrawdown
+    ) {
+      this.dead = true;
+      return;
+    }
+
+    // Kill the traders that have a bad winRate
+    if (this.goals.winRate && !isNaN(winRate) && winRate < this.goals.winRate) {
+      this.dead = true;
+      return;
+    }
+
+    // Kill the traders with a bad risk reward
+    if (
+      this.goals.profitRatio &&
+      !isNaN(profitRatio) &&
+      profitRatio < this.goals.profitRatio
+    ) {
       this.dead = true;
       return;
     }
@@ -190,8 +227,8 @@ class Player {
     // Update the max drawdown and max balance property for the strategy report
     this.updateDrawdownMaxBalance();
 
-    // We measure the score of the trader by the total balance
-    this.score = this.wallet.totalWalletBalance;
+    // We measure the score of the trader by the profit generated
+    this.score = totalNetProfit;
   }
 
   /**
@@ -1167,8 +1204,6 @@ class Player {
   }
 
   // =====================================================================
-  // =====================================================================
-  // =====================================================================
 
   /**
    * Gets the output of the brain, then converts them to actions
@@ -1198,7 +1233,8 @@ class Player {
       this.tradeConfig,
       this.binanceClient,
       this.exchangeInfo,
-      this.initialCapital
+      this.initialCapital,
+      this.goals
     );
     clone.brain = this.brain.clone();
     clone.fitness = this.fitness;
@@ -1220,7 +1256,8 @@ class Player {
       this.tradeConfig,
       this.binanceClient,
       this.exchangeInfo,
-      this.initialCapital
+      this.initialCapital,
+      this.goals
     );
     clone.brain = this.brain.clone();
     clone.fitness = this.fitness;
@@ -1259,7 +1296,8 @@ class Player {
       this.tradeConfig,
       this.binanceClient,
       this.exchangeInfo,
-      this.initialCapital
+      this.initialCapital,
+      this.goals
     );
     child.brain = this.brain.crossover(parent.brain);
     child.brain.generateNetwork();

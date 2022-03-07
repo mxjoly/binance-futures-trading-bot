@@ -20,13 +20,16 @@ class Population {
     size: number,
     genomePlayerInputs: number,
     genomePlayerOutputs: number,
-    tradeConfig: TradeConfig,
-    binanceClient: Binance,
-    exchangeInfo: ExchangeInfo,
-    initialCapital: number
+    playerParams: {
+      tradeConfig: TradeConfig;
+      binanceClient: Binance;
+      exchangeInfo: ExchangeInfo;
+      initialCapital: number;
+      goals: TraderGoals;
+    }
   ) {
     this.players = [];
-    this.bestPlayer;
+    this.bestPlayer = null;
     this.bestScore = 0;
     this.globalBestScore = 0;
     this.generation = 1;
@@ -42,10 +45,11 @@ class Population {
         new Player(
           genomePlayerInputs,
           genomePlayerOutputs,
-          tradeConfig,
-          binanceClient,
-          exchangeInfo,
-          initialCapital
+          playerParams.tradeConfig,
+          playerParams.binanceClient,
+          playerParams.exchangeInfo,
+          playerParams.initialCapital,
+          playerParams.goals
         )
       );
       this.players[this.players.length - 1].brain.mutate(
