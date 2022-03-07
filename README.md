@@ -51,8 +51,8 @@ In the json config file, you can configure more.
 - [ ] Calculation of the average buying price of an asset in spot
 - [ ] Implement machine learning (NEAT algorithm) to increase considerably the performance of the strategy
 - [ ] Add custom Telegram channel with the notifications of the robot when an action is executed
-- [ ] Trade management
-- [x] Add a trade configuration property to limited the holding duration of a trade or position
+- [ ] Trade managements
+- [X] Add a trade configuration property to limited the holding duration of a trade or position
 - [ ] Spot portfolio arbitrage in spot
 
 ## Documentation

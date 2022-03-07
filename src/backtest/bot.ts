@@ -11,8 +11,6 @@ import { loadCandlesMultiTimeFramesFromCSV } from '../utils/candleData';
 import { createDatabase, saveFuturesState, saveState } from './database';
 import { debugLastCandle, debugWallet, log, printDateBanner } from './debug';
 import generateHTMLReport from './generateReport';
-import { NeuralNetwork } from '../lib/neuralNetwork';
-import { getOutputs } from '../genetic/neuralNetwork';
 import { Counter } from '../tools/counter';
 import { calculateActivationPrice } from '../utils/trailingStop';
 import {
@@ -118,16 +116,12 @@ export class BackTestBot {
   private chartLabels: string[];
   private chartData: number[];
 
-  // Neural network
-  private brain: NeuralNetwork;
-
   constructor(
     tradeConfigs: TradeConfig[],
     strategyName: string,
     startDate: Date,
     endDate: Date,
-    initialCapital: number,
-    brain?: NeuralNetwork
+    initialCapital: number
   ) {
     this.tradeConfigs = tradeConfigs;
     this.strategyName = strategyName;
@@ -151,8 +145,6 @@ export class BackTestBot {
 
     this.chartLabels = [];
     this.chartData = [];
-
-    this.brain = brain;
   }
 
   /**
@@ -868,28 +860,21 @@ export class BackTestBot {
     }
 
     // Decision to take ?
-    const isBuySignal = this.brain
-      ? this.think(asset, candles[loopInterval], tradeConfig) === 'BUY'
-      : buyStrategy(candles);
-    const isSellSignal = this.brain
-      ? this.think(asset, candles[loopInterval], tradeConfig) === 'SELL'
-      : sellStrategy(candles);
-    const closePosition = this.brain
-      ? this.think(pair, candles[loopInterval], tradeConfig) === 'CLOSE'
-      : false;
+    const isBuySignal = buyStrategy(candles);
+    const isSellSignal = sellStrategy(candles);
 
     // Prevent remaining open orders
     if (assetBalance === 0 && currentOpenOrders.length > 0)
       this.closeOpenOrders(pair);
 
     // The neural network wants to close the position
-    if (closePosition && assetBalance > 0) {
-      this.futuresOrderMarket(pair, currentPrice, assetBalance, 'SELL');
-      if (this.counters[pair]) this.counters[pair].reset();
-      return;
-    }
+    // if (closePosition && assetBalance > 0) {
+    //   this.futuresOrderMarket(pair, currentPrice, assetBalance, 'SELL');
+    //   if (this.counters[pair]) this.counters[pair].reset();
+    //   return;
+    // }
 
-    if (assetBalance > 0 && (isSellSignal || closePosition)) {
+    if (assetBalance > 0 && isSellSignal) {
       this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
       this.closeOpenOrders(pair);
     }
@@ -1027,15 +1012,8 @@ export class BackTestBot {
     }
 
     // Decision to take ?
-    const isBuySignal = this.brain
-      ? this.think(pair, candles[loopInterval], tradeConfig) === 'BUY'
-      : buyStrategy(candles);
-    const isSellSignal = this.brain
-      ? this.think(pair, candles[loopInterval], tradeConfig) === 'SELL'
-      : sellStrategy(candles);
-    const closePosition = this.brain
-      ? this.think(pair, candles[loopInterval], tradeConfig) === 'CLOSE'
-      : false;
+    const isBuySignal = buyStrategy(candles);
+    const isSellSignal = sellStrategy(candles);
 
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
@@ -1043,16 +1021,16 @@ export class BackTestBot {
     }
 
     // The neural network wants to close the position
-    if (closePosition && (hasLongPosition || hasShortPosition)) {
-      this.futuresOrderMarket(
-        pair,
-        currentPrice,
-        Math.abs(position.size),
-        hasLongPosition ? 'SELL' : 'BUY'
-      );
-      if (this.counters[pair]) this.counters[pair].reset();
-      return;
-    }
+    // if (closePosition && (hasLongPosition || hasShortPosition)) {
+    //   this.futuresOrderMarket(
+    //     pair,
+    //     currentPrice,
+    //     Math.abs(position.size),
+    //     hasLongPosition ? 'SELL' : 'BUY'
+    //   );
+    //   if (this.counters[pair]) this.counters[pair].reset();
+    //   return;
+    // }
 
     if (
       (isTradingSessionActive || position.size !== 0) &&
@@ -2256,37 +2234,6 @@ export class BackTestBot {
     } else {
       console.error(
         `Trailing stop order for the pair ${pair} cannot be placed`
-      );
-    }
-  }
-
-  /**
-   * Search for an action with the neural network
-   * @param symbol
-   * @param candles
-   */
-  private think(
-    symbol: string,
-    candles: CandleData[],
-    tradeConfig: TradeConfig
-  ) {
-    if (BINANCE_MODE === 'spot') {
-      return getOutputs(
-        symbol,
-        candles,
-        this.brain,
-        { wallet: this.wallet },
-        tradeConfig.exitStrategy ? true : false
-      );
-    } else {
-      return getOutputs(
-        symbol,
-        candles,
-        this.brain,
-        {
-          futuresWallet: this.futuresWallet,
-        },
-        tradeConfig.exitStrategy ? true : false
       );
     }
   }

@@ -1,24 +1,24 @@
 {
   "mode": "futures",
-  "strategy_config_file_name": "volume",
-  "strategy_name": "volume",
+  "strategy_config_file_name": "genetic",
+  "strategy_name": "genetic",
   "taker_fees_futures": 0.04,
   "maker_fees_futures": 0.02,
   "taker_fees_spot": 0.01,
   "maker_fees_spot": 0.01,
   "backtest": {
     "start_date": "2022-01-01 00:00:00",
-    "end_date": "2022-03-01 00:00:00",
+    "end_date": "2022-02-01 00:00:00",
     "initial_capital": 10000,
     "save_db": false
   },
   "genetic": {
     "start_date_training": "2022-01-01 00:00:00",
-    "end_date_training": "2022-02-01 00:00:00",
+    "end_date_training": "2022-01-14 00:00:00",
     "start_date_test": "2021-02-01 00:00:00",
     "end_date_test": "2021-03-01 00:00:00",
     "initial_capital": 10000,
-    "population": 50,
+    "population": 100,
     "generations": 1000,
     "neural_network": {
       "inputs_mode": "candles",
@@ -27,7 +27,7 @@
         "source": "close"
       },
       "indicator_inputs": {
-        "EMA21": true,
+        "EMA21": false,
         "EMA50": false,
         "EMA100": false,
         "ADX": false,
@@ -40,8 +40,8 @@
         "KIJUN": false,
         "VWAP": false,
         "VOL_OSC": false,
-        "PRICE_CHANGE": true,
-        "VOL": true
+        "PRICE_CHANGE": false,
+        "VOL": false
       }
     }
   }

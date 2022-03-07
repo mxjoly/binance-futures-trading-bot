@@ -6,12 +6,14 @@ interface Options {
   takeProfitAtrRatio?: number;
   stopLossAtrRatio?: number;
   atrPeriod?: number;
+  atrMultiplier?: number;
 }
 
 const defaultOptions: Options = {
   takeProfitAtrRatio: 2,
   stopLossAtrRatio: 3,
   atrPeriod: 14,
+  atrMultiplier: 3,
 };
 
 const strategy = (
@@ -34,8 +36,14 @@ const strategy = (
           {
             price: decimalFloor(
               side === OrderSide.BUY
-                ? price + options.takeProfitAtrRatio * atr[atr.length - 1]
-                : price - options.takeProfitAtrRatio * atr[atr.length - 1],
+                ? price +
+                    options.takeProfitAtrRatio *
+                      atr[atr.length - 1] *
+                      options.atrMultiplier
+                : price -
+                    options.takeProfitAtrRatio *
+                      atr[atr.length - 1] *
+                      options.atrMultiplier,
               pricePrecision
             ),
             quantityPercentage: 1,
@@ -45,8 +53,14 @@ const strategy = (
     stopLoss: options.stopLossAtrRatio
       ? decimalFloor(
           side === OrderSide.BUY
-            ? price - options.stopLossAtrRatio * atr[atr.length - 1]
-            : price + options.stopLossAtrRatio * atr[atr.length - 1],
+            ? price -
+                options.stopLossAtrRatio *
+                  atr[atr.length - 1] *
+                  options.atrMultiplier
+            : price +
+                options.stopLossAtrRatio *
+                  atr[atr.length - 1] *
+                  options.atrMultiplier,
           pricePrecision
         )
       : null,

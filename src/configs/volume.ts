@@ -22,9 +22,10 @@ const config: TradeConfig[] = [
         pricePrecision,
         side,
         {
-          takeProfitAtrRatio: 6,
-          stopLossAtrRatio: 2,
+          takeProfitAtrRatio: 3,
+          stopLossAtrRatio: 1,
           atrPeriod: 10,
+          atrMultiplier: 2,
         }
       ),
     buyStrategy: (candles) =>

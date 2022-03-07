@@ -21,20 +21,29 @@ export function decimalFloor(x: number, precision: number) {
  * @param min
  * @param max
  */
-export function randomIntFromInterval(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1) + min);
+export function random(min?: number, max?: number) {
+  if (min && max) return Math.floor(Math.random() * (max - min + 1) + min);
+  if (min && !max) return Math.random() * min;
+  else return Math.random();
 }
 
 /**
  * Random a value with normal distribution
  * @param val
  */
-export function randomGaussian(val = 1) {
+export function randomGaussian(val = 6) {
   let r = 0;
   for (let i = val; i > 0; i--) {
     r += Math.random();
   }
   return r / val;
+}
+
+/**
+ * Takes the range of randomGaussian and makes it [-1, 1]
+ */
+export function std0() {
+  return (randomGaussian() - 0.5) * 2;
 }
 
 /**

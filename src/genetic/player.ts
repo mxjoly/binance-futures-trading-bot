@@ -1,65 +1,76 @@
-import dayjs from 'dayjs';
 import { Binance, ExchangeInfo, OrderSide } from 'binance-api-node';
-import { NeuralNetwork } from '../lib/neuralNetwork';
+import dayjs from 'dayjs';
 import { Counter } from '../tools/counter';
-import { mutate } from './neat';
-import { BotConfig } from '../init';
-import {
-  getOutputs,
-  NUMBER_HIDDEN_NODES,
-  NUMBER_INPUTS,
-  NUMBER_OUTPUTS,
-} from './neuralNetwork';
-import { timeFrameToMinutes } from '../utils/timeFrame';
+import Genome from './genome';
+import { BINANCE_MODE, BotConfig } from '../init';
 import { calculateActivationPrice } from '../utils/trailingStop';
 import {
   getPricePrecision,
   getQuantityPrecision,
   isValidQuantity,
 } from '../utils/currencyInfo';
-
-// ==================================================================
+import {
+  CANDLE_LENGTH_INPUTS,
+  CANDLE_SOURCE,
+  NEURAL_NETWORK_INPUTS_MODE,
+} from '.';
 
 const TAKER_FEES = BotConfig['taker_fees_futures']; // %
 const MAKER_FEES = BotConfig['maker_fees_futures']; // %
 
-// The trader start to trade when it has at least X candles on the chart
-const MINIMAL_CANDLES_LENGTH = 100;
-
-// ==================================================================
-
-class Trader {
+/**
+ * The trader
+ */
+class Player {
   private tradeConfig: TradeConfig;
   private binanceClient: Binance;
   private exchangeInfo: ExchangeInfo;
-  private historicCandleData: CandleData[];
   private initialCapital: number;
 
   public wallet: FuturesWallet;
   private openOrders: FuturesOpenOrder[];
-
   private counter: Counter; // to cut the position too long
+  public stats: TraderStats; // Stats
 
-  // Stats
-  public stats: TraderStats;
-
-  // Neat algorithm
-  public brain: NeuralNetwork;
-  public score: number;
+  // NEAT Stuffs
   public fitness: number;
+  private vision: number[]; // the inputs fed into the neuralNet
+  private decision: number[]; // the outputs of the NN
+  private unadjustedFitness: number;
+  private lifespan: number; // how long the player lived for fitness
+  public bestScore = 0; // stores the score achieved used for replay
+  public dead: boolean;
+  public score: number;
+  public generation: number;
+
+  private genomeInputs: number;
+  private genomeOutputs: number;
+  public brain: Genome;
 
   constructor(
+    genomeInputs: number,
+    genomeOutputs: number,
     tradeConfig: TradeConfig,
-    historicCandleData: CandleData[],
     binanceClient: Binance,
     exchangeInfo: ExchangeInfo,
-    initialCapital: number,
-    brain?: NeuralNetwork
+    initialCapital: number
   ) {
+    this.fitness = 0;
+    this.vision = [];
+    this.decision = [];
+    this.unadjustedFitness;
+    this.lifespan = 0;
+    this.bestScore = 0;
+    this.dead = false;
+    this.score = 0;
+    this.generation = 0;
+    this.genomeInputs = genomeInputs;
+    this.genomeOutputs = genomeOutputs;
+    this.brain = new Genome(this.genomeInputs, this.genomeOutputs);
+
     this.tradeConfig = tradeConfig;
     this.binanceClient = binanceClient;
     this.exchangeInfo = exchangeInfo;
-    this.historicCandleData = historicCandleData;
     this.initialCapital = initialCapital;
 
     this.stats = {
@@ -87,7 +98,7 @@ class Trader {
       positions: [
         {
           pair: this.tradeConfig.asset + this.tradeConfig.base,
-          leverage: this.tradeConfig.leverage | 10,
+          leverage: this.tradeConfig.leverage | 1,
           entryPrice: 0,
           margin: 0,
           positionSide: 'LONG',
@@ -96,58 +107,91 @@ class Trader {
         },
       ],
     };
-
-    if (brain instanceof NeuralNetwork) {
-      this.brain = brain.copy();
-      this.brain.mutate(mutate);
-    } else {
-      // If the trade config doesn't have an exit strategy, we add to the inputs of network an information to inform if it currently
-      // have an opened position, and we add an output to close or not the position
-      this.brain = new NeuralNetwork(
-        this.tradeConfig.exitStrategy ? NUMBER_INPUTS : NUMBER_INPUTS + 1,
-        this.tradeConfig.exitStrategy
-          ? NUMBER_HIDDEN_NODES
-          : NUMBER_HIDDEN_NODES + 1,
-        this.tradeConfig.exitStrategy ? NUMBER_OUTPUTS : NUMBER_OUTPUTS + 1
-      );
-    }
-
-    this.score = 0;
-    this.fitness = 0;
   }
 
   /**
-   * Main function
+   * Get inputs for brain
    */
-  public run() {
-    const { asset, base, maxTradeDuration, loopInterval } = this.tradeConfig;
+  public look(candles: CandleData[], indicatorInputs: number[]) {
+    let vision: number[] = [];
 
-    // Counter will be use to fix the duration of the trades
-    if (maxTradeDuration) this.counter = new Counter(maxTradeDuration);
-
-    for (let i = 0; i < this.historicCandleData.length; i++) {
-      if (i < MINIMAL_CANDLES_LENGTH) continue;
-
-      let candles = this.historicCandleData.slice(
-        i - MINIMAL_CANDLES_LENGTH < 0 ? 0 : i - MINIMAL_CANDLES_LENGTH,
-        i
+    // If not exit strategy, we add an input to know if the player hold a position
+    if (!this.tradeConfig.exitStrategy && BINANCE_MODE === 'futures') {
+      const position = this.wallet.positions.find(
+        (pos) => pos.pair === this.tradeConfig.asset + this.tradeConfig.base
       );
-      let currentPrice = candles[candles.length - 1].close;
-
-      if (this.wallet.totalWalletBalance <= 0) {
-        break;
-      } else {
-        this.checkPositionMargin(asset + base, currentPrice);
-        this.checkFuturesOpenOrders(asset, base, candles);
-        this.trade(this.tradeConfig, currentPrice, candles, this.exchangeInfo);
-      }
-
-      // Update the max drawdown and max balance property for the strategy report
-      this.updateDrawdownMaxBalance();
+      const holdingTrade = position.size !== 0 ? 1 : 0;
+      vision.push(holdingTrade);
     }
 
-    // Default calculation of the score
-    this.score = this.evaluate();
+    if (NEURAL_NETWORK_INPUTS_MODE === 'candles') {
+      const getCandleSource = (candles: CandleData[]) => {
+        if (CANDLE_SOURCE === 'open') return candles.map((c) => c.open);
+        else if (CANDLE_SOURCE === 'close') return candles.map((c) => c.close);
+        else if (CANDLE_SOURCE === 'high') return candles.map((c) => c.high);
+        else if (CANDLE_SOURCE === 'low') return candles.map((c) => c.low);
+        else if (CANDLE_SOURCE === 'hl2')
+          return candles.map((c) => (c.high + c.low) / 2);
+        else return candles.map((c) => c.close);
+      };
+
+      this.vision = vision.concat(
+        getCandleSource(candles).slice(-CANDLE_LENGTH_INPUTS)
+      );
+    } else {
+      this.vision = vision.concat(indicatorInputs);
+    }
+  }
+
+  /**
+   * Move the player according to the outputs from the neural network
+   * @param tradeConfig
+   * @param candles
+   * @param currentPrice
+   */
+  public update(
+    tradeConfig: TradeConfig,
+    candles: CandleData[],
+    currentPrice: number
+  ) {
+    this.lifespan++;
+
+    let { totalLoss, totalProfit, maxRelativeDrawdown } = this.stats;
+
+    // // The trader open too much trades
+    // if (this.stats.totalTrades > 100) {
+    //   this.dead = true;
+    //   return;
+    // }
+
+    // Kill the bad traders
+    if (this.wallet.totalWalletBalance <= 0) {
+      this.dead = true;
+      return;
+    }
+
+    // Kill the traders that doesn't trades
+    if (this.lifespan > 100 && totalLoss === 0 && totalProfit === 0) {
+      this.dead = true;
+      return;
+    }
+
+    // Kill the traders that take too much risk
+    if (maxRelativeDrawdown < -0.05) {
+      this.dead = true;
+      return;
+    }
+
+    const { asset, base } = tradeConfig;
+    this.checkPositionMargin(asset + base, currentPrice);
+    this.checkFuturesOpenOrders(asset, base, candles);
+    this.trade(this.tradeConfig, currentPrice, candles, this.exchangeInfo);
+
+    // Update the max drawdown and max balance property for the strategy report
+    this.updateDrawdownMaxBalance();
+
+    // We measure the score of the trader by the total balance
+    this.score = this.wallet.totalWalletBalance;
   }
 
   /**
@@ -188,6 +232,17 @@ class Trader {
     const hasLongPosition = position.size > 0;
     const hasShortPosition = position.size < 0;
 
+    // Decision to take
+    let max = Math.max(...this.decision);
+    const isBuySignal =
+      max === this.decision[0] && this.decision[0] > 0.6 && !hasShortPosition;
+    const isSellSignal =
+      max === this.decision[1] && this.decision[1] > 0.6 && !hasLongPosition;
+    const closePosition =
+      max === this.decision[2] &&
+      this.decision[2] > 0.6 &&
+      (hasShortPosition || hasLongPosition);
+
     // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
       ? position.margin + assetBalance * risk <=
@@ -197,6 +252,9 @@ class Trader {
       (!allowPyramiding && !hasLongPosition) || allowPyramiding;
     const canTakeShortPosition =
       (!allowPyramiding && !hasShortPosition) || allowPyramiding;
+    const canClosePosition =
+      Math.abs(currentPrice - position.entryPrice) >=
+      position.entryPrice * 0.01;
 
     // Open orders
     const currentOpenOrders = this.openOrders.filter(
@@ -228,17 +286,12 @@ class Trader {
       }
     }
 
-    // Decision to take
-    const isBuySignal =
-      this.think(pair, candles) === 'BUY' && !hasShortPosition;
-    const isSellSignal =
-      this.think(pair, candles) === 'SELL' && !hasLongPosition;
-    const closePosition =
-      this.think(pair, candles) === 'CLOSE' &&
-      (hasShortPosition || hasLongPosition);
-
     // Close the current position
-    if (closePosition && (hasLongPosition || hasShortPosition)) {
+    if (
+      closePosition &&
+      (hasLongPosition || hasShortPosition) &&
+      canClosePosition
+    ) {
       this.orderMarket(
         pair,
         currentPrice,
@@ -1113,84 +1166,105 @@ class Trader {
     }
   }
 
+  // =====================================================================
+  // =====================================================================
+  // =====================================================================
+
   /**
-   * Search an action from the neural network
-   * @param pair
-   * @param candles
+   * Gets the output of the brain, then converts them to actions
    */
-  private think(pair: string, candles: CandleData[]) {
-    return getOutputs(
-      pair,
-      candles,
-      this.brain,
-      {
-        futuresWallet: this.wallet,
-      },
-      this.tradeConfig.exitStrategy ? true : false
-    );
+  public think() {
+    var max = 0;
+    var maxIndex = 0;
+
+    // Get the output of the neural network
+    this.decision = this.brain.feedForward(this.vision);
+
+    for (var i = 0; i < this.decision.length; i++) {
+      if (this.decision[i] > max) {
+        max = this.decision[i];
+        maxIndex = i;
+      }
+    }
   }
 
   /**
-   * Return a new trader with the same attributes
+   * Returns a clone of this player with the same brain
    */
-  public copy() {
-    return new Trader(
+  public clone() {
+    var clone = new Player(
+      this.genomeInputs,
+      this.genomeOutputs,
       this.tradeConfig,
-      this.historicCandleData,
       this.binanceClient,
       this.exchangeInfo,
-      this.initialCapital,
-      this.brain
+      this.initialCapital
     );
+    clone.brain = this.brain.clone();
+    clone.fitness = this.fitness;
+    clone.brain.generateNetwork();
+    clone.generation = this.generation;
+    clone.bestScore = this.score;
+
+    return clone;
   }
 
   /**
-   * Evaluate the score of the trader
+   * Since there is some randomness in games sometimes when we want to replay the game we need to remove that randomness
+   * this function does that
    */
-  private evaluate() {
-    const totalDays = Math.round(
-      (timeFrameToMinutes(this.tradeConfig.loopInterval) *
-        this.historicCandleData.length) /
-        1440
+  public cloneForReplay() {
+    var clone = new Player(
+      this.genomeInputs,
+      this.genomeOutputs,
+      this.tradeConfig,
+      this.binanceClient,
+      this.exchangeInfo,
+      this.initialCapital
     );
-    const minimumTrades = totalDays * 1.5;
-    const maximumTrades = totalDays * 4;
+    clone.brain = this.brain.clone();
+    clone.fitness = this.fitness;
+    clone.brain.generateNetwork();
+    clone.generation = this.generation;
+    clone.bestScore = this.score;
+    clone.stats = this.stats;
+    clone.wallet = this.wallet;
+    clone.openOrders = this.openOrders;
 
-    // The traders must have a certain number of trades
-    // if (
-    //   this.stats.totalTrades < minimumTrades ||
-    //   this.stats.totalTrades > maximumTrades
-    // )
-    //   return 0;
+    return clone;
+  }
 
-    // Kill the traders that are not profitable
-    if (this.stats.totalProfit < this.stats.totalLoss) return 0;
+  /**
+   * Genetic algorithm
+   */
+  public calculateFitness() {
+    let { totalLoss, totalProfit, totalFees, winningTrades, totalTrades } =
+      this.stats;
 
-    // Kill the traders with a drawdown too high
-    if (this.stats.maxRelativeDrawdown < -0.1) return 0;
-
-    let profitRatio =
-      this.stats.totalProfit /
-      (Math.abs(this.stats.totalLoss) + this.stats.totalFees);
-    let totalNetProfit =
-      this.stats.totalProfit -
-      (Math.abs(this.stats.totalLoss) + this.stats.totalFees);
-    let winRate = this.stats.winningTrades / this.stats.totalTrades;
+    let profitRatio = totalProfit / (Math.abs(totalLoss) + totalFees);
+    let totalNetProfit = totalProfit - (Math.abs(totalLoss) + totalFees);
+    let winRate = winningTrades / totalTrades;
     let roi =
       (this.wallet.totalWalletBalance - this.initialCapital) /
       this.initialCapital;
 
-    // ========================================================= //
-    // =================== SCORE CALCULATION =================== //
-    // ========================================================= //
-    // let score = totalNetProfit * winRate * profitRatio;
-    // let score = roi * winRate * profitRatio;
-    let score = winRate * profitRatio;
-    // let score = totalNetProfit;
-    // ========================================================= //
+    // Fitness Formulas
+    this.fitness = this.wallet.totalWalletBalance;
+  }
 
-    return score;
+  public crossover(parent: Player) {
+    var child = new Player(
+      this.genomeInputs,
+      this.genomeOutputs,
+      this.tradeConfig,
+      this.binanceClient,
+      this.exchangeInfo,
+      this.initialCapital
+    );
+    child.brain = this.brain.crossover(parent.brain);
+    child.brain.generateNetwork();
+    return child;
   }
 }
 
-export default Trader;
+export default Player;
