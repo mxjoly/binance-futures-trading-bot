@@ -18,6 +18,17 @@ import {
 const TAKER_FEES = BotConfig['taker_fees_futures']; // %
 const MAKER_FEES = BotConfig['maker_fees_futures']; // %
 
+export interface PlayerParams {
+  genomeInputs: number;
+  genomeOutputs: number;
+  tradeConfig: TradeConfig;
+  binanceClient: Binance;
+  exchangeInfo: ExchangeInfo;
+  initialCapital: number;
+  goals: TraderGoals;
+  brain?: Genome;
+}
+
 /**
  * The trader
  */
@@ -48,15 +59,16 @@ class Player {
   private genomeOutputs: number;
   public brain: Genome;
 
-  constructor(
-    genomeInputs: number,
-    genomeOutputs: number,
-    tradeConfig: TradeConfig,
-    binanceClient: Binance,
-    exchangeInfo: ExchangeInfo,
-    initialCapital: number,
-    goals: TraderGoals
-  ) {
+  constructor({
+    genomeInputs,
+    genomeOutputs,
+    tradeConfig,
+    binanceClient,
+    exchangeInfo,
+    initialCapital,
+    goals,
+    brain,
+  }: PlayerParams) {
     this.tradeConfig = tradeConfig;
     this.binanceClient = binanceClient;
     this.exchangeInfo = exchangeInfo;
@@ -110,7 +122,7 @@ class Player {
     this.generation = 0;
     this.genomeInputs = genomeInputs;
     this.genomeOutputs = genomeOutputs;
-    this.brain = new Genome(this.genomeInputs, this.genomeOutputs);
+    this.brain = brain || new Genome(genomeInputs, genomeOutputs);
   }
 
   /**
@@ -1227,15 +1239,15 @@ class Player {
    * Returns a clone of this player with the same brain
    */
   public clone() {
-    var clone = new Player(
-      this.genomeInputs,
-      this.genomeOutputs,
-      this.tradeConfig,
-      this.binanceClient,
-      this.exchangeInfo,
-      this.initialCapital,
-      this.goals
-    );
+    var clone = new Player({
+      genomeInputs: this.genomeInputs,
+      genomeOutputs: this.genomeOutputs,
+      tradeConfig: this.tradeConfig,
+      binanceClient: this.binanceClient,
+      exchangeInfo: this.exchangeInfo,
+      initialCapital: this.initialCapital,
+      goals: this.goals,
+    });
     clone.brain = this.brain.clone();
     clone.fitness = this.fitness;
     clone.brain.generateNetwork();
@@ -1250,15 +1262,15 @@ class Player {
    * this function does that
    */
   public cloneForReplay() {
-    var clone = new Player(
-      this.genomeInputs,
-      this.genomeOutputs,
-      this.tradeConfig,
-      this.binanceClient,
-      this.exchangeInfo,
-      this.initialCapital,
-      this.goals
-    );
+    var clone = new Player({
+      genomeInputs: this.genomeInputs,
+      genomeOutputs: this.genomeOutputs,
+      tradeConfig: this.tradeConfig,
+      binanceClient: this.binanceClient,
+      exchangeInfo: this.exchangeInfo,
+      initialCapital: this.initialCapital,
+      goals: this.goals,
+    });
     clone.brain = this.brain.clone();
     clone.fitness = this.fitness;
     clone.brain.generateNetwork();
@@ -1290,15 +1302,15 @@ class Player {
   }
 
   public crossover(parent: Player) {
-    var child = new Player(
-      this.genomeInputs,
-      this.genomeOutputs,
-      this.tradeConfig,
-      this.binanceClient,
-      this.exchangeInfo,
-      this.initialCapital,
-      this.goals
-    );
+    var child = new Player({
+      genomeInputs: this.genomeInputs,
+      genomeOutputs: this.genomeOutputs,
+      tradeConfig: this.tradeConfig,
+      binanceClient: this.binanceClient,
+      exchangeInfo: this.exchangeInfo,
+      initialCapital: this.initialCapital,
+      goals: this.goals,
+    });
     child.brain = this.brain.crossover(parent.brain);
     child.brain.generateNetwork();
     return child;

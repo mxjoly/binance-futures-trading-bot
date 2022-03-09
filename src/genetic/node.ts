@@ -1,5 +1,14 @@
+import circular from 'circular-functions';
 import { ActivationFunction } from './activationFunctions';
 import ConnectionGene from './connectionGene';
+
+export interface NNodeParams {
+  number: number;
+  inputSum: number;
+  outputValue: number;
+  outputConnections: ConnectionGene[];
+  layer: number;
+}
 
 class NNode {
   public number: number;
@@ -7,6 +16,9 @@ class NNode {
   public outputValue: number; // after activation function is applied
   public outputConnections: ConnectionGene[];
   public layer: number;
+
+  // Circular function
+  private _c = circular.register('NNode');
 
   constructor(no: number) {
     this.number = no;
@@ -19,7 +31,7 @@ class NNode {
   /**
    * The node sends its output to the inputs of the nodes its connected to
    */
-  engage(func: ActivationFunction) {
+  public engage(func: ActivationFunction) {
     if (this.layer !== 0) {
       // no sigmoid for the inputs and bias
       this.outputValue = func(this.inputSum);
@@ -39,7 +51,7 @@ class NNode {
    * Returns whether this node connected to the parameter node used when adding a new connection
    * @param node
    */
-  isConnectedTo(node: NNode) {
+  public isConnectedTo(node: NNode) {
     if (node.layer == this.layer) {
       // nodes in the same layer cannot be connected
       return false;
@@ -65,7 +77,7 @@ class NNode {
   /**
    * Returns a copy of this node
    */
-  clone() {
+  public clone() {
     var clone = new NNode(this.number);
     clone.layer = this.layer;
     return clone;

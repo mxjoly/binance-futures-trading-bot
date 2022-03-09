@@ -12,7 +12,8 @@
     "test": "cross-env NODE_ENV=test node ./build/index.js DEBUG=false",
     "test:nn": "cross-env NODE_ENV=test node ./build/index.js DEBUG=false NN=true",
     "test:debug": "cross-env NODE_ENV=test node ./build/index.js DEBUG=true",
-    "genetic:train": "cross-env NODE_ENV=test node ./build/genetic/index.js",
+    "genetic:train": "cross-env NODE_ENV=test node ./build/genetic/index.js USE_SAVE=true",
+    "genetic:train-reset": "cross-env NODE_ENV=test node ./build/genetic/index.js USE_SAVE=false",
     "clear-temp": "rm -rd ./temp"
   },
   "keywords": [],
@@ -22,6 +23,7 @@
     "ansi-colors": "^4.1.1",
     "binance-api-node": "^0.11.31",
     "chalk": "^4.1.2",
+    "circular-functions": "^0.0.4",
     "cli-progress": "^3.10.0",
     "csv-parser": "^3.0.0",
     "dayjs": "^1.10.7",

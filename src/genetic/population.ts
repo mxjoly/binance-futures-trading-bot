@@ -1,6 +1,5 @@
-import { Binance, ExchangeInfo } from 'binance-api-node';
 import ConnectionHistory from './connectionHistory';
-import Player from './player';
+import Player, { PlayerParams } from './player';
 import Species from './species';
 
 class Population {
@@ -16,18 +15,7 @@ class Population {
   private massExtinctionEvent: boolean;
   private newStage: boolean;
 
-  constructor(
-    size: number,
-    genomePlayerInputs: number,
-    genomePlayerOutputs: number,
-    playerParams: {
-      tradeConfig: TradeConfig;
-      binanceClient: Binance;
-      exchangeInfo: ExchangeInfo;
-      initialCapital: number;
-      goals: TraderGoals;
-    }
-  ) {
+  constructor({ size, player }: { size: number; player: PlayerParams }) {
     this.players = [];
     this.bestPlayer = null;
     this.bestScore = 0;
@@ -41,17 +29,7 @@ class Population {
     this.newStage = false;
 
     for (var i = 0; i < size; i++) {
-      this.players.push(
-        new Player(
-          genomePlayerInputs,
-          genomePlayerOutputs,
-          playerParams.tradeConfig,
-          playerParams.binanceClient,
-          playerParams.exchangeInfo,
-          playerParams.initialCapital,
-          playerParams.goals
-        )
-      );
+      this.players.push(new Player({ ...player }));
       this.players[this.players.length - 1].brain.mutate(
         this.innovationHistory
       );
@@ -95,15 +73,21 @@ class Population {
   /**
    * Sets the best player globally and for this generation
    */
-  setBestPlayer() {
-    var tempBest = this.species[0].players[0];
-    tempBest.generation = this.generation;
+  setBestPlayer(player?: Player) {
+    if (player) {
+      this.generationPlayers.push(player.cloneForReplay());
+      this.bestScore = player.score;
+      this.bestPlayer = player.cloneForReplay();
+    } else {
+      var tempBest = this.species[0].players[0];
+      tempBest.generation = this.generation;
 
-    // if the best of this gen is better than the global best score then set the global best as the best gen
-    if (tempBest.score >= this.bestScore) {
-      this.generationPlayers.push(tempBest.cloneForReplay());
-      this.bestScore = tempBest.score;
-      this.bestPlayer = tempBest.cloneForReplay();
+      // if the best of this gen is better than the global best score then set the global best as the best gen
+      if (tempBest.score >= this.bestScore) {
+        this.generationPlayers.push(tempBest.cloneForReplay());
+        this.bestScore = tempBest.score;
+        this.bestPlayer = tempBest.cloneForReplay();
+      }
     }
   }
 

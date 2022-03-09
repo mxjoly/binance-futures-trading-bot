@@ -5,6 +5,7 @@ import { loadCandlesFromCSV } from '../utils/candleData';
 import Config from '../configs/genetic';
 import { decimalCeil, decimalFloor } from '../utils/math';
 import Population from './population';
+import { loadNeuralNetwork, saveNeuralNetwork } from './saveManager';
 import * as VolumeOscillator from '../indicators/volumeOscillator';
 import {
   ADX,
@@ -19,6 +20,7 @@ import {
   WilliamsR,
 } from 'technicalindicators';
 import Trader from './player';
+import Player from './player';
 
 // ===================================================================================================
 
@@ -266,7 +268,7 @@ function coloredValue(
  */
 function displayBestTraderStats(bestTrader: Trader) {
   let {
-    score,
+    bestScore,
     wallet,
     stats: {
       totalProfit,
@@ -282,7 +284,7 @@ function displayBestTraderStats(bestTrader: Trader) {
     },
   } = bestTrader;
 
-  score = decimalFloor(score, 2);
+  bestScore = decimalFloor(bestScore, 2);
   totalProfit = decimalFloor(totalProfit, 2);
   totalLoss = decimalFloor(Math.abs(totalLoss), 2);
   totalFees = decimalFloor(Math.abs(totalFees), 2);
@@ -300,7 +302,7 @@ function displayBestTraderStats(bestTrader: Trader) {
   let averageLoss = decimalFloor(totalLoss / totalLostTrades, 2);
 
   console.log(`------------ Best Trader ------------`);
-  console.log(`Score: ${coloredValue(score)}`);
+  console.log(`Score: ${coloredValue(bestScore)}`);
   console.log(`ROI: ${coloredValue(roi, 0, true)}`);
   console.log(`Balance: ${coloredValue(totalBalance, initialCapital)}`);
   console.log(`Trades: ${totalTrades}`);
@@ -333,8 +335,9 @@ function displayBestTraderStats(bestTrader: Trader) {
 
 /**
  * Train the traders to get the best
+ * @param useSave
  */
-export async function train() {
+export async function train(useSave?: boolean) {
   const binanceClient = Binance({
     apiKey: process.env.BINANCE_PUBLIC_KEY,
     apiSecret: process.env.BINANCE_PRIVATE_KEY,
@@ -360,26 +363,49 @@ export async function train() {
     endDateTraining
   );
 
-  let population = new Population(
-    totalPopulation,
-    tradeConfig.exitStrategy
-      ? NEURAL_NETWORK_INPUTS
-      : NEURAL_NETWORK_INPUTS + 1, // If no strategy to exit, add an input to know if the player have a position opened
-    tradeConfig.exitStrategy
-      ? NEURAL_NETWORK_OUTPUTS
-      : NEURAL_NETWORK_OUTPUTS + 1, // If no strategy to exit, add an output to close the position
-    {
+  let brain = useSave ? loadNeuralNetwork() : null;
+  let goals = {
+    winRate: winRate,
+    profitRatio: profitRatio,
+    maxRelativeDrawdown: maxRelativeDrawdown,
+  };
+
+  let population = new Population({
+    size: totalPopulation,
+    player: {
+      genomeInputs: tradeConfig.exitStrategy
+        ? NEURAL_NETWORK_INPUTS
+        : NEURAL_NETWORK_INPUTS + 1, // If no strategy to exit, add an input to know if the player have a position opened
+      genomeOutputs: tradeConfig.exitStrategy
+        ? NEURAL_NETWORK_OUTPUTS
+        : NEURAL_NETWORK_OUTPUTS + 1, // If no strategy to exit, add an output to close the position
       tradeConfig,
       binanceClient,
       exchangeInfo,
       initialCapital,
-      goals: {
-        winRate: winRate,
-        profitRatio: profitRatio,
-        maxRelativeDrawdown: maxRelativeDrawdown,
-      },
-    }
-  );
+      brain,
+      goals,
+    },
+  });
+
+  if (useSave) {
+    population.setBestPlayer(
+      new Player({
+        genomeInputs: tradeConfig.exitStrategy
+          ? NEURAL_NETWORK_INPUTS
+          : NEURAL_NETWORK_INPUTS + 1,
+        genomeOutputs: tradeConfig.exitStrategy
+          ? NEURAL_NETWORK_OUTPUTS
+          : NEURAL_NETWORK_OUTPUTS + 1,
+        tradeConfig,
+        binanceClient,
+        exchangeInfo,
+        initialCapital,
+        goals,
+        brain,
+      })
+    );
+  }
 
   for (let gen = 0; gen < totalGenerations; gen++) {
     for (let i = 0; i < historicCandleData.length; i++) {
@@ -421,6 +447,15 @@ export async function train() {
     let bestTrader = population.bestPlayer;
     displayBestTraderStats(bestTrader);
   }
+
+  saveNeuralNetwork(population.bestPlayer.brain);
 }
 
-train();
+// Use save file of the previous neural network
+const useSave = process.argv[2]
+  ? process.argv[2].split('=')[1] === 'true'
+    ? true
+    : false
+  : false;
+
+train(useSave);

@@ -1,3 +1,4 @@
+import circular from 'circular-functions';
 import { random } from '../utils/math';
 import * as activation from './activationFunctions';
 import ConnectionGene from './connectionGene';
@@ -10,11 +11,14 @@ class Genome {
   private inputs: number;
   private outputs: number;
   public genes: ConnectionGene[]; // a list of connections between nodes which represent the NN
-  private nodes: NNode[];
-  private layers: number;
-  private network: NNode[]; // a list of the nodes in the order that they need to be considered in the NN
-  private nextNode: number;
-  private biasNode: number;
+  public nodes: NNode[];
+  public layers: number;
+  public network: NNode[]; // a list of the nodes in the order that they need to be considered in the NN
+  public nextNode: number;
+  public biasNode: number;
+
+  // Circular function
+  private _c = circular.setSafe();
 
   constructor(inputs: number, outputs: number, crossover?: boolean) {
     this.genes = [];
@@ -23,7 +27,6 @@ class Genome {
     this.outputs = outputs;
     this.layers = 2;
     this.nextNode = 0;
-    // this.biasNode;
     this.network = [];
 
     if (crossover) {
@@ -128,7 +131,6 @@ class Genome {
     }
 
     for (var i = 0; i < this.genes.length; i++) {
-      // for each connectionGene
       this.genes[i].fromNode.outputConnections.push(this.genes[i]); // add it to node
     }
   }
@@ -137,30 +139,6 @@ class Genome {
    * Feeding in input values for the NN and returning output array
    */
   feedForward(inputValues: number[], activationFunc = activation.logistic) {
-    // inputValues = [
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    //   Math.random(),
-    // ];
-
     // set the outputs of the input nodes
     for (var i = 0; i < this.inputs; i++) {
       this.nodes[i].outputValue = inputValues[i];
@@ -183,8 +161,6 @@ class Genome {
       this.nodes[i].inputSum = 0;
     }
 
-    //console.log(outs);
-
     return outs;
   }
 
@@ -197,9 +173,7 @@ class Genome {
 
     // for each layer add the node in that layer, since layers cannot connect to themselves there is no need to order the nodes within a layer
     for (var l = 0; l < this.layers; l++) {
-      // for each layer
       for (var i = 0; i < this.nodes.length; i++) {
-        // for each node
         if (this.nodes[i].layer == l) {
           // if that node is in that layer
           this.network.push(this.nodes[i]);
@@ -207,7 +181,6 @@ class Genome {
       }
     }
   }
-  //-----------------------------------------------------------------------------------------------------------------------------------------
 
   /**
    * Mutate the NN by adding a new node. It does this by picking a random connection and disabling
@@ -258,7 +231,7 @@ class Genome {
       this.genes[randomConnection].toNode
     );
 
-    //add a new connection from the new node with a weight the same as the disabled connection
+    // add a new connection from the new node with a weight the same as the disabled connection
     this.genes.push(
       new ConnectionGene(
         this.getNode(newNodeNo),
@@ -538,11 +511,11 @@ class Genome {
   }
 
   /**
-   * Returns whether or not there is a gene matching the input innovation number  in the input genome
+   * Returns whether or not there is a gene matching the input innovation number in the input genome
    */
-  matchingGene(parent2: Genome, innovation: number) {
-    for (var i = 0; i < parent2.genes.length; i++) {
-      if (parent2.genes[i].innovationNo == innovation) {
+  matchingGene(parent: Genome, innovation: number) {
+    for (var i = 0; i < parent.genes.length; i++) {
+      if (parent.genes[i].innovationNo == innovation) {
         return i;
       }
     }
@@ -594,7 +567,6 @@ class Genome {
     }
 
     // copy all the connections so that they connect the clone new this.nodes
-
     for (var i = 0; i < this.genes.length; i++) {
       // copy genes
       clone.genes.push(
@@ -611,6 +583,72 @@ class Genome {
     clone.connectNodes();
 
     return clone;
+  }
+
+  serialize() {
+    return circular.serialize(this);
+  }
+
+  static deserialize(data: any) {
+    data = JSON.parse(data);
+
+    const { inputs, outputs, layers, nextNode, biasNode } = data.object;
+
+    // Store the class object that will be referenced
+    const tempNodesObj: { [uid: string]: NNode } = {};
+    const tempConnectionGenesObj: { [uid: string]: ConnectionGene } = {};
+
+    // Create all the nodes without the output connections
+    Object.values(data.references)
+      .filter((props: any) => props._c.type === 'NNode')
+      .forEach((props: any) => {
+        let { _c, number, inputSum, outputValue, layer } = props;
+        let node = new NNode(number);
+        node.inputSum = inputSum;
+        node.outputValue = outputValue;
+        node.layer = layer;
+        node.outputConnections = []; // create the connections later
+        tempNodesObj[_c.uid] = node;
+      });
+
+    // Create the connections between nodes
+    Object.values(data.references)
+      .filter((props: any) => props._c.type === 'ConnectionGene')
+      .forEach((props: any) => {
+        let { _c, enabled, fromNode, toNode, innovationNo, weight } = props;
+        let connection = new ConnectionGene(
+          tempNodesObj[fromNode.uid],
+          tempNodesObj[toNode.uid],
+          weight,
+          innovationNo,
+          enabled
+        );
+        tempConnectionGenesObj[_c.uid] = connection;
+      });
+
+    // Add the connections to the nodes outputs
+    Object.values(data.references)
+      .filter((props: any) => props._c.type === 'NNode')
+      .forEach((props: any) => {
+        let { outputConnections, _c } = props;
+        tempNodesObj[_c.uid].outputConnections = outputConnections.map(
+          ({ uid }) => tempConnectionGenesObj[uid]
+        );
+      });
+
+    let genome = new Genome(inputs, outputs, false);
+    genome.layers = layers;
+    genome.nextNode = nextNode;
+    genome.biasNode = biasNode;
+    genome.genes = Object.values(tempConnectionGenesObj);
+    genome.nodes = Object.values(tempNodesObj).sort(
+      (a, b) => a.number - b.number
+    );
+    genome.network = Object.values(tempNodesObj)
+      .sort((a, b) => a.number - b.number)
+      .sort((a, b) => a.layer - b.layer);
+
+    return genome;
   }
 }
 

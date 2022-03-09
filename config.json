@@ -13,20 +13,20 @@
     "save_db": false
   },
   "genetic": {
-    "start_date_training": "2022-01-01 00:00:00",
-    "end_date_training": "2022-02-01 00:00:00",
+    "start_date_training": "2021-01-01 00:00:00",
+    "end_date_training": "2021-02-01 00:00:00",
     "start_date_test": "2021-01-01 00:00:00",
     "end_date_test": "2021-01-01 00:00:00",
     "initial_capital": 10000,
     "population": 50,
-    "generations": 1000,
+    "generations": 100,
     "goals": {
       "win_rate": null,
       "profit_ratio": null,
-      "max_relative_drawdown": -0.05
+      "max_relative_drawdown": -0.01
     },
     "neural_network": {
-      "inputs_mode": "indicators",
+      "inputs_mode": "candles",
       "candle_inputs": {
         "length": 20,
         "source": "close"
@@ -44,7 +44,7 @@
         "WILLIAM_R": false,
         "KIJUN": true,
         "VWAP": false,
-        "VOL_OSC": false,
+        "VOL_OSC": true,
         "PRICE_CHANGE": true,
         "VOL": true
       }

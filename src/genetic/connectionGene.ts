@@ -1,5 +1,14 @@
+import circular from 'circular-functions';
 import { random, randomGaussian } from '../utils/math';
 import NNode from './node';
+
+export interface ConnectionGeneParams {
+  fromNode: NNode;
+  toNode: NNode;
+  weight: number;
+  enabled: boolean;
+  innovationNo: number;
+}
 
 /**
  * A connection between 2 nodes
@@ -11,18 +20,27 @@ class ConnectionGene {
   public enabled: boolean;
   public innovationNo: number; // each connection is given a innovation number to compare genomes
 
-  constructor(from: NNode, to: NNode, weight: number, innovationNo: number) {
+  // Circular function
+  public _c = circular.register('ConnectionGene');
+
+  constructor(
+    from: NNode,
+    to: NNode,
+    weight: number,
+    innovationNo: number,
+    enabled = true
+  ) {
     this.fromNode = from;
     this.toNode = to;
     this.weight = weight;
-    this.enabled = true;
+    this.enabled = enabled;
     this.innovationNo = innovationNo;
   }
 
   /**
    * Change the weight of the connection
    */
-  mutateWeight() {
+  public mutateWeight() {
     var rand = random();
     if (rand < 0.1) {
       // 10% of the time completely change the this.weight
@@ -45,7 +63,7 @@ class ConnectionGene {
    * @param from
    * @param to
    */
-  clone(from: NNode, to: NNode) {
+  public clone(from: NNode, to: NNode) {
     var clone = new ConnectionGene(from, to, this.weight, this.innovationNo);
     clone.enabled = this.enabled;
     return clone;
