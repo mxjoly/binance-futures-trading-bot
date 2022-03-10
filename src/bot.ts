@@ -136,6 +136,7 @@ export class Bot {
       allowPyramiding,
       maxPyramidingAllocation,
       loopInterval,
+      maxTradeDuration,
     } = tradeConfig;
     const pair = asset + base;
 
@@ -160,7 +161,7 @@ export class Bot {
         assetBalance * currentPrice <= baseBalance * maxPyramidingAllocation);
 
     // Check if we are in the trading sessions
-    let isTradingSessionActive = this.isTradingSessionActive(
+    const isTradingSessionActive = this.isTradingSessionActive(
       candles[loopInterval][candles[loopInterval].length - 1].closeTime,
       tradingSession
     );
@@ -169,8 +170,8 @@ export class Bot {
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    // The current trade is too long ?
-    if (assetBalance > 0 && this.counters[pair]) {
+    // The current trade is too long
+    if (maxTradeDuration && assetBalance > 0 && this.counters[pair]) {
       this.counters[pair].decrement();
       if (this.counters[pair].getValue() == 0) {
         binanceClient
@@ -182,7 +183,10 @@ export class Bot {
           })
           .then(() => {
             this.counters[pair].reset();
-            log(`The trade on ${pair} has been closed because of its duration`);
+            this.closeOpenOrders(pair);
+            log(
+              `The trade on ${pair} is longer that the maximum authorized duration. Trade has been closed.`
+            );
           })
           .catch(error);
         return;
@@ -192,6 +196,15 @@ export class Bot {
     // Prevent remaining open orders
     if (assetBalance === 0 && currentOpenOrders.length > 0) {
       this.closeOpenOrders(pair);
+    }
+
+    // Reset the counter if a previous trade close a the position
+    if (
+      maxTradeDuration &&
+      assetBalance === 0 &&
+      this.counters[pair].getValue() < maxTradeDuration
+    ) {
+      this.counters[pair].reset();
     }
 
     if (assetBalance > 0 && sellStrategy(candles)) {
@@ -341,6 +354,7 @@ export class Bot {
       maxPyramidingAllocation,
       unidirectional,
       loopInterval,
+      maxTradeDuration,
     } = tradeConfig;
     const pair = asset + base;
 
@@ -382,13 +396,17 @@ export class Bot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Check if we are in the trading sessions
-    let isTradingSessionActive = this.isTradingSessionActive(
+    const isTradingSessionActive = this.isTradingSessionActive(
       candles[loopInterval][candles[loopInterval].length - 1].closeTime,
       tradingSession
     );
 
-    // The current position is too long ?
-    if ((hasShortPosition || hasLongPosition) && this.counters[pair]) {
+    // The current position is too long
+    if (
+      maxTradeDuration &&
+      (hasShortPosition || hasLongPosition) &&
+      this.counters[pair]
+    ) {
       this.counters[pair].decrement();
       if (this.counters[pair].getValue() == 0) {
         binanceClient
@@ -400,8 +418,9 @@ export class Bot {
           })
           .then(() => {
             this.counters[pair].reset();
+            this.closeOpenOrders(pair);
             log(
-              `The position on ${pair} has been closed because of its duration`
+              `The position on ${pair} is longer that the maximum authorized duration. Position has been closed.`
             );
           })
           .catch(error);
@@ -412,6 +431,16 @@ export class Bot {
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
       this.closeOpenOrders(pair);
+    }
+
+    // Reset the counter if a previous trade close a the position
+    if (
+      maxTradeDuration &&
+      !hasLongPosition &&
+      !hasShortPosition &&
+      this.counters[pair].getValue() < maxTradeDuration
+    ) {
+      this.counters[pair].reset();
     }
 
     if (

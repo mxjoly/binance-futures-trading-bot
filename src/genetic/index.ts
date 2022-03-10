@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import Binance from 'binance-api-node';
-import { BotConfig } from '../init';
+import { BotConfig, StrategyConfig } from '../init';
 import { loadCandlesFromCSV } from '../utils/candleData';
 import Config from '../configs/genetic';
 import { decimalCeil, decimalFloor } from '../utils/math';
@@ -20,7 +20,6 @@ import {
   WilliamsR,
 } from 'technicalindicators';
 import Trader from './player';
-import Player from './player';
 
 // ===================================================================================================
 
@@ -43,6 +42,7 @@ const endDateTest = GeneticConfig['end_date_test'];
 const winRate = GoalsConfig['win_rate'];
 const profitRatio = GoalsConfig['profit_ratio'];
 const maxRelativeDrawdown = GoalsConfig['max_relative_drawdown'];
+const tradesPerDay = GoalsConfig['trades_per_days'];
 
 export const NEURAL_NETWORK_INPUTS_MODE = NeuralNetworkConfig['inputs_mode'];
 export const CANDLE_LENGTH_INPUTS = CandleInputsConfig['length'];
@@ -74,7 +74,9 @@ const NEURAL_NETWORK_INPUTS =
         ([, val]) => val === true
       ).length;
 
-const NEURAL_NETWORK_OUTPUTS = 3; // Buy / Sell / Wait
+const NEURAL_NETWORK_OUTPUTS = 2; // Buy / Sell
+
+const CANDLE_MIN_LENGTH = 150; // the trader start to trade when it can see X candles
 
 // ===================================================================================================
 
@@ -82,7 +84,7 @@ const NEURAL_NETWORK_OUTPUTS = 3; // Buy / Sell / Wait
  * Calculate the indicator values
  * @param candles
  */
-function calculateIndicators(candles: CandleData[]) {
+export function calculateIndicators(candles: CandleData[]) {
   // EMA21
   const ema21 =
     NEURAL_NETWORK_INDICATORS_INPUTS.EMA21 === true
@@ -301,7 +303,7 @@ function displayBestTraderStats(bestTrader: Trader) {
   let averageProfit = decimalFloor(totalProfit / totalWinningTrades, 2);
   let averageLoss = decimalFloor(totalLoss / totalLostTrades, 2);
 
-  console.log(`------------ Best Trader ------------`);
+  console.log(`------------ Best Trader Ever ------------`);
   console.log(`Score: ${coloredValue(bestScore)}`);
   console.log(`ROI: ${coloredValue(roi, 0, true)}`);
   console.log(`Balance: ${coloredValue(totalBalance, initialCapital)}`);
@@ -335,7 +337,6 @@ function displayBestTraderStats(bestTrader: Trader) {
 
 /**
  * Train the traders to get the best
- * @param useSave
  */
 export async function train(useSave?: boolean) {
   const binanceClient = Binance({
@@ -363,11 +364,11 @@ export async function train(useSave?: boolean) {
     endDateTraining
   );
 
-  let brain = useSave ? loadNeuralNetwork() : null;
   let goals = {
     winRate: winRate,
     profitRatio: profitRatio,
     maxRelativeDrawdown: maxRelativeDrawdown,
+    tradesPerDay: tradesPerDay,
   };
 
   let population = new Population({
@@ -383,50 +384,24 @@ export async function train(useSave?: boolean) {
       binanceClient,
       exchangeInfo,
       initialCapital,
-      brain,
       goals,
+      brain: useSave ? loadNeuralNetwork() : null,
     },
   });
 
-  if (useSave) {
-    population.setBestPlayer(
-      new Player({
-        genomeInputs: tradeConfig.exitStrategy
-          ? NEURAL_NETWORK_INPUTS
-          : NEURAL_NETWORK_INPUTS + 1,
-        genomeOutputs: tradeConfig.exitStrategy
-          ? NEURAL_NETWORK_OUTPUTS
-          : NEURAL_NETWORK_OUTPUTS + 1,
-        tradeConfig,
-        binanceClient,
-        exchangeInfo,
-        initialCapital,
-        goals,
-        brain,
-      })
-    );
-  }
-
   for (let gen = 0; gen < totalGenerations; gen++) {
     for (let i = 0; i < historicCandleData.length; i++) {
-      const minimalLength = 150;
-      if (i < minimalLength) continue;
+      if (i < CANDLE_MIN_LENGTH) continue;
 
       let candles = historicCandleData.slice(
-        i - minimalLength < 0 ? 0 : i - minimalLength,
+        i - CANDLE_MIN_LENGTH < 0 ? 0 : i - CANDLE_MIN_LENGTH,
         i
       );
       let currentPrice = candles[candles.length - 1].close;
-      let indicatorsInputs = calculateIndicators(candles);
 
       if (!population.done() && i < historicCandleData.length - 1) {
         // if any players are alive then update them
-        population.updateAlive(
-          tradeConfig,
-          candles,
-          currentPrice,
-          indicatorsInputs
-        );
+        population.updateAlive(tradeConfig, candles, currentPrice);
       } else {
         // genetic algorithm
         population.naturalSelection();
@@ -441,7 +416,7 @@ export async function train(useSave?: boolean) {
       `Average Fitness: ${coloredValue(
         population.getAvgFitnessSum() / population.species.length,
         0
-      )}\n`
+      )}`
     );
 
     let bestTrader = population.bestPlayer;
@@ -450,12 +425,3 @@ export async function train(useSave?: boolean) {
 
   saveNeuralNetwork(population.bestPlayer.brain);
 }
-
-// Use save file of the previous neural network
-const useSave = process.argv[2]
-  ? process.argv[2].split('=')[1] === 'true'
-    ? true
-    : false
-  : false;
-
-train(useSave);

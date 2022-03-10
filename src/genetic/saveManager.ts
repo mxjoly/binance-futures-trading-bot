@@ -9,9 +9,12 @@ const saveFile = path.join(tempDirectory, 'genetic-nn-save.json');
  * Save the neural network in a txt file
  * @param genome The neural network
  */
-export function saveNeuralNetwork(genome: Genome) {
+export function saveNeuralNetwork(genome: Genome, file?: string) {
   if (!fs.existsSync(tempDirectory)) fs.mkdirSync(tempDirectory);
-  fs.writeFileSync(saveFile, genome.serialize());
+  fs.writeFileSync(
+    file ? path.join(tempDirectory, file) : saveFile,
+    genome.serialize()
+  );
 }
 
 /**

@@ -43,12 +43,11 @@ class Population {
   updateAlive(
     tradeConfig: TradeConfig,
     candles: CandleData[],
-    currentPrice: number,
-    indicatorsInputs: number[]
+    currentPrice: number
   ) {
     for (var i = 0; i < this.players.length; i++) {
       if (!this.players[i].dead) {
-        this.players[i].look(candles, indicatorsInputs); // get inputs for brain
+        this.players[i].look(candles); // get inputs for brain
         this.players[i].think(); // use outputs from neural network
         this.players[i].update(tradeConfig, candles, currentPrice); // move the player according to the outputs from the neural network
         if (this.players[i].score > this.globalBestScore) {
@@ -73,21 +72,15 @@ class Population {
   /**
    * Sets the best player globally and for this generation
    */
-  setBestPlayer(player?: Player) {
-    if (player) {
-      this.generationPlayers.push(player.cloneForReplay());
-      this.bestScore = player.score;
-      this.bestPlayer = player.cloneForReplay();
-    } else {
-      var tempBest = this.species[0].players[0];
-      tempBest.generation = this.generation;
+  setBestPlayer() {
+    var tempBest = this.species[0].players[0];
+    tempBest.generation = this.generation;
 
-      // if the best of this gen is better than the global best score then set the global best as the best gen
-      if (tempBest.score >= this.bestScore) {
-        this.generationPlayers.push(tempBest.cloneForReplay());
-        this.bestScore = tempBest.score;
-        this.bestPlayer = tempBest.cloneForReplay();
-      }
+    // if the best of this gen is better than the global best score then set the global best as the best gen
+    if (tempBest.score >= this.bestScore) {
+      this.generationPlayers.push(tempBest.cloneForReplay());
+      this.bestScore = tempBest.score;
+      this.bestPlayer = tempBest.cloneForReplay();
     }
   }
 

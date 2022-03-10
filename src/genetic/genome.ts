@@ -33,20 +33,22 @@ class Genome {
       return;
     }
 
+    // create input nodes
     for (var i = 0; i < this.inputs; i++) {
       this.nodes.push(new NNode(i));
       this.nextNode++;
       this.nodes[i].layer = 0;
     }
 
-    // create output this.nodes
+    // create output nodes
     for (var i = 0; i < this.outputs; i++) {
       this.nodes.push(new NNode(i + this.inputs));
       this.nodes[i + this.inputs].layer = 1;
       this.nextNode++;
     }
 
-    this.nodes.push(new NNode(this.nextNode)); // bias node
+    // bias node
+    this.nodes.push(new NNode(this.nextNode));
     this.biasNode = this.nextNode;
     this.nextNode++;
     this.nodes[this.biasNode].layer = 0;
@@ -566,7 +568,7 @@ class Genome {
       clone.nodes.push(this.nodes[i].clone());
     }
 
-    // copy all the connections so that they connect the clone new this.nodes
+    // copy all the connections so that they connect the clone new nodes
     for (var i = 0; i < this.genes.length; i++) {
       // copy genes
       clone.genes.push(
@@ -591,64 +593,53 @@ class Genome {
 
   static deserialize(data: any) {
     data = JSON.parse(data);
+    if (data) {
+      const { inputs, outputs, layers, nextNode, biasNode } = data.object;
 
-    const { inputs, outputs, layers, nextNode, biasNode } = data.object;
+      // Store the class object that will be referenced
+      const tempNodesObj: { [uid: string]: NNode } = {};
+      const tempConnectionGenesObj: { [uid: string]: ConnectionGene } = {};
 
-    // Store the class object that will be referenced
-    const tempNodesObj: { [uid: string]: NNode } = {};
-    const tempConnectionGenesObj: { [uid: string]: ConnectionGene } = {};
+      // Create all the nodes
+      Object.values(data.references)
+        .filter((props: any) => props._c.type === 'NNode')
+        .forEach((props: any) => {
+          let { _c, number, inputSum, outputValue, layer } = props;
+          let node = new NNode(number);
+          node.inputSum = inputSum;
+          node.outputValue = outputValue;
+          node.layer = layer;
+          node.outputConnections = []; // create the connections later
+          tempNodesObj[_c.uid] = node;
+        });
 
-    // Create all the nodes without the output connections
-    Object.values(data.references)
-      .filter((props: any) => props._c.type === 'NNode')
-      .forEach((props: any) => {
-        let { _c, number, inputSum, outputValue, layer } = props;
-        let node = new NNode(number);
-        node.inputSum = inputSum;
-        node.outputValue = outputValue;
-        node.layer = layer;
-        node.outputConnections = []; // create the connections later
-        tempNodesObj[_c.uid] = node;
-      });
+      // Create the connections between nodes
+      Object.values(data.references)
+        .filter((props: any) => props._c.type === 'ConnectionGene')
+        .forEach((props: any) => {
+          let { _c, enabled, fromNode, toNode, innovationNo, weight } = props;
+          let connection = new ConnectionGene(
+            tempNodesObj[fromNode.uid],
+            tempNodesObj[toNode.uid],
+            weight,
+            innovationNo,
+            enabled
+          );
+          tempConnectionGenesObj[_c.uid] = connection;
+        });
 
-    // Create the connections between nodes
-    Object.values(data.references)
-      .filter((props: any) => props._c.type === 'ConnectionGene')
-      .forEach((props: any) => {
-        let { _c, enabled, fromNode, toNode, innovationNo, weight } = props;
-        let connection = new ConnectionGene(
-          tempNodesObj[fromNode.uid],
-          tempNodesObj[toNode.uid],
-          weight,
-          innovationNo,
-          enabled
-        );
-        tempConnectionGenesObj[_c.uid] = connection;
-      });
+      let genome = new Genome(inputs, outputs, true);
+      genome.layers = layers;
+      genome.nextNode = nextNode;
+      genome.biasNode = biasNode;
+      genome.genes = Object.values(tempConnectionGenesObj);
+      genome.nodes = Object.values(tempNodesObj).sort(
+        (a, b) => a.number - b.number
+      );
 
-    // Add the connections to the nodes outputs
-    Object.values(data.references)
-      .filter((props: any) => props._c.type === 'NNode')
-      .forEach((props: any) => {
-        let { outputConnections, _c } = props;
-        tempNodesObj[_c.uid].outputConnections = outputConnections.map(
-          ({ uid }) => tempConnectionGenesObj[uid]
-        );
-      });
-
-    let genome = new Genome(inputs, outputs, false);
-    genome.layers = layers;
-    genome.nextNode = nextNode;
-    genome.biasNode = biasNode;
-    genome.genes = Object.values(tempConnectionGenesObj);
-    genome.nodes = Object.values(tempNodesObj).sort(
-      (a, b) => a.number - b.number
-    );
-    genome.network = Object.values(tempNodesObj)
-      .sort((a, b) => a.number - b.number)
-      .sort((a, b) => a.layer - b.layer);
-
-    return genome;
+      genome.generateNetwork();
+      return genome;
+    }
   }
 }
 

@@ -12,6 +12,7 @@ const config: TradeConfig[] = [
     indicatorIntervals: [CandleChartInterval.FIVE_MINUTES],
     risk: 1,
     leverage: 20,
+    maxTradeDuration: 12,
     buyStrategy: (candles) => false,
     sellStrategy: (candles) => false,
     riskManagement: getPositionSizeByPercent,

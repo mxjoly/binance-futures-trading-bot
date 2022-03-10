@@ -8,13 +8,13 @@
   "maker_fees_spot": 0.01,
   "backtest": {
     "start_date": "2022-01-01 00:00:00",
-    "end_date": "2022-02-01 00:00:00",
+    "end_date": "2022-01-14 00:00:00",
     "initial_capital": 10000,
     "save_db": false
   },
   "genetic": {
-    "start_date_training": "2021-01-01 00:00:00",
-    "end_date_training": "2021-02-01 00:00:00",
+    "start_date_training": "2022-01-01 00:00:00",
+    "end_date_training": "2022-01-14 00:00:00",
     "start_date_test": "2021-01-01 00:00:00",
     "end_date_test": "2021-01-01 00:00:00",
     "initial_capital": 10000,
@@ -23,7 +23,8 @@
     "goals": {
       "win_rate": null,
       "profit_ratio": null,
-      "max_relative_drawdown": -0.01
+      "max_relative_drawdown": -0.03,
+      "trades_per_day": 2
     },
     "neural_network": {
       "inputs_mode": "candles",

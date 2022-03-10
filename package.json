@@ -10,10 +10,10 @@
     "build:test": "cross-env NODE_ENV=test tsc",
     "data": "node ./scripts/generateData 1m,5m,15m,1h,4h",
     "test": "cross-env NODE_ENV=test node ./build/index.js DEBUG=false",
-    "test:nn": "cross-env NODE_ENV=test node ./build/index.js DEBUG=false NN=true",
+    "test:nn": "cross-env NODE_ENV=test node ./build/index.js DEBUG=false USE_NN_SAVE=true",
     "test:debug": "cross-env NODE_ENV=test node ./build/index.js DEBUG=true",
-    "genetic:train": "cross-env NODE_ENV=test node ./build/genetic/index.js USE_SAVE=true",
-    "genetic:train-reset": "cross-env NODE_ENV=test node ./build/genetic/index.js USE_SAVE=false",
+    "genetic:train": "cross-env NODE_ENV=test node ./build/genetic/run.js",
+    "genetic:train-reset": "cross-env NODE_ENV=test node ./build/genetic/run.js",
     "clear-temp": "rm -rd ./temp"
   },
   "keywords": [],

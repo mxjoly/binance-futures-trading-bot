@@ -5,7 +5,7 @@ import cliProgress from 'cli-progress';
 import dayjs from 'dayjs';
 import safeRequire from 'safe-require';
 import { binanceClient, BINANCE_MODE } from '../init';
-import { decimalCeil, decimalFloor } from '../utils/math';
+import { decimalCeil, decimalFloor, normalize } from '../utils/math';
 import { clone } from '../utils/object';
 import { loadCandlesMultiTimeFramesFromCSV } from '../utils/candleData';
 import { createDatabase, saveFuturesState, saveState } from './database';
@@ -24,6 +24,13 @@ import {
   durationBetweenDates,
   timeFrameToMinutes,
 } from '../utils/timeFrame';
+import Genome from '../genetic/genome';
+import {
+  calculateIndicators,
+  CANDLE_LENGTH_INPUTS,
+  CANDLE_SOURCE,
+  NEURAL_NETWORK_INPUTS_MODE,
+} from '../genetic';
 
 // ====================================================================== //
 
@@ -62,7 +69,10 @@ export const DEBUG = process.argv[2]
 
 // Max length of the candle arrays needed for the strategy and the calculation of indicators
 // Better to have the minimum to get a higher performance
-const MAX_LENGTH_CANDLES = 150;
+const MAX_CANDLE_LENGTH = 200;
+
+// The bot starts to trade when it has X available candles
+const MIN_CANDLE_LENGTH = 150;
 
 // Exchange fee info
 const TAKER_FEES =
@@ -94,6 +104,11 @@ export class BackTestBot {
   private endDate: Date;
   private initialCapital: number;
 
+  // Neural Network
+  private brain: Genome;
+  private vision: number[];
+  private decision: number[];
+
   // Account mocks
   private wallet: Wallet;
   private futuresWallet: FuturesWallet;
@@ -121,8 +136,14 @@ export class BackTestBot {
     strategyName: string,
     startDate: Date,
     endDate: Date,
-    initialCapital: number
+    initialCapital: number,
+    brain?: Genome
   ) {
+    if (brain && BINANCE_MODE === 'spot') {
+      console.error(`Cannot une neural network in spot mode`);
+      return;
+    }
+
     this.tradeConfigs = tradeConfigs;
     this.strategyName = strategyName;
     this.startDate = startDate;
@@ -131,6 +152,10 @@ export class BackTestBot {
 
     this.historicCandleDataMultiTimeFrames = {};
     this.counters = {};
+
+    this.brain = brain;
+    this.vision = [];
+    this.decision = [];
 
     this.strategyReport = {};
     this.maxBalance = initialCapital;
@@ -372,7 +397,7 @@ export class BackTestBot {
         let candles = this.generateCandleDataFromIndexes(pair, indexes[pair]);
         let candlesStream: CandleData[] = candles[pair][loopInterval];
 
-        if (candlesStream.length > 0) {
+        if (candlesStream.length > MIN_CANDLE_LENGTH) {
           const currentCandle = candlesStream[candlesStream.length - 1];
           const currentPrice = currentCandle.close;
 
@@ -388,6 +413,12 @@ export class BackTestBot {
 
           // The loop time frames could be different of the smaller time frame for all the trading configurations
           if (dateMatchTimeFrame(currentDate, config.loopInterval)) {
+            // Use neural network
+            if (this.brain) {
+              this.look(config, candlesStream);
+              this.think();
+            }
+
             if (BINANCE_MODE === 'spot') {
               this.tradeWithSpot(
                 config,
@@ -411,7 +442,7 @@ export class BackTestBot {
       // Update the max drawdown and max balance property for the strategy report
       this.updateMaxDrawdownMaxBalance();
 
-      // UPdate the total unrealized pnl on the futures account
+      // Update the total unrealized pnl on the futures account
       if (BINANCE_MODE === 'futures') this.updateTotalPNL();
 
       // Save the current state to the db
@@ -509,7 +540,7 @@ export class BackTestBot {
       }
 
       // Update the index start to have the same range between the index start and index end
-      if (i - indexStart > MAX_LENGTH_CANDLES) indexStart++;
+      if (i - indexStart > MAX_CANDLE_LENGTH) indexStart++;
     }
 
     return { indexStart, indexEnd };
@@ -833,20 +864,23 @@ export class BackTestBot {
       (allowPyramiding &&
         assetBalance * currentPrice <= baseBalance * maxPyramidingAllocation);
 
-    // Check if we are in the trading sessions
-    let isTradingSessionActive = this.isTradingSessionActive(
-      candles[loopInterval][candles[loopInterval].length - 1].closeTime,
-      tradingSession
-    );
-
     // Currency infos
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
-    // The current trade is too long ?
+    // Check if we are in the trading sessions
+    const isTradingSessionActive = this.isTradingSessionActive(
+      candles[loopInterval][candles[loopInterval].length - 1].closeTime,
+      tradingSession
+    );
+
+    // The current trade is too long
     if (maxTradeDuration && assetBalance > 0 && this.counters[pair]) {
       this.counters[pair].decrement();
       if (this.counters[pair].getValue() == 0) {
+        log(
+          `The trade on ${pair} is longer that the maximum authorized duration.`
+        );
         this.spotOrderMarket(
           asset,
           base,
@@ -855,31 +889,30 @@ export class BackTestBot {
           'SELL'
         );
         this.counters[pair].reset();
+        this.closeOpenOrders(pair);
         return;
       }
     }
-
-    // Decision to take ?
-    const isBuySignal = buyStrategy(candles);
-    const isSellSignal = sellStrategy(candles);
 
     // Prevent remaining open orders
     if (assetBalance === 0 && currentOpenOrders.length > 0)
       this.closeOpenOrders(pair);
 
-    // The neural network wants to close the position
-    // if (closePosition && assetBalance > 0) {
-    //   this.futuresOrderMarket(pair, currentPrice, assetBalance, 'SELL');
-    //   if (this.counters[pair]) this.counters[pair].reset();
-    //   return;
-    // }
+    // Reset the counter if a previous trade close a the position
+    if (
+      maxTradeDuration &&
+      assetBalance === 0 &&
+      this.counters[pair].getValue() < maxTradeDuration
+    ) {
+      this.counters[pair].reset();
+    }
 
-    if (assetBalance > 0 && isSellSignal) {
+    if (assetBalance > 0 && sellStrategy(candles)) {
       this.spotOrderMarket(asset, base, currentPrice, assetBalance, 'SELL');
       this.closeOpenOrders(pair);
     }
 
-    if (isTradingSessionActive && canBuy && isBuySignal) {
+    if (isTradingSessionActive && canBuy && buyStrategy(candles)) {
       const quantity = riskManagement({
         asset,
         base,
@@ -967,6 +1000,20 @@ export class BackTestBot {
     const hasLongPosition = position.size > 0;
     const hasShortPosition = position.size < 0;
 
+    // Decision to take
+    let max = Math.max(...this.decision);
+    const isBuySignal = this.brain
+      ? max === this.decision[0] && this.decision[0] > 0.6 && !hasShortPosition
+      : buyStrategy(candles);
+    const isSellSignal = this.brain
+      ? max === this.decision[1] && this.decision[1] > 0.6 && !hasLongPosition
+      : sellStrategy(candles);
+    const closePosition = this.brain
+      ? max === this.decision[2] &&
+        this.decision[2] > 0.6 &&
+        (hasShortPosition || hasLongPosition)
+      : false;
+
     // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
       ? position.margin + assetBalance * risk <=
@@ -976,6 +1023,9 @@ export class BackTestBot {
       (!allowPyramiding && !hasLongPosition) || allowPyramiding;
     const canTakeShortPosition =
       (!allowPyramiding && !hasShortPosition) || allowPyramiding;
+    const canClosePosition =
+      Math.abs(currentPrice - position.entryPrice) >=
+      position.entryPrice * 0.01;
 
     // Open orders
     const currentOpenOrders = this.futuresOpenOrders.filter(
@@ -987,12 +1037,12 @@ export class BackTestBot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Check if we are in the trading sessions
-    let isTradingSessionActive = this.isTradingSessionActive(
+    const isTradingSessionActive = this.isTradingSessionActive(
       candles[loopInterval][candles[loopInterval].length - 1].closeTime,
       tradingSession
     );
 
-    // The current position is too long ?
+    // The current position is too long
     if (
       maxTradeDuration &&
       (hasShortPosition || hasLongPosition) &&
@@ -1000,6 +1050,9 @@ export class BackTestBot {
     ) {
       this.counters[pair].decrement();
       if (this.counters[pair].getValue() == 0) {
+        log(
+          `The position on ${pair} is longer that the maximum authorized duration. Position has been closed.`
+        );
         this.futuresOrderMarket(
           pair,
           currentPrice,
@@ -1007,30 +1060,41 @@ export class BackTestBot {
           hasLongPosition ? 'SELL' : 'BUY'
         );
         this.counters[pair].reset();
+        this.closeFuturesOpenOrders(pair);
         return;
       }
     }
-
-    // Decision to take ?
-    const isBuySignal = buyStrategy(candles);
-    const isSellSignal = sellStrategy(candles);
 
     // Prevent remaining open orders when all the take profit or a stop loss has been filled
     if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
       this.closeFuturesOpenOrders(pair);
     }
 
-    // The neural network wants to close the position
-    // if (closePosition && (hasLongPosition || hasShortPosition)) {
-    //   this.futuresOrderMarket(
-    //     pair,
-    //     currentPrice,
-    //     Math.abs(position.size),
-    //     hasLongPosition ? 'SELL' : 'BUY'
-    //   );
-    //   if (this.counters[pair]) this.counters[pair].reset();
-    //   return;
-    // }
+    // Reset the counter if a previous trade close a the position
+    if (
+      maxTradeDuration &&
+      !hasLongPosition &&
+      !hasShortPosition &&
+      this.counters[pair].getValue() < maxTradeDuration
+    ) {
+      this.counters[pair].reset();
+    }
+
+    // Close the current position
+    if (
+      closePosition &&
+      (hasLongPosition || hasShortPosition) &&
+      canClosePosition
+    ) {
+      this.futuresOrderMarket(
+        pair,
+        currentPrice,
+        Math.abs(position.size),
+        hasLongPosition ? 'SELL' : 'BUY'
+      );
+      log(`Close the position on ${pair}`);
+      return;
+    }
 
     if (
       (isTradingSessionActive || position.size !== 0) &&
@@ -1318,6 +1382,7 @@ export class BackTestBot {
     const { margin, unrealizedProfit, size, positionSide } = position;
 
     if (size !== 0 && margin + unrealizedProfit <= 0) {
+      log(`The position on ${pair} has reached the liquidation price.`);
       this.futuresOrderMarket(
         pair,
         currentPrice,
@@ -1982,6 +2047,7 @@ export class BackTestBot {
     const position = positions.find((pos) => pos.pair === pair);
     const { entryPrice, size, leverage } = position;
     const fees = price * quantity * (TAKER_FEES / 100);
+    const hasPosition = position.size !== 0;
 
     if (quantity < 0) {
       console.error(
@@ -2002,6 +2068,7 @@ export class BackTestBot {
           position.margin += baseCost;
           position.size += quantity;
           position.entryPrice = avgEntryPrice;
+
           wallet.availableBalance -= baseCost + fees;
           wallet.totalWalletBalance -= fees;
 
@@ -2015,8 +2082,6 @@ export class BackTestBot {
           );
         }
       } else if (position.positionSide === 'SHORT') {
-        let hadPosition = position.size < 0;
-
         // Update wallet
         let pnl = this.getPositionPNL(position, price);
         wallet.availableBalance += position.margin + pnl - fees;
@@ -2045,9 +2110,9 @@ export class BackTestBot {
           this.strategyReport.totalLongTrades++;
         }
 
-        if (hadPosition && entryPrice >= price)
+        if (hasPosition && entryPrice >= price)
           this.strategyReport.shortWinningTrade++;
-        if (hadPosition && entryPrice < price)
+        if (hasPosition && entryPrice < price)
           this.strategyReport.shortLostTrade++;
         this.strategyReport.totalFees += fees;
 
@@ -2069,6 +2134,7 @@ export class BackTestBot {
           position.margin += baseCost;
           position.size -= quantity;
           position.entryPrice = avgEntryPrice;
+
           wallet.availableBalance -= baseCost + fees;
           wallet.totalWalletBalance -= fees;
 
@@ -2082,8 +2148,6 @@ export class BackTestBot {
           );
         }
       } else if (position.positionSide === 'LONG') {
-        let hadPosition = position.size > 0;
-
         // Update wallet
         let pnl = this.getPositionPNL(position, price);
         wallet.availableBalance += position.margin + pnl - fees;
@@ -2112,9 +2176,9 @@ export class BackTestBot {
           this.strategyReport.totalShortTrades++;
         }
 
-        if (hadPosition && entryPrice <= price)
+        if (hasPosition && entryPrice <= price)
           this.strategyReport.longWinningTrade++;
-        if (hadPosition && entryPrice > price)
+        if (hasPosition && entryPrice > price)
           this.strategyReport.longLostTrade++;
         this.strategyReport.totalFees += fees;
 
@@ -2236,5 +2300,75 @@ export class BackTestBot {
         `Trailing stop order for the pair ${pair} cannot be placed`
       );
     }
+  }
+
+  /**
+   * Gets the output of the brain, then converts them to actions
+   */
+  public think() {
+    var max = 0;
+    var maxIndex = 0;
+
+    // Get the output of the neural network
+    this.decision = this.brain.feedForward(this.vision);
+
+    for (var i = 0; i < this.decision.length; i++) {
+      if (this.decision[i] > max) {
+        max = this.decision[i];
+        maxIndex = i;
+      }
+    }
+  }
+
+  /**
+   * Get the inputs for the neural network
+   * @param tradeConfig
+   * @param candles
+   */
+  public look(tradeConfig: TradeConfig, candles: CandleData[]) {
+    let vision: number[] = [];
+
+    // If not exit strategy, we add an input to know if the player hold a position
+    if (!tradeConfig.exitStrategy && BINANCE_MODE === 'futures') {
+      const position = this.futuresWallet.positions.find(
+        (pos) => pos.pair === tradeConfig.asset + tradeConfig.base
+      );
+      const holdingTrade = position.size !== 0 ? 1 : 0;
+      vision.push(holdingTrade);
+    }
+
+    if (NEURAL_NETWORK_INPUTS_MODE === 'candles') {
+      const getCandleSource = (candles: CandleData[]) => {
+        if (CANDLE_SOURCE === 'open') return candles.map((c) => c.open);
+        else if (CANDLE_SOURCE === 'close') return candles.map((c) => c.close);
+        else if (CANDLE_SOURCE === 'high') return candles.map((c) => c.high);
+        else if (CANDLE_SOURCE === 'low') return candles.map((c) => c.low);
+        else if (CANDLE_SOURCE === 'hl2')
+          return candles.map((c) => (c.high + c.low) / 2);
+        else return candles.map((c) => c.close);
+      };
+
+      let candleVision = getCandleSource(candles).slice(-CANDLE_LENGTH_INPUTS);
+      // Get max and min
+      let min = Math.min(...candleVision);
+      let max = Math.max(...candleVision);
+      // Normalize values
+      candleVision = candleVision.map((val) => normalize(val, min, max, 0, 1));
+      // Add to the array
+      vision = vision.concat(candleVision);
+    } else {
+      let indicatorVision = calculateIndicators(candles);
+      // Get max and min
+      let min = Math.min(...indicatorVision);
+      let max = Math.max(...indicatorVision);
+      // Normalize values
+      indicatorVision = indicatorVision.map((val) =>
+        normalize(val, min, max, 0, 1)
+      );
+      // Add to the array
+      vision = vision.concat(indicatorVision);
+    }
+
+    this.vision = vision;
   }
 }

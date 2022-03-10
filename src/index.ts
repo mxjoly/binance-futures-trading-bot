@@ -1,6 +1,7 @@
 import { Bot } from './bot';
 import { BackTestBot } from './backtest/bot';
 import { StrategyConfig, BotConfig } from './init';
+import { loadNeuralNetwork } from './genetic/saveManager';
 
 if (process.env.NODE_ENV !== 'test') {
   const tradingBot = new Bot(StrategyConfig);
@@ -14,7 +15,7 @@ if (process.env.NODE_ENV !== 'test') {
   const strategyName = BotConfig['strategy_name'];
 
   // Use neural network ?
-  const NN = process.argv[3]
+  const useNeuralNetwork = process.argv[3]
     ? process.argv[3].split('=')[1] === 'true'
       ? true
       : false
@@ -25,7 +26,8 @@ if (process.env.NODE_ENV !== 'test') {
     strategyName,
     startDate,
     endDate,
-    initialCapital
+    initialCapital,
+    useNeuralNetwork ? loadNeuralNetwork() : null
   );
 
   bot.prepare();

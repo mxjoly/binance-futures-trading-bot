@@ -4,16 +4,28 @@ import { Counter } from '../tools/counter';
 import Genome from './genome';
 import { BINANCE_MODE, BotConfig } from '../init';
 import { calculateActivationPrice } from '../utils/trailingStop';
+import { timeFrameToMinutes } from '../utils/timeFrame';
 import {
   getPricePrecision,
   getQuantityPrecision,
   isValidQuantity,
 } from '../utils/currencyInfo';
 import {
+  calculateIndicators,
   CANDLE_LENGTH_INPUTS,
   CANDLE_SOURCE,
   NEURAL_NETWORK_INPUTS_MODE,
 } from '.';
+import {
+  debugLastCandle,
+  debugWallet,
+  log,
+  printDateBanner,
+} from '../backtest/debug';
+import chalk from 'chalk';
+import { normalize } from '../utils/math';
+
+const DEBUG = false;
 
 const TAKER_FEES = BotConfig['taker_fees_futures']; // %
 const MAKER_FEES = BotConfig['maker_fees_futures']; // %
@@ -123,12 +135,16 @@ class Player {
     this.genomeInputs = genomeInputs;
     this.genomeOutputs = genomeOutputs;
     this.brain = brain || new Genome(genomeInputs, genomeOutputs);
+
+    if (tradeConfig.maxTradeDuration) {
+      this.counter = new Counter(tradeConfig.maxTradeDuration);
+    }
   }
 
   /**
    * Get inputs for brain
    */
-  public look(candles: CandleData[], indicatorInputs: number[]) {
+  public look(candles: CandleData[]) {
     let vision: number[] = [];
 
     // If not exit strategy, we add an input to know if the player hold a position
@@ -151,12 +167,28 @@ class Player {
         else return candles.map((c) => c.close);
       };
 
-      this.vision = vision.concat(
-        getCandleSource(candles).slice(-CANDLE_LENGTH_INPUTS)
-      );
+      let candleVision = getCandleSource(candles).slice(-CANDLE_LENGTH_INPUTS);
+      // Get max and min
+      let min = Math.min(...candleVision);
+      let max = Math.max(...candleVision);
+      // Normalize values
+      candleVision = candleVision.map((val) => normalize(val, min, max, 0, 1));
+      // Add to the array
+      vision = vision.concat(candleVision);
     } else {
-      this.vision = vision.concat(indicatorInputs);
+      let indicatorVision = calculateIndicators(candles);
+      // Get max and min
+      let min = Math.min(...indicatorVision);
+      let max = Math.max(...indicatorVision);
+      // Normalize values
+      indicatorVision = indicatorVision.map((val) =>
+        normalize(val, min, max, 0, 1)
+      );
+      // Add to the array
+      vision = vision.concat(indicatorVision);
     }
+
+    this.vision = vision;
   }
 
   /**
@@ -170,6 +202,8 @@ class Player {
     candles: CandleData[],
     currentPrice: number
   ) {
+    this.lifespan++;
+
     let {
       totalLoss,
       totalProfit,
@@ -179,20 +213,18 @@ class Player {
       maxRelativeDrawdown,
     } = this.stats;
 
-    let profitRatio = totalProfit / (Math.abs(totalLoss) + totalFees);
-    let totalNetProfit = totalProfit - (Math.abs(totalLoss) + totalFees);
-    let winRate = winningTrades / totalTrades;
-    let roi =
+    const profitRatio = totalProfit / (Math.abs(totalLoss) + totalFees);
+    const totalNetProfit = totalProfit - (Math.abs(totalLoss) + totalFees);
+    const winRate = winningTrades / totalTrades;
+    const roi =
       (this.wallet.totalWalletBalance - this.initialCapital) /
       this.initialCapital;
 
-    this.lifespan++;
-
-    // // The trader open too much trades
-    // if (this.stats.totalTrades > 100) {
-    //   this.dead = true;
-    //   return;
-    // }
+    const numberDaysPassed =
+      (timeFrameToMinutes(this.tradeConfig.loopInterval) * this.lifespan) /
+      (60 * 24);
+    const numberBarsPerDay =
+      Math.floor(60 * 24) / timeFrameToMinutes(this.tradeConfig.loopInterval);
 
     // Kill the bad traders
     if (this.wallet.totalWalletBalance <= 0) {
@@ -241,6 +273,33 @@ class Player {
 
     // We measure the score of the trader by the profit generated
     this.score = totalNetProfit;
+
+    // debug
+    if (DEBUG) {
+      printDateBanner(candles[candles.length - 1].openTime);
+      log(`vision: ${this.vision.toString()}`);
+      log(`decision: ${this.decision.toString()}`);
+      debugLastCandle(candles[candles.length - 1]);
+      debugWallet(null, this.wallet);
+    }
+  }
+
+  /**
+   * Gets the output of the brain, then converts them to actions
+   */
+  public think() {
+    var max = 0;
+    var maxIndex = 0;
+
+    // Get the output of the neural network
+    this.decision = this.brain.feedForward(this.vision);
+
+    for (var i = 0; i < this.decision.length; i++) {
+      if (this.decision[i] > max) {
+        max = this.decision[i];
+        maxIndex = i;
+      }
+    }
   }
 
   /**
@@ -264,6 +323,7 @@ class Player {
       trendFilter,
       unidirectional,
       trailingStopConfig,
+      maxTradeDuration,
     } = tradeConfig;
     const pair = asset + base;
 
@@ -315,15 +375,23 @@ class Player {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Check if we are in the trading sessions
-    let isTradingSessionActive = this.isTradingSessionActive(
+    const isTradingSessionActive = this.isTradingSessionActive(
       candles[candles.length - 1].openTime,
       tradingSession
     );
 
-    // The current position is too long ?
-    if ((hasShortPosition || hasLongPosition) && this.counter) {
+    // The current position is too long
+    if (
+      maxTradeDuration &&
+      (hasShortPosition || hasLongPosition) &&
+      this.counter
+    ) {
       this.counter.decrement();
       if (this.counter.getValue() == 0) {
+        if (DEBUG)
+          log(
+            `The trade on ${pair} is longer that the maximum authorized duration. Position has been closed.`
+          );
         this.orderMarket(
           pair,
           currentPrice,
@@ -331,8 +399,24 @@ class Player {
           hasLongPosition ? 'SELL' : 'BUY'
         );
         this.counter.reset();
+        this.closeOpenOrders(pair);
         return;
       }
+    }
+
+    // Prevent remaining open orders when all the take profit or a stop loss has been filled
+    if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
+      this.closeOpenOrders(pair);
+    }
+
+    // Reset the counter if a previous trade close a the position
+    if (
+      maxTradeDuration &&
+      !hasLongPosition &&
+      !hasShortPosition &&
+      this.counter.getValue() < maxTradeDuration
+    ) {
+      this.counter.reset();
     }
 
     // Close the current position
@@ -347,6 +431,7 @@ class Player {
         Math.abs(position.size),
         hasLongPosition ? 'SELL' : 'BUY'
       );
+      if (DEBUG) log(`The position on ${pair} has been closed.`);
       return;
     }
 
@@ -359,7 +444,7 @@ class Player {
       // Take the profit and not open a new position
       if (hasShortPosition && unidirectional) {
         this.orderMarket(pair, currentPrice, Math.abs(position.size), 'BUY');
-        this.closeFuturesOpenOrders(pair);
+        this.closeOpenOrders(pair);
         return;
       }
 
@@ -414,7 +499,7 @@ class Player {
 
       // Cancel the previous orders to update them
       if (currentOpenOrders.length > 0) {
-        this.closeFuturesOpenOrders(pair);
+        this.closeOpenOrders(pair);
       }
 
       // In pyramiding mode, update the take profits and stop loss
@@ -474,7 +559,7 @@ class Player {
       // Take the profit and not open a new position
       if (hasLongPosition && unidirectional) {
         this.orderMarket(pair, currentPrice, Math.abs(position.size), 'SELL');
-        this.closeFuturesOpenOrders(pair);
+        this.closeOpenOrders(pair);
         return;
       }
 
@@ -529,7 +614,7 @@ class Player {
 
       // Cancel the previous orders to update them
       if (currentOpenOrders.length > 0) {
-        this.closeFuturesOpenOrders(pair);
+        this.closeOpenOrders(pair);
       }
 
       // In pyramiding mode, update the take profits and stop loss
@@ -611,7 +696,7 @@ class Player {
 
       // Prevent remaining open orders when all the take profit or a stop loss has been filled
       if (position.size === 0 && this.openOrders.length > 0) {
-        this.closeFuturesOpenOrders(pair);
+        this.closeOpenOrders(pair);
       }
 
       // Check if a long order has been activated on the last candle
@@ -647,6 +732,12 @@ class Player {
                   this.stats.totalTrades++;
                   this.stats.longTrades++;
                   this.stats.totalFees += fees;
+
+                  if (DEBUG)
+                    log(
+                      `Long order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,
+                      chalk.magenta
+                    );
                 }
               } else if (position.positionSide === 'SHORT') {
                 let hasPosition = position.size < 0;
@@ -691,6 +782,18 @@ class Player {
                 if (hasPosition && entryPrice < price)
                   this.stats.shortLostTrades++;
                 this.stats.totalFees += fees;
+
+                if (DEBUG)
+                  log(
+                    `${
+                      entryPrice < price
+                        ? '[SL]'
+                        : entryPrice > price
+                        ? '[TP]'
+                        : '[BE]'
+                    } Long order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,
+                    chalk.magenta
+                  );
               }
 
               this.closeOpenOrder(id);
@@ -726,6 +829,14 @@ class Player {
                   this.stats.lostTrades++;
                 }
                 this.stats.totalFees += fees;
+
+                if (DEBUG)
+                  log(
+                    `Trailing stop long order #${id} has been activated for ${Math.abs(
+                      quantity
+                    )}${asset} at ${price}. Fees: ${fees}`,
+                    chalk.magenta
+                  );
               }
             }
           }
@@ -733,7 +844,7 @@ class Player {
           // If an order close the position, do not continue to check the other orders.
           // Prevent to have multiple orders touches at the same time
           if (position.size === 0) {
-            this.closeFuturesOpenOrders(pair);
+            this.closeOpenOrders(pair);
             return false;
           } else {
             return true;
@@ -773,6 +884,14 @@ class Player {
                   this.stats.totalTrades++;
                   this.stats.shortTrades++;
                   this.stats.totalFees += fees;
+
+                  if (DEBUG)
+                    log(
+                      `Sell order #${id} has been activated for ${Math.abs(
+                        quantity
+                      )}${asset} at ${price}. Fees: ${fees}`,
+                      chalk.magenta
+                    );
                 }
               } else if (position.positionSide === 'LONG') {
                 let hasPosition = position.size > 0;
@@ -817,6 +936,18 @@ class Player {
                 if (hasPosition && entryPrice > price)
                   this.stats.longLostTrades++;
                 this.stats.totalFees += fees;
+
+                if (DEBUG)
+                  log(
+                    `${
+                      entryPrice > price
+                        ? '[SL]'
+                        : entryPrice < price
+                        ? '[TP]'
+                        : '[BE]'
+                    } Sell order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,
+                    chalk.magenta
+                  );
               }
 
               this.closeOpenOrder(id);
@@ -851,6 +982,14 @@ class Player {
                   this.stats.lostTrades++;
                 }
                 this.stats.totalFees += fees;
+
+                if (DEBUG)
+                  log(
+                    `Trailing stop sell order #${id} has been activated for ${Math.abs(
+                      quantity
+                    )}${asset} at ${price}. Fees: ${fees}`,
+                    chalk.magenta
+                  );
               }
             }
           }
@@ -858,7 +997,7 @@ class Player {
           // If an order close the position, do not continue to check the other orders.
           // Prevent to have multiple orders touches at the same time
           if (position.size === 0) {
-            this.closeFuturesOpenOrders(pair);
+            this.closeOpenOrders(pair);
             return false;
           } else {
             return true;
@@ -887,6 +1026,13 @@ class Player {
     const fees = price * quantity * (TAKER_FEES / 100);
     const hasPosition = position.size !== 0;
 
+    if (quantity < 0) {
+      console.error(
+        `Cannot execute the market order for ${pair}. The quantity is malformed: ${quantity}`
+      );
+      return;
+    }
+
     if (side === 'BUY') {
       if (position.positionSide === 'LONG') {
         let baseCost = (price * quantity) / leverage;
@@ -908,6 +1054,12 @@ class Player {
             this.stats.longTrades++;
           }
           this.stats.totalFees += fees;
+
+          if (DEBUG)
+            log(
+              `Take a long position on ${pair} with a size of ${quantity} at ${price}. Fees: ${fees}`,
+              chalk.green
+            );
         }
       } else if (position.positionSide === 'SHORT') {
         // Update wallet
@@ -952,6 +1104,12 @@ class Player {
           this.stats.lostTrades++;
           this.stats.shortLostTrades++;
         }
+
+        if (DEBUG)
+          log(
+            `Take a long position on ${pair} with a size of ${quantity} at ${price}. Fees: ${fees}`,
+            chalk.green
+          );
       }
     } else if (side === 'SELL') {
       let baseCost = (price * quantity) / leverage;
@@ -975,6 +1133,12 @@ class Player {
             this.stats.shortTrades++;
           }
           this.stats.totalFees += fees;
+
+          if (DEBUG)
+            log(
+              `Take a short position on ${pair} with a size of ${-quantity} at ${price}. Fees: ${fees}`,
+              chalk.red
+            );
         }
       } else if (position.positionSide === 'LONG') {
         // Update wallet
@@ -1019,6 +1183,12 @@ class Player {
           this.stats.lostTrades++;
           this.stats.longLostTrades++;
         }
+
+        if (DEBUG)
+          log(
+            `Take a short position on ${pair} with a size of ${-quantity} at ${price}. Fees: ${fees}`,
+            chalk.red
+          );
       }
     }
   }
@@ -1130,6 +1300,8 @@ class Player {
     const { margin, unrealizedProfit, size, positionSide } = position;
 
     if (size !== 0 && margin + unrealizedProfit <= 0) {
+      if (DEBUG)
+        log(`The position on ${pair} has reached the liquidation price.`);
       this.orderMarket(
         pair,
         currentPrice,
@@ -1151,7 +1323,7 @@ class Player {
    * Close all the open orders for a given pair
    * @param pair
    */
-  private closeFuturesOpenOrders(pair: string) {
+  private closeOpenOrders(pair: string) {
     this.openOrders = this.openOrders.filter((order) => order.pair !== pair);
   }
 
@@ -1212,26 +1384,6 @@ class Player {
       this.stats.maxBalance;
     if (relativeDrawdown < this.stats.maxRelativeDrawdown) {
       this.stats.maxRelativeDrawdown = relativeDrawdown;
-    }
-  }
-
-  // =====================================================================
-
-  /**
-   * Gets the output of the brain, then converts them to actions
-   */
-  public think() {
-    var max = 0;
-    var maxIndex = 0;
-
-    // Get the output of the neural network
-    this.decision = this.brain.feedForward(this.vision);
-
-    for (var i = 0; i < this.decision.length; i++) {
-      if (this.decision[i] > max) {
-        max = this.decision[i];
-        maxIndex = i;
-      }
     }
   }
 

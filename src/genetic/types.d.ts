@@ -19,4 +19,5 @@ interface TraderGoals {
   winRate?: number;
   profitRatio?: number; // like the RR
   maxRelativeDrawdown?: number;
+  tradesPerDay?: number;
 }
