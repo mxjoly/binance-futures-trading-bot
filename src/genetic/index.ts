@@ -33,16 +33,13 @@ const GoalsConfig = GeneticConfig['goals'];
 const totalPopulation = GeneticConfig['population'];
 const totalGenerations = GeneticConfig['generations'];
 const initialCapital = GeneticConfig['initial_capital'];
-const startDateTraining = GeneticConfig['start_date_training'];
-const endDateTraining = GeneticConfig['end_date_training'];
-const startDateTest = GeneticConfig['start_date_test'];
-const endDateTest = GeneticConfig['end_date_test'];
+const startDate = GeneticConfig['start_date'];
+const endDate = GeneticConfig['end_date'];
 
 // Goals to reach
 const winRate = GoalsConfig['win_rate'];
 const profitRatio = GoalsConfig['profit_ratio'];
 const maxRelativeDrawdown = GoalsConfig['max_relative_drawdown'];
-const tradesPerDay = GoalsConfig['trades_per_days'];
 
 export const NEURAL_NETWORK_INPUTS_MODE = NeuralNetworkConfig['inputs_mode'];
 export const CANDLE_LENGTH_INPUTS = CandleInputsConfig['length'];
@@ -360,15 +357,14 @@ export async function train(useSave?: boolean) {
   const historicCandleData = await loadCandlesFromCSV(
     tradeConfig.asset + tradeConfig.base,
     tradeConfig.loopInterval,
-    startDateTraining,
-    endDateTraining
+    startDate,
+    endDate
   );
 
   let goals = {
     winRate: winRate,
     profitRatio: profitRatio,
     maxRelativeDrawdown: maxRelativeDrawdown,
-    tradesPerDay: tradesPerDay,
   };
 
   let population = new Population({
@@ -421,7 +417,7 @@ export async function train(useSave?: boolean) {
 
     let bestTrader = population.bestPlayer;
     displayBestTraderStats(bestTrader);
-  }
 
-  saveNeuralNetwork(population.bestPlayer.brain);
+    saveNeuralNetwork(population.bestPlayer.brain);
+  }
 }

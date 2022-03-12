@@ -54,6 +54,25 @@ class Genome {
     this.nodes[this.biasNode].layer = 0;
   }
 
+  /**
+   * Generate all the connections between the nodes of network
+   */
+  generateFullNetwork() {
+    // Create manually the connection gene
+    for (let i = this.inputs; i < this.inputs + this.outputs; i++) {
+      for (let j = 0; j < this.inputs; j++) {
+        this.genes.push(
+          new ConnectionGene(
+            this.nodes[j],
+            this.nodes[i],
+            random(),
+            nextConnectionNo++
+          )
+        );
+      }
+    }
+  }
+
   fullyConnect(innovationHistory: ConnectionHistory[]) {
     // this will be a new number if no identical genome has mutated in the same
     for (var i = 0; i < this.inputs; i++) {

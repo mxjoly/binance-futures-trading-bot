@@ -7,24 +7,21 @@
   "taker_fees_spot": 0.01,
   "maker_fees_spot": 0.01,
   "backtest": {
-    "start_date": "2022-01-01 00:00:00",
-    "end_date": "2022-01-14 00:00:00",
+    "start_date": "2021-10-01 00:00:00",
+    "end_date": "2021-11-01 00:00:00",
     "initial_capital": 10000,
     "save_db": false
   },
   "genetic": {
-    "start_date_training": "2022-01-01 00:00:00",
-    "end_date_training": "2022-01-14 00:00:00",
-    "start_date_test": "2021-01-01 00:00:00",
-    "end_date_test": "2021-01-01 00:00:00",
+    "start_date": "2021-09-01 00:00:00",
+    "end_date": "2021-10-01 00:00:00",
     "initial_capital": 10000,
     "population": 50,
-    "generations": 100,
+    "generations": 500,
     "goals": {
       "win_rate": null,
       "profit_ratio": null,
-      "max_relative_drawdown": -0.03,
-      "trades_per_day": 2
+      "max_relative_drawdown": -0.03
     },
     "neural_network": {
       "inputs_mode": "candles",
@@ -34,18 +31,18 @@
       },
       "indicator_inputs": {
         "EMA21": true,
-        "EMA50": true,
+        "EMA50": false,
         "EMA100": false,
         "ADX": false,
         "AO": false,
         "CCI": false,
-        "MFI": true,
+        "MFI": false,
         "ROC": false,
-        "RSI": true,
+        "RSI": false,
         "WILLIAM_R": false,
-        "KIJUN": true,
+        "KIJUN": false,
         "VWAP": false,
-        "VOL_OSC": true,
+        "VOL_OSC": false,
         "PRICE_CHANGE": true,
         "VOL": true
       }

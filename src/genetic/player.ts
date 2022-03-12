@@ -135,6 +135,7 @@ class Player {
     this.genomeInputs = genomeInputs;
     this.genomeOutputs = genomeOutputs;
     this.brain = brain || new Genome(genomeInputs, genomeOutputs);
+    this.brain.generateFullNetwork();
 
     if (tradeConfig.maxTradeDuration) {
       this.counter = new Counter(tradeConfig.maxTradeDuration);
@@ -177,13 +178,7 @@ class Player {
       vision = vision.concat(candleVision);
     } else {
       let indicatorVision = calculateIndicators(candles);
-      // Get max and min
-      let min = Math.min(...indicatorVision);
-      let max = Math.max(...indicatorVision);
-      // Normalize values
-      indicatorVision = indicatorVision.map((val) =>
-        normalize(val, min, max, 0, 1)
-      );
+      // NEED TO NORMALIZE
       // Add to the array
       vision = vision.concat(indicatorVision);
     }
@@ -219,12 +214,6 @@ class Player {
     const roi =
       (this.wallet.totalWalletBalance - this.initialCapital) /
       this.initialCapital;
-
-    const numberDaysPassed =
-      (timeFrameToMinutes(this.tradeConfig.loopInterval) * this.lifespan) /
-      (60 * 24);
-    const numberBarsPerDay =
-      Math.floor(60 * 24) / timeFrameToMinutes(this.tradeConfig.loopInterval);
 
     // Kill the bad traders
     if (this.wallet.totalWalletBalance <= 0) {
@@ -276,6 +265,9 @@ class Player {
 
     // debug
     if (DEBUG) {
+      this.updatePNL(tradeConfig.asset, tradeConfig.base, currentPrice);
+      this.updateTotalPNL();
+
       printDateBanner(candles[candles.length - 1].openTime);
       log(`vision: ${this.vision.toString()}`);
       log(`decision: ${this.decision.toString()}`);
@@ -1305,7 +1297,7 @@ class Player {
       this.orderMarket(
         pair,
         currentPrice,
-        size,
+        Math.abs(size),
         positionSide === 'LONG' ? 'SELL' : 'BUY'
       );
     }
@@ -1345,6 +1337,35 @@ class Player {
     } else {
       return 0;
     }
+  }
+
+  /**
+   * Update the pnl of the position object
+   * @param asset
+   * @param base
+   * @param currentPrice
+   */
+  private updatePNL(asset: string, base: string, currentPrice: number) {
+    let positions = this.wallet.positions;
+    let indexAsset = positions.findIndex((pos) => pos.pair === asset + base);
+    let position = positions[indexAsset];
+    position.unrealizedProfit = this.getPositionPNL(position, currentPrice);
+  }
+
+  /**
+   * Update the total unrealized profit property of the futures wallet object
+   */
+  private updateTotalPNL() {
+    let totalPNL = 0;
+    this.wallet.positions
+      .filter(
+        (position) =>
+          position.size !== 0 && position.margin > 0 && position.entryPrice > 0
+      )
+      .forEach((position) => {
+        totalPNL += position.unrealizedProfit;
+      });
+    this.wallet.totalUnrealizedProfit = totalPNL;
   }
 
   /**
