@@ -1,4 +1,4 @@
-import { random } from '../utils/math';
+import { random } from '../../../utils/math';
 import ConnectionHistory from './connectionHistory';
 import Genome from './genome';
 import Player from './player';

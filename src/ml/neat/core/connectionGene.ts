@@ -1,5 +1,5 @@
 import circular from 'circular-functions';
-import { random, randomGaussian } from '../utils/math';
+import { random, randomGaussian } from '../../../utils/math';
 import NNode from './node';
 
 export interface ConnectionGeneParams {

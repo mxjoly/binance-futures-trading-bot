@@ -24,7 +24,7 @@ npm run prod
 
 You can create your own strategy for your bot. The file must be placed in `src/configs`. There are some examples to help you to create the best strategy. Check the declaration file `global.d.ts` to have an overview of the possibilities you can add to your strategy. And don't forget to backtest your strategy before running it in production !
 
-## Backtesting
+## Backtesting your strategy
 
 You can backtest your own strategy by running the backtest mode. To do that, you need to:
 
@@ -35,25 +35,56 @@ You can backtest your own strategy by running the backtest mode. To do that, you
 
 ![demo](./demo/report-preview.png)
 
-## Neuro Evolution (NEAT)
+## Machine Learning
 
-I implemented the NEAT algorithm using the template of Code-Bullet [here](https://github.com/Code-Bullet/NEAT-Template-JavaScript).
+### Classification (KNN)
 
-### Quick Start
+With the KNN algorithm, the bot will try to predict the price movement that will happen N bars later.
+
+#### Quick Start
 
 ```
 npm run build:test
-npm run genetic:train
+npm run ai:neat:accuracy
 ```
 
-### Configuration
+#### Test the accuracy of the classifier
 
-To configure the parameters of the algorithm, go to the namespace `genetic` in the file `config.json`.
+First, configure the parameters of the algorithm, go to the namespace `knn` in the file `config.json`.
+
+| Key                    | Type / Format              | Description                                                 |
+| ---------------------- | -------------------------- | ----------------------------------------------------------- |
+| `start_date_training`  | `YYYY-MM-DD HH:mm:ss`      | The start date of the training period                       |
+| `end_date_training`    | `YYYY-MM-DD HH:mm:ss`      | The end date of the training period                         |
+| `start_date_test`      | `YYYY-MM-DD HH:mm:ss`      | The start date of the test period                           |
+| `end_date_test`        | `YYYY-MM-DD HH:mm:ss`      | The end date of the test period                             |
+| `prediction_period`    | `number`                   | The prediction is made for N bars later                     |
+| `prediction_threshold` | `number` (between 0 and 1) | The bot make a prediction only when the probability is high |
+| `price_change`         | `number` (percentage)      | The price change to predict                                 |
+| `features/*`           | `boolean`                  | The indicators to use in the dataset                        |
+
+### Neuro Evolution (NEAT)
+
+I implemented the NEAT algorithm using the template of Code-Bullet [here](https://github.com/Code-Bullet/NEAT-Template-JavaScript).
+
+#### Quick Start
+
+```
+npm run build:test
+npm run ai:neat:train
+npm run test:neat
+```
+
+#### Configuration
+
+To configure the parameters of the algorithm, go to the namespace `neat` in the file `config.json`.
 
 | Key                                   | Type / Format                         | Description                                                                                                                                    |
 | ------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `start_date_training`                 | `YYYY-MM-DD HH:mm:ss`                 | The start date of the training period                                                                                                          |
 | `end_date_training`                   | `YYYY-MM-DD HH:mm:ss`                 | The end date of the training period                                                                                                            |
+| `start_date_test`                     | `YYYY-MM-DD HH:mm:ss`                 | The start date of the test period                                                                                                              |
+| `end_date_test`                       | `YYYY-MM-DD HH:mm:ss`                 | The end date of the test period                                                                                                                |
 | `initial_capital`                     | `number`                              | The initial capital for the players                                                                                                            |
 | `population`                          | `number`                              | The number of genomes for each generation                                                                                                      |
 | `generations`                         | `number`                              | The total number of generations                                                                                                                |

@@ -1,29 +1,28 @@
 import { Binance, ExchangeInfo, OrderSide } from 'binance-api-node';
 import dayjs from 'dayjs';
-import { Counter } from '../tools/counter';
+import chalk from 'chalk';
+import { Counter } from '../../../tools/counter';
 import Genome from './genome';
-import { BINANCE_MODE, BotConfig } from '../init';
-import { calculateActivationPrice } from '../utils/trailingStop';
-import { timeFrameToMinutes } from '../utils/timeFrame';
+import { BINANCE_MODE, BotConfig } from '../../../init';
+import { calculateActivationPrice } from '../../../utils/trailingStop';
+import { normalize } from '../../../utils/math';
+import { calculateIndicators } from '../indicators';
 import {
   getPricePrecision,
   getQuantityPrecision,
   isValidQuantity,
-} from '../utils/currencyInfo';
+} from '../../../utils/currencyInfo';
 import {
-  calculateIndicators,
   CANDLE_LENGTH_INPUTS,
   CANDLE_SOURCE,
   NEURAL_NETWORK_INPUTS_MODE,
-} from '.';
+} from '../loadConfig';
 import {
   debugLastCandle,
   debugWallet,
   log,
   printDateBanner,
-} from '../backtest/debug';
-import chalk from 'chalk';
-import { normalize } from '../utils/math';
+} from '../../../backtest/debug';
 
 const DEBUG = false;
 
@@ -177,8 +176,8 @@ class Player {
       // Add to the array
       vision = vision.concat(candleVision);
     } else {
+      // The values are already normalized
       let indicatorVision = calculateIndicators(candles);
-      // NEED TO NORMALIZE
       // Add to the array
       vision = vision.concat(indicatorVision);
     }

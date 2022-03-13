@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import Genome from './genome';
+import Genome from './core/genome';
 
 const tempDirectory = path.resolve(process.cwd(), 'temp');
-const saveFile = path.join(tempDirectory, 'genetic-nn-save.json');
+const saveFile = path.join(tempDirectory, 'neat-nn-save.json');
 
 /**
  * Save the neural network in a txt file

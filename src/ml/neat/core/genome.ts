@@ -1,5 +1,5 @@
 import circular from 'circular-functions';
-import { random } from '../utils/math';
+import { random } from '../../../utils/math';
 import * as activation from './activationFunctions';
 import ConnectionGene from './connectionGene';
 import ConnectionHistory from './connectionHistory';

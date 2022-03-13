@@ -7,12 +7,14 @@ import safeRequire from 'safe-require';
 import { binanceClient, BINANCE_MODE } from '../init';
 import { decimalCeil, decimalFloor, normalize } from '../utils/math';
 import { clone } from '../utils/object';
-import { loadCandlesMultiTimeFramesFromCSV } from '../utils/candleData';
+import { loadCandlesMultiTimeFramesFromCSV } from '../utils/loadCandleData';
 import { createDatabase, saveFuturesState, saveState } from './database';
 import { debugLastCandle, debugWallet, log, printDateBanner } from './debug';
 import generateHTMLReport from './generateReport';
 import { Counter } from '../tools/counter';
 import { calculateActivationPrice } from '../utils/trailingStop';
+import Genome from '../ml/neat/core/genome';
+import { calculateIndicators } from '../ml/neat/indicators';
 import {
   getPricePrecision,
   getQuantityPrecision,
@@ -24,13 +26,11 @@ import {
   durationBetweenDates,
   timeFrameToMinutes,
 } from '../utils/timeFrame';
-import Genome from '../genetic/genome';
 import {
-  calculateIndicators,
   CANDLE_LENGTH_INPUTS,
   CANDLE_SOURCE,
   NEURAL_NETWORK_INPUTS_MODE,
-} from '../genetic';
+} from '../ml/neat/loadConfig';
 
 // ====================================================================== //
 

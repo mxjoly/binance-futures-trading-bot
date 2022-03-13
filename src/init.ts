@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import Binance, { CandleChartInterval } from 'binance-api-node';
 import { createLogger, transports, format } from 'winston';
 import { initializePlugins } from './utils/dayjsPlugins';
@@ -38,6 +39,21 @@ export const logger = createLogger({
     }),
   ],
 });
+
+if (
+  !fs.existsSync(
+    path.resolve(
+      process.cwd(),
+      'src/configs',
+      `${BotConfig['strategy_config_file_name']}.ts`
+    )
+  )
+) {
+  console.error(
+    `The trading config "${BotConfig['strategy_config_file_name']}" doesn't exists.`
+  );
+  process.exit(1);
+}
 
 // Import the strategy config
 export const StrategyConfig =

@@ -3,7 +3,7 @@ import { ExchangeInfo, OrderSide, OrderType } from 'binance-api-node';
 import { decimalCeil, decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient, BINANCE_MODE } from './init';
-import { loadCandlesMultiTimeFramesFromAPI } from './utils/candleData';
+import { loadCandlesMultiTimeFramesFromAPI } from './utils/loadCandleData';
 import { Counter } from './tools/counter';
 import { calculateActivationPrice } from './utils/trailingStop';
 import {
