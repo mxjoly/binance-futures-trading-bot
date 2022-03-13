@@ -35,7 +35,7 @@ const assets = [
   'LUNA',
 ];
 
-const config: TradeConfig[] = assets.map((asset) => ({
+const config: StrategyConfig[] = assets.map((asset) => ({
   asset,
   base: 'USDT',
   risk: 0.01,

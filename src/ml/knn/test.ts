@@ -1,17 +1,16 @@
 import fs from 'fs';
 import path from 'path';
-import { NeuralNetworkBot } from '../../backtest/bots/neuralNetworkBot';
+import { BasicBackTestBot } from '../../backtest/bots/basicBot';
 import { BotConfig } from '../../init';
-import { loadNeuralNetwork } from '../../ml/neat/saveManager';
 
-const configPath = path.resolve(process.cwd(), 'src/configs/neat.ts');
+const configPath = path.resolve(process.cwd(), 'src/configs/knn.ts');
 
 if (!fs.existsSync(configPath)) {
   console.error(`The strategy config file has not been found: ${configPath}`);
   process.exit(1);
 }
 
-const StrategyConfig = require('../../configs/neat').default;
+const StrategyConfig = require('../../configs/knn').default;
 
 if (process.env.NODE_ENV === 'test') {
   const BacktestConfig = BotConfig['backtest'];
@@ -20,20 +19,12 @@ if (process.env.NODE_ENV === 'test') {
   const initialCapital = BacktestConfig['initial_capital'];
   const strategyName = BotConfig['strategy_name'];
 
-  // Use neural network ?
-  const useNeuralNetwork = process.argv[3]
-    ? process.argv[3].split('=')[1] === 'true'
-      ? true
-      : false
-    : false;
-
-  const bot = new NeuralNetworkBot(
+  const bot = new BasicBackTestBot(
     StrategyConfig,
     strategyName,
     startDate,
     endDate,
-    initialCapital,
-    useNeuralNetwork ? loadNeuralNetwork() : null
+    initialCapital
   );
 
   bot.prepare();

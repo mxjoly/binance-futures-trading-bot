@@ -1,7 +1,7 @@
 import { tensor } from '@tensorflow/tfjs-core';
 import { KNNClassifier } from '@tensorflow-models/knn-classifier';
 import { loadCandlesFromCSV } from '../../utils/loadCandleData';
-import { initTrainingDataSet } from './initDataSet';
+import { initTrainingDataSet } from './initTrainingDataSet';
 import { calculateIndicators } from './indicators';
 import { decimalFloor } from '../../utils/math';
 import {

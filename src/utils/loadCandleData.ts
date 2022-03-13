@@ -115,10 +115,10 @@ export function loadCandlesFromAPI(
 
 /**
  * Load the candle data from the downloaded data on multi time frames
- * @param tradeConfigs
+ * @param strategyConfigs
  */
 export async function loadCandlesMultiTimeFramesFromCSV(
-  tradeConfigs: TradeConfig[],
+  strategyConfigs: StrategyConfig[],
   startDate: Date,
   endDate: Date
 ) {
@@ -127,30 +127,34 @@ export async function loadCandlesMultiTimeFramesFromCSV(
   } = {};
 
   // Initialization of the arrays
-  tradeConfigs.forEach(({ asset, base, loopInterval, indicatorIntervals }) => {
-    candlesMtf[asset + base] = {};
-    new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
-      candlesMtf[asset + base][interval] = [];
-    });
-  });
+  strategyConfigs.forEach(
+    ({ asset, base, loopInterval, indicatorIntervals }) => {
+      candlesMtf[asset + base] = {};
+      new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
+        candlesMtf[asset + base][interval] = [];
+      });
+    }
+  );
 
   // Load the candle data according to the time frame of the trading configuration
   let loadPairTimeFrame = [];
 
-  tradeConfigs.forEach(({ asset, base, loopInterval, indicatorIntervals }) => {
-    new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
-      loadPairTimeFrame.push(
-        new Promise<void>((resolve, reject) => {
-          loadCandlesFromCSV(asset + base, interval, startDate, endDate)
-            .then((candles) => {
-              candlesMtf[asset + base][interval] = candles;
-              resolve();
-            })
-            .catch(reject);
-        })
-      );
-    });
-  });
+  strategyConfigs.forEach(
+    ({ asset, base, loopInterval, indicatorIntervals }) => {
+      new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
+        loadPairTimeFrame.push(
+          new Promise<void>((resolve, reject) => {
+            loadCandlesFromCSV(asset + base, interval, startDate, endDate)
+              .then((candles) => {
+                candlesMtf[asset + base][interval] = candles;
+                resolve();
+              })
+              .catch(reject);
+          })
+        );
+      });
+    }
+  );
 
   await Promise.all(loadPairTimeFrame);
   return candlesMtf;
@@ -158,19 +162,19 @@ export async function loadCandlesMultiTimeFramesFromCSV(
 
 /**
  * Load the candle data from binance api for all the time frames needed for the strategy
- * @param tradeConfig
+ * @param strategyConfig
  */
 export async function loadCandlesMultiTimeFramesFromAPI(
-  tradeConfig: TradeConfig,
+  strategyConfig: StrategyConfig,
   binanceClient: Binance
 ) {
   let loadTimeFrames: Promise<CandlesDataMultiTimeFrames>[] = [];
 
-  tradeConfig.indicatorIntervals.forEach((interval: CandleChartInterval) => {
+  strategyConfig.indicatorIntervals.forEach((interval: CandleChartInterval) => {
     loadTimeFrames.push(
       new Promise<CandlesDataMultiTimeFrames>((resolve, reject) => {
         loadCandlesFromAPI(
-          tradeConfig.asset + tradeConfig.base,
+          strategyConfig.asset + strategyConfig.base,
           interval,
           binanceClient,
           true

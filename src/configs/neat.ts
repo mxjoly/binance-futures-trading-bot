@@ -4,7 +4,7 @@ import { getPositionSizeByPercent } from '../strategies/riskManagement';
 /**
  * Default config for neat algorithm
  */
-const config: TradeConfig[] = [
+const config: StrategyConfig[] = [
   {
     asset: 'BTC',
     base: 'USDT',

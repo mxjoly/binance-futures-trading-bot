@@ -32,7 +32,7 @@ const MAKER_FEES = BotConfig['maker_fees_futures']; // %
 export interface PlayerParams {
   genomeInputs: number;
   genomeOutputs: number;
-  tradeConfig: TradeConfig;
+  strategyConfig: StrategyConfig;
   binanceClient: Binance;
   exchangeInfo: ExchangeInfo;
   initialCapital: number;
@@ -44,7 +44,7 @@ export interface PlayerParams {
  * The trader
  */
 class Player {
-  private tradeConfig: TradeConfig;
+  private strategyConfig: StrategyConfig;
   private binanceClient: Binance;
   private exchangeInfo: ExchangeInfo;
   private initialCapital: number;
@@ -73,14 +73,14 @@ class Player {
   constructor({
     genomeInputs,
     genomeOutputs,
-    tradeConfig,
+    strategyConfig,
     binanceClient,
     exchangeInfo,
     initialCapital,
     goals,
     brain,
   }: PlayerParams) {
-    this.tradeConfig = tradeConfig;
+    this.strategyConfig = strategyConfig;
     this.binanceClient = binanceClient;
     this.exchangeInfo = exchangeInfo;
     this.initialCapital = initialCapital;
@@ -110,8 +110,8 @@ class Player {
       totalUnrealizedProfit: 0,
       positions: [
         {
-          pair: this.tradeConfig.asset + this.tradeConfig.base,
-          leverage: this.tradeConfig.leverage | 1,
+          pair: this.strategyConfig.asset + this.strategyConfig.base,
+          leverage: this.strategyConfig.leverage | 1,
           entryPrice: 0,
           margin: 0,
           positionSide: 'LONG',
@@ -136,8 +136,8 @@ class Player {
     this.brain = brain || new Genome(genomeInputs, genomeOutputs);
     this.brain.generateFullNetwork();
 
-    if (tradeConfig.maxTradeDuration) {
-      this.counter = new Counter(tradeConfig.maxTradeDuration);
+    if (strategyConfig.maxTradeDuration) {
+      this.counter = new Counter(strategyConfig.maxTradeDuration);
     }
   }
 
@@ -148,9 +148,10 @@ class Player {
     let vision: number[] = [];
 
     // If not exit strategy, we add an input to know if the player hold a position
-    if (!this.tradeConfig.exitStrategy && BINANCE_MODE === 'futures') {
+    if (!this.strategyConfig.exitStrategy && BINANCE_MODE === 'futures') {
       const position = this.wallet.positions.find(
-        (pos) => pos.pair === this.tradeConfig.asset + this.tradeConfig.base
+        (pos) =>
+          pos.pair === this.strategyConfig.asset + this.strategyConfig.base
       );
       const holdingTrade = position.size !== 0 ? 1 : 0;
       vision.push(holdingTrade);
@@ -187,12 +188,12 @@ class Player {
 
   /**
    * Move the player according to the outputs from the neural network
-   * @param tradeConfig
+   * @param strategyConfig
    * @param candles
    * @param currentPrice
    */
   public update(
-    tradeConfig: TradeConfig,
+    strategyConfig: StrategyConfig,
     candles: CandleData[],
     currentPrice: number
   ) {
@@ -251,10 +252,10 @@ class Player {
       return;
     }
 
-    const { asset, base } = tradeConfig;
+    const { asset, base } = strategyConfig;
     this.checkPositionMargin(asset + base, currentPrice);
     this.checkFuturesOpenOrders(asset, base, candles);
-    this.trade(this.tradeConfig, currentPrice, candles, this.exchangeInfo);
+    this.trade(this.strategyConfig, currentPrice, candles, this.exchangeInfo);
 
     // Update the max drawdown and max balance property for the strategy report
     this.updateDrawdownMaxBalance();
@@ -264,7 +265,7 @@ class Player {
 
     // debug
     if (DEBUG) {
-      this.updatePNL(tradeConfig.asset, tradeConfig.base, currentPrice);
+      this.updatePNL(strategyConfig.asset, strategyConfig.base, currentPrice);
       this.updateTotalPNL();
 
       printDateBanner(candles[candles.length - 1].openTime);
@@ -297,7 +298,7 @@ class Player {
    * Main function to take a decision about the market
    */
   private trade(
-    tradeConfig: TradeConfig,
+    strategyConfig: StrategyConfig,
     currentPrice: number,
     candles: CandleData[],
     exchangeInfo: ExchangeInfo
@@ -315,7 +316,7 @@ class Player {
       unidirectional,
       trailingStopConfig,
       maxTradeDuration,
-    } = tradeConfig;
+    } = strategyConfig;
     const pair = asset + base;
 
     // Check the trend
@@ -1414,7 +1415,7 @@ class Player {
     var clone = new Player({
       genomeInputs: this.genomeInputs,
       genomeOutputs: this.genomeOutputs,
-      tradeConfig: this.tradeConfig,
+      strategyConfig: this.strategyConfig,
       binanceClient: this.binanceClient,
       exchangeInfo: this.exchangeInfo,
       initialCapital: this.initialCapital,
@@ -1437,7 +1438,7 @@ class Player {
     var clone = new Player({
       genomeInputs: this.genomeInputs,
       genomeOutputs: this.genomeOutputs,
-      tradeConfig: this.tradeConfig,
+      strategyConfig: this.strategyConfig,
       binanceClient: this.binanceClient,
       exchangeInfo: this.exchangeInfo,
       initialCapital: this.initialCapital,
@@ -1459,16 +1460,6 @@ class Player {
    * Genetic algorithm
    */
   public calculateFitness() {
-    let { totalLoss, totalProfit, totalFees, winningTrades, totalTrades } =
-      this.stats;
-
-    let profitRatio = totalProfit / (Math.abs(totalLoss) + totalFees);
-    let totalNetProfit = totalProfit - (Math.abs(totalLoss) + totalFees);
-    let winRate = winningTrades / totalTrades;
-    let roi =
-      (this.wallet.totalWalletBalance - this.initialCapital) /
-      this.initialCapital;
-
     // Fitness Formulas
     this.fitness = this.wallet.totalWalletBalance;
   }
@@ -1477,7 +1468,7 @@ class Player {
     var child = new Player({
       genomeInputs: this.genomeInputs,
       genomeOutputs: this.genomeOutputs,
-      tradeConfig: this.tradeConfig,
+      strategyConfig: this.strategyConfig,
       binanceClient: this.binanceClient,
       exchangeInfo: this.exchangeInfo,
       initialCapital: this.initialCapital,

@@ -4,7 +4,7 @@ import { RSI } from '../strategies/entry';
 import { getPositionSizeByRisk } from '../strategies/riskManagement';
 
 // @see https://www.youtube.com/watch?v=7NM7bR2mL7U&t=69s&ab_channel=TradePro
-const config: TradeConfig[] = [
+const config: StrategyConfig[] = [
   {
     asset: 'BTC',
     base: 'USDT',

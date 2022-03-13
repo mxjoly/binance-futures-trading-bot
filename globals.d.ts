@@ -1,6 +1,6 @@
 type BinanceMode = 'spot' | 'futures';
 
-interface TradeConfig {
+interface StrategyConfig {
   asset: string;
   base: string;
   loopInterval: CandleChartInterval; // The speed of the main loop, the robot look up the market every this interval

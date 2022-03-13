@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import { ExchangeInfo, OrderSide, OrderType } from 'binance-api-node';
-import { decimalCeil, decimalFloor } from './utils/math';
+import { decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient, BINANCE_MODE } from './init';
 import { loadCandlesMultiTimeFramesFromAPI } from './utils/loadCandleData';
@@ -14,14 +14,17 @@ import {
 
 // ====================================================================== //
 
+/**
+ * Production bot
+ */
 export class Bot {
-  private tradeConfigs: TradeConfig[];
+  private strategyConfigs: StrategyConfig[];
 
   // Counter to fix the max duration of each trade
   private counters: { [symbol: string]: Counter };
 
-  constructor(tradeConfigs: TradeConfig[]) {
-    this.tradeConfigs = tradeConfigs;
+  constructor(tradeConfigs: StrategyConfig[]) {
+    this.strategyConfigs = tradeConfigs;
     this.counters = {};
   }
 
@@ -31,7 +34,7 @@ export class Bot {
   public async prepare() {
     if (BINANCE_MODE === 'futures') {
       // Set the margin type and initial leverage for the futures
-      this.tradeConfigs.forEach((tradeConfig) => {
+      this.strategyConfigs.forEach((tradeConfig) => {
         const pair = tradeConfig.asset + tradeConfig.base;
 
         binanceClient
@@ -54,7 +57,7 @@ export class Bot {
     }
 
     // Initialize the counters
-    this.tradeConfigs.forEach(({ asset, base, maxTradeDuration }) => {
+    this.strategyConfigs.forEach(({ asset, base, maxTradeDuration }) => {
       if (maxTradeDuration)
         this.counters[asset + base] = new Counter(maxTradeDuration);
     });
@@ -80,7 +83,7 @@ export class Bot {
         ? binanceClient.ws.candles
         : binanceClient.ws.futuresCandles;
 
-    this.tradeConfigs.forEach((tradeConfig) => {
+    this.strategyConfigs.forEach((tradeConfig) => {
       const pair = tradeConfig.asset + tradeConfig.base;
       log(`The bot trades the pair ${pair}`);
 
@@ -113,13 +116,13 @@ export class Bot {
 
   /**
    * Main spot function (buy/sell, open/close orders)
-   * @param tradeConfig
+   * @param strategyConfig
    * @param currentPrice
    * @param candles
    * @param exchangeInfo
    */
   private async tradeWithSpot(
-    tradeConfig: TradeConfig,
+    strategyConfig: StrategyConfig,
     currentPrice: number,
     candles: CandlesDataMultiTimeFrames,
     exchangeInfo: ExchangeInfo
@@ -137,7 +140,7 @@ export class Bot {
       maxPyramidingAllocation,
       loopInterval,
       maxTradeDuration,
-    } = tradeConfig;
+    } = strategyConfig;
     const pair = asset + base;
 
     // Balance information
@@ -334,7 +337,7 @@ export class Bot {
    * @param exchangeInfo
    */
   private async tradeWithFutures(
-    tradeConfig: TradeConfig,
+    strategyConfig: StrategyConfig,
     currentPrice: number,
     candles: CandlesDataMultiTimeFrames,
     exchangeInfo: ExchangeInfo
@@ -355,7 +358,7 @@ export class Bot {
       unidirectional,
       loopInterval,
       maxTradeDuration,
-    } = tradeConfig;
+    } = strategyConfig;
     const pair = asset + base;
 
     // Check the trend

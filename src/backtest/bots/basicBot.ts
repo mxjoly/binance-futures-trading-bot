@@ -4,33 +4,26 @@ import chalk from 'chalk';
 import cliProgress from 'cli-progress';
 import dayjs from 'dayjs';
 import safeRequire from 'safe-require';
-import { binanceClient, BINANCE_MODE } from '../init';
-import { decimalCeil, decimalFloor, normalize } from '../utils/math';
-import { clone } from '../utils/object';
-import { loadCandlesMultiTimeFramesFromCSV } from '../utils/loadCandleData';
-import { createDatabase, saveFuturesState, saveState } from './database';
-import { debugLastCandle, debugWallet, log, printDateBanner } from './debug';
-import generateHTMLReport from './generateReport';
-import { Counter } from '../tools/counter';
-import { calculateActivationPrice } from '../utils/trailingStop';
-import Genome from '../ml/neat/core/genome';
-import { calculateIndicators } from '../ml/neat/indicators';
+import { binanceClient, BINANCE_MODE } from '../../init';
+import { decimalCeil, decimalFloor, normalize } from '../../utils/math';
+import { clone } from '../../utils/object';
+import { loadCandlesMultiTimeFramesFromCSV } from '../../utils/loadCandleData';
+import { createDatabase, saveFuturesState, saveState } from '../database';
+import { debugLastCandle, debugWallet, log, printDateBanner } from '../debug';
+import generateHTMLReport from '../generateReport';
+import { Counter } from '../../tools/counter';
+import { calculateActivationPrice } from '../../utils/trailingStop';
 import {
   getPricePrecision,
   getQuantityPrecision,
   isValidQuantity,
-} from '../utils/currencyInfo';
+} from '../../utils/currencyInfo';
 import {
   compareTimeFrame,
   dateMatchTimeFrame,
   durationBetweenDates,
   timeFrameToMinutes,
-} from '../utils/timeFrame';
-import {
-  CANDLE_LENGTH_INPUTS,
-  CANDLE_SOURCE,
-  NEURAL_NETWORK_INPUTS_MODE,
-} from '../ml/neat/loadConfig';
+} from '../../utils/timeFrame';
 
 // ====================================================================== //
 
@@ -86,90 +79,62 @@ const MAKER_FEES =
 
 // ====================================================================== //
 
-export class BackTestBot {
+/**
+ * Basic class
+ */
+export class BasicBackTestBot {
   // Configuration
-  private tradeConfigs: TradeConfig[];
+  protected strategyConfigs: StrategyConfig[];
   private strategyName: string;
 
   // Candles
   private historicCandleDataMultiTimeFrames: {
     [symbol: string]: CandlesDataMultiTimeFrames;
-  };
+  } = {};
 
   // Counter to fix the max duration of each trade
-  private counters: { [symbol: string]: Counter };
+  private counters: { [symbol: string]: Counter } = {};
 
   // Initial parameters
   private startDate: Date;
   private endDate: Date;
-  private initialCapital: number;
-
-  // Neural Network
-  private brain: Genome;
-  private vision: number[];
-  private decision: number[];
+  protected initialCapital: number;
 
   // Account mocks
-  private wallet: Wallet;
-  private futuresWallet: FuturesWallet;
-  private openOrders: OpenOrder[];
-  private futuresOpenOrders: FuturesOpenOrder[];
+  protected wallet: Wallet;
+  protected futuresWallet: FuturesWallet;
+  protected openOrders: OpenOrder[];
+  protected futuresOpenOrders: FuturesOpenOrder[];
 
   // For the calculation of some properties of the strategy report
-  public strategyReport: StrategyReport;
-  private maxBalance: number;
-  private maxAbsoluteDrawdown: number;
-  private maxRelativeDrawdown: number;
-  private maxProfit: number;
-  private maxLoss: number;
-  private maxConsecutiveWinsCount: number;
-  private maxConsecutiveLossesCount: number;
-  private maxConsecutiveProfitCount: number;
-  private maxConsecutiveLossCount: number;
+  public strategyReport: StrategyReport = {};
+  protected maxBalance: number;
+  protected maxAbsoluteDrawdown = 1;
+  protected maxRelativeDrawdown = 1;
+  protected maxProfit = 0;
+  protected maxLoss = 0;
+  protected maxConsecutiveWinsCount = 0;
+  protected maxConsecutiveLossesCount = 0;
+  protected maxConsecutiveProfitCount = 0;
+  protected maxConsecutiveLossCount = 0;
 
   // To generate the html report
-  private chartLabels: string[];
-  private chartData: number[];
+  private chartLabels: string[] = [];
+  private chartData: number[] = [];
 
   constructor(
-    tradeConfigs: TradeConfig[],
+    strategyConfigs: StrategyConfig[],
     strategyName: string,
     startDate: Date,
     endDate: Date,
-    initialCapital: number,
-    brain?: Genome
+    initialCapital: number
   ) {
-    if (brain && BINANCE_MODE === 'spot') {
-      console.error(`Cannot une neural network in spot mode`);
-      return;
-    }
-
-    this.tradeConfigs = tradeConfigs;
+    this.strategyConfigs = strategyConfigs;
     this.strategyName = strategyName;
     this.startDate = startDate;
     this.endDate = endDate;
     this.initialCapital = initialCapital;
-
-    this.historicCandleDataMultiTimeFrames = {};
-    this.counters = {};
-
-    this.brain = brain;
-    this.vision = [];
-    this.decision = [];
-
-    this.strategyReport = {};
     this.maxBalance = initialCapital;
-    this.maxAbsoluteDrawdown = 1;
-    this.maxRelativeDrawdown = 1;
-    this.maxProfit = 0;
-    this.maxLoss = 0;
-    this.maxConsecutiveWinsCount = 0;
-    this.maxConsecutiveLossesCount = 0;
-    this.maxConsecutiveProfitCount = 0;
-    this.maxConsecutiveLossCount = 0;
-
-    this.chartLabels = [];
-    this.chartData = [];
   }
 
   /**
@@ -186,7 +151,7 @@ export class BackTestBot {
       this.openOrders = [];
       const balance = this.wallet.balances;
 
-      this.tradeConfigs.forEach(({ base, asset }) => {
+      this.strategyConfigs.forEach(({ base, asset }) => {
         // Add base balance
         if (!balance.some((balance) => balance.symbol === base)) {
           balance.push({
@@ -210,7 +175,7 @@ export class BackTestBot {
         availableBalance: this.initialCapital,
         totalWalletBalance: this.initialCapital,
         totalUnrealizedProfit: 0,
-        positions: this.tradeConfigs.map(({ asset, base, leverage }) => ({
+        positions: this.strategyConfigs.map(({ asset, base, leverage }) => ({
           pair: asset + base,
           leverage,
           entryPrice: 0,
@@ -224,12 +189,18 @@ export class BackTestBot {
     }
 
     // Initialize the counters
-    this.tradeConfigs.forEach(({ asset, base, maxTradeDuration }) => {
+    this.strategyConfigs.forEach(({ asset, base, maxTradeDuration }) => {
       if (maxTradeDuration)
         this.counters[asset + base] = new Counter(maxTradeDuration);
     });
 
-    // Initialize some properties of the strategy report
+    this.prepareStrategyReport(numberAssetsInBalance);
+  }
+
+  /**
+   * Initialize some properties of the strategy report
+   */
+  private prepareStrategyReport(numberAssetsInBalance: number) {
     this.strategyReport.initialCapital = this.initialCapital;
     this.strategyReport.numberSymbol =
       BINANCE_MODE === 'spot'
@@ -255,18 +226,18 @@ export class BackTestBot {
   /**
    * Load the candles from the downloaded data
    */
-  private async prepareCandleHistoric(tradeConfigs: TradeConfig[]) {
+  private async prepareCandleHistoric(strategyConfigs: StrategyConfig[]) {
     // Load all the data
     this.historicCandleDataMultiTimeFrames =
       await loadCandlesMultiTimeFramesFromCSV(
-        tradeConfigs,
+        strategyConfigs,
         this.startDate,
         this.endDate
       );
 
     // Check if the candles has been loaded successfully. If not, stop the backtesting
     let historyError = false;
-    this.tradeConfigs.forEach(({ asset, base }) => {
+    this.strategyConfigs.forEach(({ asset, base }) => {
       Object.keys(this.historicCandleDataMultiTimeFrames[asset + base]).forEach(
         (interval) => {
           if (
@@ -333,10 +304,10 @@ export class BackTestBot {
         : await binanceClient.futuresExchangeInfo();
 
     // Prepare the candle data that will be used in the backtester
-    await this.prepareCandleHistoric(this.tradeConfigs);
+    await this.prepareCandleHistoric(this.strategyConfigs);
 
-    // Get the smaller loop time frame in the trade configs.
-    const smallerTimeFrame = this.tradeConfigs
+    // Get the smaller loop time frame in the strategy configs.
+    const smallerTimeFrame = this.strategyConfigs
       .map(({ loopInterval }) => loopInterval)
       .sort((tf1, tf2) => compareTimeFrame(tf1, tf2))[0];
 
@@ -359,7 +330,7 @@ export class BackTestBot {
     } = {};
 
     // Initialize the indexes
-    this.tradeConfigs.forEach(
+    this.strategyConfigs.forEach(
       ({ asset, base, indicatorIntervals, loopInterval }) => {
         indexes[asset + base] = {};
         new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
@@ -375,7 +346,7 @@ export class BackTestBot {
     while (dayjs(currentDate).isSameOrBefore(this.endDate)) {
       printDateBanner(currentDate);
 
-      this.tradeConfigs.forEach((config) => {
+      this.strategyConfigs.forEach((config) => {
         const { base, asset, loopInterval, indicatorIntervals } = config;
         const pair = asset + base;
 
@@ -413,28 +384,7 @@ export class BackTestBot {
 
           // The loop time frames could be different of the smaller time frame for all the trading configurations
           if (dateMatchTimeFrame(currentDate, config.loopInterval)) {
-            // Use neural network
-            if (this.brain) {
-              this.look(config, candlesStream);
-              this.think();
-            }
-
-            if (BINANCE_MODE === 'spot') {
-              this.tradeWithSpot(
-                config,
-                currentPrice,
-                candles[pair],
-                exchangeInfo
-              );
-            } else {
-              this.tradeWithFutures(
-                config,
-                currentPrice,
-                candles[pair],
-                exchangeInfo
-              );
-              this.updatePNL(asset, base, currentPrice);
-            }
+            this.update(config, currentPrice, candles, exchangeInfo);
           }
         }
       });
@@ -475,13 +425,40 @@ export class BackTestBot {
 
     // Display the strategy report
     this.calculateStrategyStats();
-    this.displayStrategyResults();
+    this.displayStrategyReport();
     generateHTMLReport(
       this.strategyName,
       this.strategyReport,
       this.chartLabels,
       this.chartData
     );
+  }
+
+  /**
+   * Actions each new bars
+   */
+  protected update(
+    config: StrategyConfig,
+    currentPrice: number,
+    candles: CandlesDataMultiTimeFrames,
+    exchangeInfo: ExchangeInfo
+  ) {
+    if (BINANCE_MODE === 'spot') {
+      this.tradeWithSpot(
+        config,
+        currentPrice,
+        candles[config.asset + config.base],
+        exchangeInfo
+      );
+    } else {
+      this.tradeWithFutures(
+        config,
+        currentPrice,
+        candles[config.asset + config.base],
+        exchangeInfo
+      );
+      this.updatePNL(config.asset, config.base, currentPrice);
+    }
   }
 
   /**
@@ -641,7 +618,7 @@ export class BackTestBot {
   /**
    * Function that displays the strategy report
    */
-  private displayStrategyResults() {
+  private displayStrategyReport() {
     const {
       testPeriod,
       initialCapital,
@@ -819,13 +796,13 @@ export class BackTestBot {
 
   /**
    * Main function for the spot mode
-   * @param tradeConfig
+   * @param strategyConfig
    * @param currentPrice
    * @param candles
    * @param exchangeInfo
    */
-  private tradeWithSpot(
-    tradeConfig: TradeConfig,
+  protected tradeWithSpot(
+    strategyConfig: StrategyConfig,
     currentPrice: number,
     candles: CandlesDataMultiTimeFrames,
     exchangeInfo: ExchangeInfo
@@ -843,7 +820,7 @@ export class BackTestBot {
       maxPyramidingAllocation,
       loopInterval,
       maxTradeDuration,
-    } = tradeConfig;
+    } = strategyConfig;
     const pair = asset + base;
 
     // Balance information
@@ -956,13 +933,13 @@ export class BackTestBot {
 
   /**
    * Main function for the futures mode
-   * @param tradeConfig
+   * @param strategyConfig
    * @param currentPrice
    * @param candles
    * @param exchangeInfo
    */
-  private tradeWithFutures(
-    tradeConfig: TradeConfig,
+  protected tradeWithFutures(
+    strategyConfig: StrategyConfig,
     currentPrice: number,
     candles: CandlesDataMultiTimeFrames,
     exchangeInfo: ExchangeInfo
@@ -971,8 +948,6 @@ export class BackTestBot {
       asset,
       base,
       risk,
-      buyStrategy,
-      sellStrategy,
       exitStrategy,
       trendFilter,
       riskManagement,
@@ -983,7 +958,7 @@ export class BackTestBot {
       unidirectional,
       loopInterval,
       maxTradeDuration,
-    } = tradeConfig;
+    } = strategyConfig;
     const pair = asset + base;
 
     // Check the trend
@@ -1001,18 +976,10 @@ export class BackTestBot {
     const hasShortPosition = position.size < 0;
 
     // Decision to take
-    let max = Math.max(...this.decision);
-    const isBuySignal = this.brain
-      ? max === this.decision[0] && this.decision[0] > 0.6 && !hasShortPosition
-      : buyStrategy(candles);
-    const isSellSignal = this.brain
-      ? max === this.decision[1] && this.decision[1] > 0.6 && !hasLongPosition
-      : sellStrategy(candles);
-    const closePosition = this.brain
-      ? max === this.decision[2] &&
-        this.decision[2] > 0.6 &&
-        (hasShortPosition || hasLongPosition)
-      : false;
+    const { isBuySignal, isSellSignal, closePosition } = this.takeDecision(
+      strategyConfig,
+      candles[loopInterval]
+    );
 
     // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
@@ -1348,11 +1315,23 @@ export class BackTestBot {
   }
 
   /**
+   * The bot take a decision : Buy, Sell ?
+   * @param strategyConfig
+   * @param candles
+   */
+  protected takeDecision(strategyConfig: StrategyConfig, candles: CandleData) {
+    const isBuySignal = strategyConfig.buyStrategy(candles);
+    const isSellSignal = strategyConfig.sellStrategy(candles);
+    const closePosition = false;
+    return { isBuySignal, isSellSignal, closePosition };
+  }
+
+  /**
    * Check if we are in the trading sessions and if the robot can trade
    * @param current
    * @param tradingSession
    */
-  private isTradingSessionActive(
+  protected isTradingSessionActive(
     current: Date,
     tradingSession?: TradingSession
   ) {
@@ -1375,7 +1354,7 @@ export class BackTestBot {
    * @param pair
    * @param currentPrice The current price in the main loop
    */
-  private checkPositionMargin(pair: string, currentPrice: number) {
+  protected checkPositionMargin(pair: string, currentPrice: number) {
     const position = this.futuresWallet.positions.find(
       (pos) => pos.pair === pair
     );
@@ -1401,7 +1380,7 @@ export class BackTestBot {
   /**
    * Check the spot open orders based on the current price. If the price crosses an order, this latter is activated.
    */
-  private checkSpotOpenOrders(
+  protected checkSpotOpenOrders(
     asset: string,
     base: string,
     candles: CandleData[]
@@ -1491,7 +1470,7 @@ export class BackTestBot {
    * @param base
    * @param candles
    */
-  private checkFuturesOpenOrders(
+  protected checkFuturesOpenOrders(
     asset: string,
     base: string,
     candles: CandleData[]
@@ -1802,7 +1781,7 @@ export class BackTestBot {
   /**
    * @returns The balance value in units of base currency
    */
-  private evaluateSpotWalletBaseValue() {
+  protected evaluateSpotWalletBaseValue() {
     return this.wallet.balances.reduce(
       (prev, cur) => prev + cur.avgPrice * cur.quantity,
       0
@@ -1814,7 +1793,7 @@ export class BackTestBot {
    * @param position
    * @param currentPrice
    */
-  private getPositionPNL(position: Position, currentPrice: number) {
+  protected getPositionPNL(position: Position, currentPrice: number) {
     const entryPrice = position.entryPrice;
     const delta = (currentPrice - entryPrice) / entryPrice;
 
@@ -1835,7 +1814,7 @@ export class BackTestBot {
    * @param base
    * @param currentPrice
    */
-  private updatePNL(asset: string, base: string, currentPrice: number) {
+  protected updatePNL(asset: string, base: string, currentPrice: number) {
     let positions = this.futuresWallet.positions;
     let indexAsset = positions.findIndex((pos) => pos.pair === asset + base);
     let position = positions[indexAsset];
@@ -1845,7 +1824,7 @@ export class BackTestBot {
   /**
    * Update the total unrealized profit property of the futures wallet object
    */
-  private updateTotalPNL() {
+  protected updateTotalPNL() {
     let totalPNL = 0;
     this.futuresWallet.positions
       .filter(
@@ -1862,7 +1841,7 @@ export class BackTestBot {
    * Close a spot open order by its id
    * @param orderId The id of the order to close
    */
-  private closeOpenOrder(orderId: string) {
+  protected closeOpenOrder(orderId: string) {
     this.openOrders = this.openOrders.filter((order) => order.id !== orderId);
     log(`Close the open order #${orderId}`, chalk.cyan);
   }
@@ -1871,7 +1850,7 @@ export class BackTestBot {
    *  Close a futures open order by its id
    * @param orderId The id of the order to close
    */
-  private closeFutureOpenOrder(orderId: string) {
+  protected closeFutureOpenOrder(orderId: string) {
     this.futuresOpenOrders = this.futuresOpenOrders.filter(
       (order) => order.id !== orderId
     );
@@ -1882,7 +1861,7 @@ export class BackTestBot {
    * Close all the spot open orders for a given pair
    * @param pair
    */
-  private closeOpenOrders(pair: string) {
+  protected closeOpenOrders(pair: string) {
     this.openOrders = this.openOrders.filter((order) => order.pair !== pair);
     log(`Close all the open orders on the pair ${pair}`, chalk.cyan);
   }
@@ -1891,7 +1870,7 @@ export class BackTestBot {
    * Close all the futures open orders for a given pair
    * @param pair
    */
-  private closeFuturesOpenOrders(pair: string) {
+  protected closeFuturesOpenOrders(pair: string) {
     this.futuresOpenOrders = this.futuresOpenOrders.filter(
       (order) => order.pair !== pair
     );
@@ -1906,7 +1885,7 @@ export class BackTestBot {
    * @param quantity
    * @param side
    */
-  private spotOrderMarket(
+  protected spotOrderMarket(
     asset: string,
     base: string,
     price: number,
@@ -1985,7 +1964,7 @@ export class BackTestBot {
    * @param quantity
    * @param side
    */
-  private spotOrderLimit(
+  protected spotOrderLimit(
     asset: string,
     base: string,
     price: number,
@@ -2036,7 +2015,7 @@ export class BackTestBot {
    * @param quantity
    * @param side
    */
-  private futuresOrderMarket(
+  protected futuresOrderMarket(
     pair: string,
     price: number,
     quantity: number,
@@ -2197,7 +2176,7 @@ export class BackTestBot {
    * @param quantity
    * @param positionSide
    */
-  private futuresOrderLimit(
+  protected futuresOrderLimit(
     pair: string,
     price: number,
     quantity: number,
@@ -2252,7 +2231,7 @@ export class BackTestBot {
    * @param positionSide
    * @param trailingStopConfig
    */
-  private futuresOrderTrailingStop(
+  protected futuresOrderTrailingStop(
     asset: string,
     base: string,
     price: number,
@@ -2300,75 +2279,5 @@ export class BackTestBot {
         `Trailing stop order for the pair ${pair} cannot be placed`
       );
     }
-  }
-
-  /**
-   * Gets the output of the brain, then converts them to actions
-   */
-  public think() {
-    var max = 0;
-    var maxIndex = 0;
-
-    // Get the output of the neural network
-    this.decision = this.brain.feedForward(this.vision);
-
-    for (var i = 0; i < this.decision.length; i++) {
-      if (this.decision[i] > max) {
-        max = this.decision[i];
-        maxIndex = i;
-      }
-    }
-  }
-
-  /**
-   * Get the inputs for the neural network
-   * @param tradeConfig
-   * @param candles
-   */
-  public look(tradeConfig: TradeConfig, candles: CandleData[]) {
-    let vision: number[] = [];
-
-    // If not exit strategy, we add an input to know if the player hold a position
-    if (!tradeConfig.exitStrategy && BINANCE_MODE === 'futures') {
-      const position = this.futuresWallet.positions.find(
-        (pos) => pos.pair === tradeConfig.asset + tradeConfig.base
-      );
-      const holdingTrade = position.size !== 0 ? 1 : 0;
-      vision.push(holdingTrade);
-    }
-
-    if (NEURAL_NETWORK_INPUTS_MODE === 'candles') {
-      const getCandleSource = (candles: CandleData[]) => {
-        if (CANDLE_SOURCE === 'open') return candles.map((c) => c.open);
-        else if (CANDLE_SOURCE === 'close') return candles.map((c) => c.close);
-        else if (CANDLE_SOURCE === 'high') return candles.map((c) => c.high);
-        else if (CANDLE_SOURCE === 'low') return candles.map((c) => c.low);
-        else if (CANDLE_SOURCE === 'hl2')
-          return candles.map((c) => (c.high + c.low) / 2);
-        else return candles.map((c) => c.close);
-      };
-
-      let candleVision = getCandleSource(candles).slice(-CANDLE_LENGTH_INPUTS);
-      // Get max and min
-      let min = Math.min(...candleVision);
-      let max = Math.max(...candleVision);
-      // Normalize values
-      candleVision = candleVision.map((val) => normalize(val, min, max, 0, 1));
-      // Add to the array
-      vision = vision.concat(candleVision);
-    } else {
-      let indicatorVision = calculateIndicators(candles);
-      // Get max and min
-      let min = Math.min(...indicatorVision);
-      let max = Math.max(...indicatorVision);
-      // Normalize values
-      indicatorVision = indicatorVision.map((val) =>
-        normalize(val, min, max, 0, 1)
-      );
-      // Add to the array
-      vision = vision.concat(indicatorVision);
-    }
-
-    this.vision = vision;
   }
 }

@@ -1,6 +1,5 @@
 import chalk from 'chalk';
 import Binance from 'binance-api-node';
-
 import { loadCandlesFromCSV } from '../../utils/loadCandleData';
 import Trader from './core/player';
 import Config from '../../configs/neat';
@@ -149,11 +148,11 @@ export async function train(useSave?: boolean) {
     return;
   }
 
-  const tradeConfig = Config[0];
+  const strategyConfig = Config[0];
 
   const historicCandleData = await loadCandlesFromCSV(
-    tradeConfig.asset + tradeConfig.base,
-    tradeConfig.loopInterval,
+    strategyConfig.asset + strategyConfig.base,
+    strategyConfig.loopInterval,
     startDateTraining,
     endDateTraining
   );
@@ -167,13 +166,13 @@ export async function train(useSave?: boolean) {
   let population = new Population({
     size: totalPopulation,
     player: {
-      genomeInputs: tradeConfig.exitStrategy
+      genomeInputs: strategyConfig.exitStrategy
         ? NEURAL_NETWORK_INPUTS
         : NEURAL_NETWORK_INPUTS + 1, // If no strategy to exit, add an input to know if the player have a position opened
-      genomeOutputs: tradeConfig.exitStrategy
+      genomeOutputs: strategyConfig.exitStrategy
         ? NEURAL_NETWORK_OUTPUTS
         : NEURAL_NETWORK_OUTPUTS + 1, // If no strategy to exit, add an output to close the position
-      tradeConfig,
+      strategyConfig,
       binanceClient,
       exchangeInfo,
       initialCapital,
@@ -194,7 +193,7 @@ export async function train(useSave?: boolean) {
 
       if (!population.done() && i < historicCandleData.length - 1) {
         // if any players are alive then update them
-        population.updateAlive(tradeConfig, candles, currentPrice);
+        population.updateAlive(strategyConfig, candles, currentPrice);
       } else {
         // genetic algorithm
         population.naturalSelection();

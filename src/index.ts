@@ -1,5 +1,5 @@
 import { Bot } from './bot';
-import { BackTestBot } from './backtest/bot';
+import { BasicBackTestBot } from './backtest/bots/basicBot';
 import { StrategyConfig, BotConfig } from './init';
 
 if (process.env.NODE_ENV !== 'test') {
@@ -13,7 +13,7 @@ if (process.env.NODE_ENV !== 'test') {
   const initialCapital = BacktestConfig['initial_capital'];
   const strategyName = BotConfig['strategy_name'];
 
-  const bot = new BackTestBot(
+  const bot = new BasicBackTestBot(
     StrategyConfig,
     strategyName,
     startDate,
