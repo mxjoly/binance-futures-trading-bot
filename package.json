@@ -16,7 +16,8 @@
     "ai:knn:accuracy": "cross-env NODE_ENV=test node ./build/ml/knn/test.js",
     "ai:neat:train": "cross-env NODE_ENV=test node ./build/ml/neat/train.js",
     "ai:neat:train-reset": "cross-env NODE_ENV=test node ./build/ml/neat/train.js",
-    "clear-temp": "rm -rd ./temp"
+    "clear-temp": "rm -rd ./temp",
+    "depgraph": "depcruise -c .dependency-cruiser.js --exclude \"node_modules/*\" --output-type dot src | dot -T svg > dependency-graph.svg"
   },
   "keywords": [],
   "author": "mxjoly <maxime.joly2808@gmail.com>",
@@ -41,6 +42,7 @@
   "devDependencies": {
     "@types/nodemon": "^1.19.1",
     "cross-env": "^7.0.3",
+    "dependency-cruiser": "^11.4.0",
     "typescript": "^4.5.5"
   }
 }
