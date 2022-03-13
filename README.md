@@ -37,7 +37,7 @@ You can backtest your own strategy by running the backtest mode. To do that, you
 
 ## Machine Learning
 
-### Classification (KNN)
+### Classification with K-nearest neighbors (KNN)
 
 With the KNN algorithm, the bot will try to predict the price movement that will happen N bars later.
 
@@ -45,12 +45,12 @@ With the KNN algorithm, the bot will try to predict the price movement that will
 
 ```
 npm run build:test
-npm run ai:neat:accuracy
+npm run ai:knn:test
 ```
 
-#### Test the accuracy of the classifier
+#### Configuration
 
-First, configure the parameters of the algorithm, go to the namespace `knn` in the file `config.json`.
+To configure the KNN classifier, go to the namespace `knn` in the file `config.json`.
 
 | Key                    | Type / Format              | Description                                                 |
 | ---------------------- | -------------------------- | ----------------------------------------------------------- |
@@ -63,13 +63,13 @@ First, configure the parameters of the algorithm, go to the namespace `knn` in t
 | `price_change`         | `number` (percentage)      | The price change to predict                                 |
 | `features/*`           | `boolean`                  | The indicators to use in the dataset                        |
 
-### Neuro Evolution (NEAT)
+### Neuro Evolution of Augmented Topologies (NEAT)
 
 I implemented the NEAT algorithm using the template of Code-Bullet [here](https://github.com/Code-Bullet/NEAT-Template-JavaScript).
 
 #### Quick Start
 
-```
+```js
 npm run build:test
 npm run ai:neat:train
 npm run test:neat
