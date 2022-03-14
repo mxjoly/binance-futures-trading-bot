@@ -104,6 +104,7 @@ To configure the parameters of the algorithm, go to the namespace `neat` in the 
 - [ ] Trade managements
 - [x] Add a trade configuration property to limited the holding duration of a trade or position
 - [ ] Spot portfolio arbitrage in spot
+- [ ] KNN algorithm issue to fix in backtesting
 
 ## Documentation
 
