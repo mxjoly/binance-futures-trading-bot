@@ -6,7 +6,7 @@
 
 Set your api keys to the environment variables for testnet in `.env`. Go to https://testnet.binancefuture.com/en/futures/BTCUSDT and https://testnet.binance.vision/ to get your keys. Then run the commands:
 
-```
+```bash
 npm run build:dev
 npm run dev
 ```
@@ -15,7 +15,7 @@ npm run dev
 
 Get your api keys from your Binance account and set them to the environment variables `BINANCE_PUBLIC_KEY` and `BINANCE_PRIVATE_KEY` in the file `.env`. Then, run the commands:
 
-```
+```bash
 npm run build:prod
 npm run prod
 ```
@@ -43,9 +43,9 @@ With the KNN algorithm, the bot will try to predict the price movement that will
 
 #### Quick Start
 
-```
+```bash
 npm run build:test
-npm run ai:knn:test
+npm run ai:knn:test # doesn't work at the moment
 ```
 
 #### Configuration
@@ -69,7 +69,7 @@ I implemented the NEAT algorithm using the template of Code-Bullet [here](https:
 
 #### Quick Start
 
-```js
+```bash
 npm run build:test
 npm run ai:neat:train
 npm run test:neat
@@ -102,9 +102,9 @@ To configure the parameters of the algorithm, go to the namespace `neat` in the 
 - [x] Implement genetic algorithm (NEAT)
 - [ ] Add custom Telegram channel with the notifications of the robot when an action is executed
 - [ ] Trade managements
-- [x] Add a trade configuration property to limited the holding duration of a trade or position
+- [x] Add a trade configuration property to limited the holding duration of a trade
 - [ ] Spot portfolio arbitrage in spot
-- [ ] KNN algorithm issue to fix in backtesting
+- [ ] Add backtesting for KNN
 
 ## Documentation
 

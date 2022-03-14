@@ -1,14 +1,14 @@
 {
   "mode": "futures",
-  "strategy_config_file_name": "knn",
-  "strategy_name": "knn",
+  "strategy_config_file_name": "neat",
+  "strategy_name": "neat",
   "taker_fees_futures": 0.04,
   "maker_fees_futures": 0.02,
   "taker_fees_spot": 0.01,
   "maker_fees_spot": 0.01,
   "backtest": {
-    "start_date": "2021-01-21 00:00:00",
-    "end_date": "2021-01-28 00:00:00",
+    "start_date": "2021-09-01 00:00:00",
+    "end_date": "2021-10-01 00:00:00",
     "initial_capital": 10000,
     "save_db": false
   },
@@ -59,7 +59,7 @@
       },
       "indicator_inputs": {
         "EMA21": true,
-        "EMA50": false,
+        "EMA50": true,
         "EMA100": false,
         "ADX": false,
         "AO": false,
@@ -70,7 +70,7 @@
         "WILLIAM_R": false,
         "KIJUN": false,
         "VWAP": false,
-        "VOL_OSC": false,
+        "VOL_OSC": true,
         "PRICE_CHANGE": true,
         "VOL": true
       }

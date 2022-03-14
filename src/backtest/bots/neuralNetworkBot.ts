@@ -30,7 +30,7 @@ export class NeuralNetworkBot extends BasicBackTestBot {
     this.brain = brain;
   }
 
-  protected async update(
+  protected update(
     config: StrategyConfig,
     currentPrice: number,
     candles: CandlesDataMultiTimeFrames,
@@ -50,14 +50,14 @@ export class NeuralNetworkBot extends BasicBackTestBot {
     this.updatePNL(asset, base, currentPrice);
   }
 
-  protected async takeDecision(
+  protected takeDecision(
     strategyConfig: StrategyConfig,
     candles: CandlesDataMultiTimeFrames
-  ): Promise<{
+  ): {
     isBuySignal: boolean;
     isSellSignal: boolean;
     closePosition: boolean;
-  }> {
+  } {
     const { buyStrategy, sellStrategy, asset, base } = strategyConfig;
 
     const positions = this.futuresWallet.positions;

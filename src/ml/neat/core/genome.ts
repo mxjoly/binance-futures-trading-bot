@@ -304,7 +304,6 @@ class Genome {
   addConnection(innovationHistory: ConnectionHistory[]) {
     // cannot add a connection to a fully connected network
     if (this.fullyConnected()) {
-      console.log('connection failed');
       return;
     }
 

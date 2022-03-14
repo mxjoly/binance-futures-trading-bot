@@ -23,7 +23,7 @@ export class ClassifierBot extends BasicBackTestBot {
     this.classifier = classifier;
   }
 
-  protected async update(
+  protected update(
     config: StrategyConfig,
     currentPrice: number,
     candles: CandlesDataMultiTimeFrames,
@@ -36,46 +36,47 @@ export class ClassifierBot extends BasicBackTestBot {
     this.updatePNL(asset, base, currentPrice);
   }
 
-  protected async takeDecision(
+  protected takeDecision(
     strategyConfig: StrategyConfig,
     candles: CandlesDataMultiTimeFrames
-  ): Promise<{
+  ): {
     isBuySignal: boolean;
     isSellSignal: boolean;
     closePosition: boolean;
-  }> {
+  } {
     // Position information
-    const positions = this.futuresWallet.positions;
-    const position = positions.find(
-      (position) => position.pair === strategyConfig.asset + strategyConfig.base
-    );
+    // const positions = this.futuresWallet.positions;
+    // const position = positions.find(
+    //   (position) => position.pair === strategyConfig.asset + strategyConfig.base
+    // );
 
-    return new Promise((resolve, reject) => {
-      const indicators = calculateIndicatorsForLastCandle(
-        candles[strategyConfig.loopInterval]
-      );
+    // const indicators = calculateIndicatorsForLastCandle(
+    //   candles[strategyConfig.loopInterval]
+    // );
 
-      const features = tensor(indicators);
+    // const features = tensor(indicators);
 
-      this.classifier
-        .predictClass(features)
-        .then(({ label, confidences }) => {
-          // Take only decision if the probability is high
-          if (confidences[label] > PREDICTION_THRESHOLD) {
-            resolve({
-              isBuySignal: Number(label) === 1,
-              isSellSignal: Number(label) === -1,
-              closePosition: false,
-            });
-          } else {
-            resolve({
-              isBuySignal: false,
-              isSellSignal: false,
-              closePosition: false,
-            });
-          }
-        })
-        .catch(reject);
-    });
+    // this.classifier.predictClass(features).then(({ label, confidences }) => {
+    //   // Take only decision if the probability is high
+    //   if (confidences[label] > PREDICTION_THRESHOLD) {
+    //     return {
+    //       isBuySignal: Number(label) === 1,
+    //       isSellSignal: Number(label) === -1,
+    //       closePosition: false,
+    //     };
+    //   } else {
+    //     return {
+    //       isBuySignal: false,
+    //       isSellSignal: false,
+    //       closePosition: false,
+    //     };
+    //   }
+    // });
+
+    return {
+      isBuySignal: false,
+      isSellSignal: false,
+      closePosition: false,
+    };
   }
 }
