@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import csv from 'csv-parser';
-import dayjs from 'dayjs';
 import { Binance, CandleChartInterval } from 'binance-api-node';
 import { BINANCE_MODE } from '../init';
+import dayjs from 'dayjs';
 
 /**
  * Load the candle data on a symbol, on a specific time frames, and on a date range
@@ -16,61 +16,32 @@ export function loadCandlesFromCSV(
   symbol: string,
   interval: CandleChartInterval,
   startDate: string | number | Date,
-  endDate: string | number | Date,
-  onlyFinalCandle = false
+  endDate: string | number | Date
 ) {
-  return new Promise<CandleData[]>((resolve, reject) => {
+  return new Promise<CandleData[]>((resolve) => {
     let file = path.join(process.cwd(), 'data', symbol, `_${interval}.csv`);
     let candleData: CandleData[] = [];
-    let results: CandleData[] = [];
 
     fs.createReadStream(file)
       .pipe(csv({ separator: ',' }))
       .on('data', (data: CandleData) => {
-        candleData.push({
-          openTime: new Date(data.openTime),
-          closeTime: new Date(data.closeTime),
-          open: Number(data.open),
-          close: Number(data.close),
-          high: Number(data.high),
-          low: Number(data.low),
-          volume: Number(data.volume),
-        });
+        if (
+          dayjs(data.openTime).isAfter(startDate) &&
+          dayjs(data.closeTime).isBefore(endDate)
+        ) {
+          candleData.push({
+            openTime: new Date(data.openTime),
+            closeTime: new Date(data.closeTime),
+            open: Number(data.open),
+            close: Number(data.close),
+            high: Number(data.high),
+            low: Number(data.low),
+            volume: Number(data.volume),
+          });
+        }
       })
       .on('end', () => {
-        candleData = candleData.reverse();
-        candleData = candleData.slice(
-          0,
-          onlyFinalCandle ? -1 : candleData.length
-        );
-
-        for (let i = 0; i < candleData.length; i++) {
-          if (
-            dayjs(candleData[i].openTime).isBetween(
-              dayjs(startDate),
-              dayjs(endDate),
-              'second',
-              '[]'
-            ) &&
-            dayjs(candleData[i].closeTime).isBetween(
-              dayjs(startDate),
-              dayjs(endDate),
-              'second',
-              '[]'
-            )
-          ) {
-            results.push({
-              open: candleData[i].open,
-              close: candleData[i].close,
-              high: candleData[i].high,
-              low: candleData[i].low,
-              volume: candleData[i].volume,
-              openTime: candleData[i].openTime,
-              closeTime: candleData[i].closeTime,
-            });
-          }
-        }
-        resolve(results);
+        resolve(candleData.reverse());
       });
   });
 }

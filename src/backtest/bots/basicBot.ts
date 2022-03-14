@@ -346,7 +346,7 @@ export class BasicBackTestBot {
     while (dayjs(currentDate).isSameOrBefore(this.endDate)) {
       printDateBanner(currentDate);
 
-      this.strategyConfigs.forEach((config) => {
+      this.strategyConfigs.forEach(async (config) => {
         const { base, asset, loopInterval, indicatorIntervals } = config;
         const pair = asset + base;
 
@@ -384,7 +384,7 @@ export class BasicBackTestBot {
 
           // The loop time frames could be different of the smaller time frame for all the trading configurations
           if (dateMatchTimeFrame(currentDate, config.loopInterval)) {
-            this.update(config, currentPrice, candles, exchangeInfo);
+            await this.update(config, currentPrice, candles, exchangeInfo);
           }
         }
       });
@@ -435,23 +435,23 @@ export class BasicBackTestBot {
   }
 
   /**
-   * Actions each new bars
+   * Actions that make the bot each new bars
    */
-  protected update(
+  protected async update(
     config: StrategyConfig,
     currentPrice: number,
     candles: CandlesDataMultiTimeFrames,
     exchangeInfo: ExchangeInfo
   ) {
     if (BINANCE_MODE === 'spot') {
-      this.tradeWithSpot(
+      await this.tradeWithSpot(
         config,
         currentPrice,
         candles[config.asset + config.base],
         exchangeInfo
       );
     } else {
-      this.tradeWithFutures(
+      await this.tradeWithFutures(
         config,
         currentPrice,
         candles[config.asset + config.base],
@@ -801,7 +801,7 @@ export class BasicBackTestBot {
    * @param candles
    * @param exchangeInfo
    */
-  protected tradeWithSpot(
+  protected async tradeWithSpot(
     strategyConfig: StrategyConfig,
     currentPrice: number,
     candles: CandlesDataMultiTimeFrames,
@@ -938,7 +938,7 @@ export class BasicBackTestBot {
    * @param candles
    * @param exchangeInfo
    */
-  protected tradeWithFutures(
+  protected async tradeWithFutures(
     strategyConfig: StrategyConfig,
     currentPrice: number,
     candles: CandlesDataMultiTimeFrames,
@@ -976,10 +976,8 @@ export class BasicBackTestBot {
     const hasShortPosition = position.size < 0;
 
     // Decision to take
-    const { isBuySignal, isSellSignal, closePosition } = this.takeDecision(
-      strategyConfig,
-      candles[loopInterval]
-    );
+    const { isBuySignal, isSellSignal, closePosition } =
+      await this.takeDecision(strategyConfig, candles);
 
     // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
@@ -1319,7 +1317,10 @@ export class BasicBackTestBot {
    * @param strategyConfig
    * @param candles
    */
-  protected takeDecision(strategyConfig: StrategyConfig, candles: CandleData) {
+  protected async takeDecision(
+    strategyConfig: StrategyConfig,
+    candles: CandlesDataMultiTimeFrames
+  ) {
     const isBuySignal = strategyConfig.buyStrategy(candles);
     const isSellSignal = strategyConfig.sellStrategy(candles);
     const closePosition = false;

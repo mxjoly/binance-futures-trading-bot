@@ -7,16 +7,16 @@
   "taker_fees_spot": 0.01,
   "maker_fees_spot": 0.01,
   "backtest": {
-    "start_date": "2021-10-01 00:00:00",
-    "end_date": "2021-11-01 00:00:00",
+    "start_date": "2021-01-21 00:00:00",
+    "end_date": "2021-01-28 00:00:00",
     "initial_capital": 10000,
     "save_db": false
   },
   "knn": {
     "start_date_training": "2021-01-01 00:00:00",
-    "end_date_training": "2021-10-01 00:00:00",
-    "start_date_test": "2021-10-01 00:00:00",
-    "end_date_test": "2021-12-01 00:00:00",
+    "end_date_training": "2021-01-21 00:00:00",
+    "start_date_test": "2021-01-21 00:00:00",
+    "end_date_test": "2021-01-28 00:00:00",
     "prediction_period": 6,
     "prediction_threshold": 0.8,
     "price_change": 0.01,

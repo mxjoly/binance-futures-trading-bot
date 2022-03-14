@@ -1,7 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { BasicBackTestBot } from '../../backtest/bots/basicBot';
+import { ClassifierBot } from '../../backtest/bots/classifierBot';
 import { BotConfig } from '../../init';
+import { create } from '@tensorflow-models/knn-classifier';
+import { trainClassifier } from '.';
 
 const configPath = path.resolve(process.cwd(), 'src/configs/knn.ts');
 
@@ -19,14 +21,19 @@ if (process.env.NODE_ENV === 'test') {
   const initialCapital = BacktestConfig['initial_capital'];
   const strategyName = BotConfig['strategy_name'];
 
-  const bot = new BasicBackTestBot(
-    StrategyConfig,
-    strategyName,
-    startDate,
-    endDate,
-    initialCapital
-  );
+  const classifier = create();
 
-  bot.prepare();
-  bot.run();
+  trainClassifier(classifier).then((classifier) => {
+    const bot = new ClassifierBot(
+      StrategyConfig,
+      strategyName,
+      startDate,
+      endDate,
+      initialCapital,
+      classifier
+    );
+
+    bot.prepare();
+    bot.run();
+  });
 }

@@ -30,7 +30,7 @@ export class NeuralNetworkBot extends BasicBackTestBot {
     this.brain = brain;
   }
 
-  protected update(
+  protected async update(
     config: StrategyConfig,
     currentPrice: number,
     candles: CandlesDataMultiTimeFrames,
@@ -46,12 +46,41 @@ export class NeuralNetworkBot extends BasicBackTestBot {
       this.think();
     }
 
-    if (BINANCE_MODE === 'spot') {
-      this.tradeWithSpot(config, currentPrice, candles[pair], exchangeInfo);
-    } else {
-      this.tradeWithFutures(config, currentPrice, candles[pair], exchangeInfo);
-      this.updatePNL(asset, base, currentPrice);
-    }
+    this.tradeWithFutures(config, currentPrice, candles[pair], exchangeInfo);
+    this.updatePNL(asset, base, currentPrice);
+  }
+
+  protected async takeDecision(
+    strategyConfig: StrategyConfig,
+    candles: CandlesDataMultiTimeFrames
+  ): Promise<{
+    isBuySignal: boolean;
+    isSellSignal: boolean;
+    closePosition: boolean;
+  }> {
+    const { buyStrategy, sellStrategy, asset, base } = strategyConfig;
+
+    const positions = this.futuresWallet.positions;
+    const position = positions.find(
+      (position) => position.pair === asset + base
+    );
+    const hasLongPosition = position.size > 0;
+    const hasShortPosition = position.size < 0;
+
+    let max = Math.max(...this.decision);
+    const isBuySignal = this.brain
+      ? max === this.decision[0] && this.decision[0] > 0.6 && !hasShortPosition
+      : buyStrategy(candles);
+    const isSellSignal = this.brain
+      ? max === this.decision[1] && this.decision[1] > 0.6 && !hasLongPosition
+      : sellStrategy(candles);
+    const closePosition = this.brain
+      ? max === this.decision[2] &&
+        this.decision[2] > 0.6 &&
+        (hasShortPosition || hasLongPosition)
+      : false;
+
+    return { isBuySignal, isSellSignal, closePosition };
   }
 
   /**

@@ -150,15 +150,7 @@ export function calculateIndicators(candles: CandleData[]) {
 
   // Price change
   const priceChange = NEURAL_NETWORK_INDICATORS_INPUTS.PRICE_CHANGE
-    ? candles.map((c, i) => {
-        if (i > 10) {
-          const currentPrice = candles[i].close;
-          const olderPrice = candles[i - 10].close;
-          return (currentPrice - olderPrice) / olderPrice;
-        } else {
-          return 0;
-        }
-      })
+    ? candles.map((c) => (c.close - c.open) / c.open)
     : null;
 
   // Inputs for the neural network

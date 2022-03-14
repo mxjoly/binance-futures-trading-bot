@@ -1,4 +1,4 @@
-import { VolumeOscillator, Supertrend } from '../../indicators';
+import { VolumeOscillator } from '../../indicators';
 
 interface Options {
   longLength?: number;

@@ -24,7 +24,7 @@ npm run prod
 
 You can create your own strategy for your bot. The file must be placed in `src/configs`. There are some examples to help you to create the best strategy. Check the declaration file `global.d.ts` to have an overview of the possibilities you can add to your strategy. And don't forget to backtest your strategy before running it in production !
 
-## Backtesting your strategy
+## Backtest your strategy
 
 You can backtest your own strategy by running the backtest mode. To do that, you need to:
 

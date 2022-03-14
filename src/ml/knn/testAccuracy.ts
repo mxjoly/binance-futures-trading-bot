@@ -3,5 +3,5 @@ import { testClassifier, trainClassifier } from '.';
 
 // Create the KNN classifier
 const classifier = create();
-trainClassifier(classifier);
-testClassifier(classifier);
+
+trainClassifier(classifier).then(testClassifier);
