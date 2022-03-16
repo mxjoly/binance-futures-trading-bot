@@ -26,6 +26,8 @@ const config: StrategyConfig[] = [
         pricePrecision,
         side,
         {
+          atrPeriod: 10,
+          atrMultiplier: 2,
           takeProfitAtrRatio: 2,
           stopLossAtrRatio: 3,
         }

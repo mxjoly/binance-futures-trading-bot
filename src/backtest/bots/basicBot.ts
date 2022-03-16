@@ -270,16 +270,16 @@ export class BasicBackTestBot {
           let endDate = dayjs(
             candleTimeFrame[candleTimeFrame.length - 1].closeTime
           ).add(1, 'minute');
-          if (dayjs(this.startDate).isBefore(startDate)) {
+          if (dayjs(startDate).isBefore(this.startDate)) {
             console.warn(
               `Your start date is too old comparing to your downloaded candle data for ${pair} in ${timeFrame}. The earliest possible date is ${dayjs(
                 startDate
               ).format('YYYY-MM-DD HH:mm:ss')}\n`
             );
           }
-          if (dayjs(this.endDate).isAfter(endDate)) {
+          if (dayjs(endDate).isAfter(this.endDate)) {
             console.warn(
-              `Your start date is too recent comparing to your downloaded candle data for ${pair} in ${timeFrame}. The latest possible date is ${dayjs(
+              `Your end date is too recent comparing to your downloaded candle data for ${pair} in ${timeFrame}. The latest possible date is ${dayjs(
                 endDate
               ).format('YYYY-MM-DD HH:mm:ss')}\n`
             );

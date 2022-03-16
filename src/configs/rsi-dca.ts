@@ -8,25 +8,22 @@ const config: StrategyConfig[] = [
   {
     asset: 'BTC',
     base: 'USDT',
-    loopInterval: CandleChartInterval.FIFTEEN_MINUTES,
-    indicatorIntervals: [
-      CandleChartInterval.FIFTEEN_MINUTES,
-      CandleChartInterval.ONE_DAY,
-    ],
-    risk: 0.05,
+    loopInterval: CandleChartInterval.ONE_MINUTE,
+    indicatorIntervals: [CandleChartInterval.ONE_MINUTE],
+    risk: 0.01,
     leverage: 5,
     allowPyramiding: true,
-    maxPyramidingAllocation: 0.5,
+    maxPyramidingAllocation: 0.25,
     trendFilter: (candles) => 1,
     exitStrategy: (price, candles, pricePrecision, side) =>
       basicTpslStrategy(price, pricePrecision, side, {
-        profitTargets: [{ deltaPercentage: 0.1, quantityPercentage: 1 }],
+        profitTargets: [{ deltaPercentage: 0.02, quantityPercentage: 1 }],
         lossTolerance: 0.19,
       }),
     buyStrategy: (candles) =>
-      RSI.isBuySignal(candles[CandleChartInterval.FIFTEEN_MINUTES]),
+      RSI.isBuySignal(candles[CandleChartInterval.ONE_MINUTE]),
     sellStrategy: (candles) =>
-      RSI.isSellSignal(candles[CandleChartInterval.FIFTEEN_MINUTES]),
+      RSI.isSellSignal(candles[CandleChartInterval.ONE_MINUTE]),
     riskManagement: getPositionSizeByPercent,
   },
 ];

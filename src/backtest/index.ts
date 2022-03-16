@@ -1,5 +1,5 @@
 import { BotConfig } from '../init';
-import { StrategyConfig } from '../ml/neat/loadConfig';
+import { StrategyConfig } from '../init';
 import { BasicBackTestBot } from './bots/basicBot';
 
 if (process.env.NODE_ENV === 'test') {
