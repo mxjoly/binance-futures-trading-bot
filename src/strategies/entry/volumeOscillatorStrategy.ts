@@ -19,11 +19,10 @@ export const isBuySignal = (
   candles: CandleData[],
   options = defaultOptions
 ) => {
-  if (candles.length < Math.max(options.longLength, options.shortLength))
-    return false;
+  if (candles.length < options.longLength) return false;
 
   const values = VolumeOscillator.calculate({
-    candles,
+    candles: candles,
     longLength: options.longLength,
     shortLength: options.shortLength,
   });

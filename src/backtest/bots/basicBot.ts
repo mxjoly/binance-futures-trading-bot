@@ -5,7 +5,7 @@ import cliProgress from 'cli-progress';
 import dayjs from 'dayjs';
 import safeRequire from 'safe-require';
 import { binanceClient, BINANCE_MODE } from '../../init';
-import { decimalCeil, decimalFloor, normalize } from '../../utils/math';
+import { decimalCeil, decimalFloor } from '../../utils/math';
 import { clone } from '../../utils/object';
 import { loadCandlesMultiTimeFramesFromCSV } from '../../utils/loadCandleData';
 import { createDatabase, saveFuturesState, saveState } from '../database';
@@ -268,7 +268,7 @@ export class BasicBackTestBot {
           let candleTimeFrame = candles[timeFrame];
           let startDate = candleTimeFrame[0].openTime;
           let endDate = dayjs(
-            candleTimeFrame[candleTimeFrame.length - 1].closeTime
+            candleTimeFrame[candleTimeFrame.length - 1].openTime
           ).add(1, 'minute');
           if (dayjs(startDate).isBefore(this.startDate)) {
             console.warn(
@@ -346,8 +346,9 @@ export class BasicBackTestBot {
     while (dayjs(currentDate).isSameOrBefore(this.endDate)) {
       printDateBanner(currentDate);
 
-      this.strategyConfigs.forEach((config) => {
-        const { base, asset, loopInterval, indicatorIntervals } = config;
+      this.strategyConfigs.forEach((strategyConfig) => {
+        const { base, asset, loopInterval, indicatorIntervals } =
+          strategyConfig;
         const pair = asset + base;
 
         // Update the indexes of the candle data array for each time frames
@@ -378,13 +379,13 @@ export class BasicBackTestBot {
           if (BINANCE_MODE === 'spot') {
             this.checkSpotOpenOrders(asset, base, candlesStream);
           } else {
-            this.checkPositionMargin(pair, currentPrice); // If the position margin reach 0, close the position (liquidation)
+            this.checkPositionMargin(strategyConfig, pair, currentPrice); // If the position margin reach 0, close the position (liquidation)
             this.checkFuturesOpenOrders(asset, base, candlesStream);
           }
 
           // The loop time frames could be different of the smaller time frame for all the trading configurations
-          if (dateMatchTimeFrame(currentDate, config.loopInterval)) {
-            this.update(config, currentPrice, candles, exchangeInfo);
+          if (dateMatchTimeFrame(currentDate, strategyConfig.loopInterval)) {
+            this.update(strategyConfig, currentPrice, candles, exchangeInfo);
           }
         }
       });
@@ -1354,10 +1355,15 @@ export class BasicBackTestBot {
 
   /**
    * Check if the margin is enough to maintain the position. If not, the position is liquidated
+   * @param strategyConfig
    * @param pair
    * @param currentPrice The current price in the main loop
    */
-  protected checkPositionMargin(pair: string, currentPrice: number) {
+  protected checkPositionMargin(
+    strategyConfig: StrategyConfig,
+    pair: string,
+    currentPrice: number
+  ) {
     const position = this.futuresWallet.positions.find(
       (pos) => pos.pair === pair
     );
@@ -1415,7 +1421,7 @@ export class BasicBackTestBot {
               (assetBalance.quantity + quantity);
             assetBalance.quantity += quantity;
 
-            this.strategyReport.totalTrades++;
+            if (assetBalance.quantity === 0) this.strategyReport.totalTrades++;
             this.strategyReport.totalFees += fees;
 
             log(
@@ -1495,6 +1501,7 @@ export class BasicBackTestBot {
         (position) => position.pair === pair
       );
       const wallet = this.futuresWallet;
+      const hasPosition = position.size !== 0;
 
       // Prevent remaining open orders when all the take profit or a stop loss has been filled
       if (position.size === 0 && this.futuresOpenOrders.length > 0) {
@@ -1531,8 +1538,10 @@ export class BasicBackTestBot {
                   wallet.availableBalance -= baseCost + fees;
                   wallet.totalWalletBalance -= fees;
 
-                  this.strategyReport.totalTrades++;
-                  this.strategyReport.totalLongTrades++;
+                  if (!hasPosition) {
+                    this.strategyReport.totalTrades++;
+                    this.strategyReport.totalLongTrades++;
+                  }
                   this.strategyReport.totalFees += fees;
 
                   log(
@@ -1670,8 +1679,10 @@ export class BasicBackTestBot {
                   wallet.availableBalance -= baseCost + fees;
                   wallet.totalWalletBalance -= fees;
 
-                  this.strategyReport.totalTrades++;
-                  this.strategyReport.totalShortTrades++;
+                  if (!hasPosition) {
+                    this.strategyReport.totalTrades++;
+                    this.strategyReport.totalShortTrades++;
+                  }
                   this.strategyReport.totalFees += fees;
 
                   log(
@@ -1912,7 +1923,7 @@ export class BasicBackTestBot {
           (assetBalance.quantity + quantity);
         assetBalance.quantity += quantity;
 
-        this.strategyReport.totalFees += fees;
+        if (assetBalance.quantity === 0) this.strategyReport.totalFees += fees;
         this.strategyReport.totalTrades++;
 
         log(
@@ -2054,8 +2065,10 @@ export class BasicBackTestBot {
           wallet.availableBalance -= baseCost + fees;
           wallet.totalWalletBalance -= fees;
 
-          this.strategyReport.totalTrades++;
-          this.strategyReport.totalLongTrades++;
+          if (!hasPosition) {
+            this.strategyReport.totalTrades++;
+            this.strategyReport.totalLongTrades++;
+          }
           this.strategyReport.totalFees += fees;
 
           log(
@@ -2120,8 +2133,10 @@ export class BasicBackTestBot {
           wallet.availableBalance -= baseCost + fees;
           wallet.totalWalletBalance -= fees;
 
-          this.strategyReport.totalTrades++;
-          this.strategyReport.totalShortTrades++;
+          if (!hasPosition) {
+            this.strategyReport.totalTrades++;
+            this.strategyReport.totalShortTrades++;
+          }
           this.strategyReport.totalFees += fees;
 
           log(
@@ -2198,7 +2213,12 @@ export class BasicBackTestBot {
 
     let baseCost =
       Math.abs(price * quantity) / position.leverage - position.margin;
-    let canOrder = this.futuresWallet.availableBalance >= baseCost;
+    let canOrder =
+      position.size !== 0
+        ? positionSide === position.positionSide
+          ? this.futuresWallet.availableBalance >= baseCost // Average the current position
+          : true // Take profit or Stop Loss
+        : this.futuresWallet.availableBalance >= baseCost; // New position
 
     if (canOrder) {
       let order: FuturesOpenOrder = {

@@ -23,9 +23,9 @@ export function calculate({
   atrMultiplier?: number;
 }): { trend: number; up: number; down: number }[] {
   if (candles.length > atrPeriod * 2) {
-    const high = candles.map((candle) => candle.high);
-    const low = candles.map((candle) => candle.low);
-    const close = candles.map((candle) => candle.close);
+    const high = candles.map((candle) => candle.high).slice(-atrPeriod - 1);
+    const low = candles.map((candle) => candle.low).slice(-atrPeriod - 1);
+    const close = candles.map((candle) => candle.close).slice(-atrPeriod - 1);
 
     const atr = ATR.calculate({ high, low, close, period: atrPeriod });
 

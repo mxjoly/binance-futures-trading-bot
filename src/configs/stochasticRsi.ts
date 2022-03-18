@@ -11,7 +11,7 @@ const config: StrategyConfig[] = [
     base: 'USDT',
     loopInterval: CandleChartInterval.FIFTEEN_MINUTES,
     indicatorIntervals: [CandleChartInterval.FIFTEEN_MINUTES],
-    risk: 0.01,
+    risk: 0.1,
     leverage: 10,
     trendFilter: (candles) =>
       threeEma.getTrend(candles[CandleChartInterval.FIFTEEN_MINUTES], {

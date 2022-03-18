@@ -26,14 +26,14 @@ export function calculate({
 
   let emaVolLong = EMA.calculate({
     period: longLength,
-    values: candles.map((candle) => candle.volume),
+    values: candles.map((candle) => candle.volume).slice(-longLength - 1),
   });
   let emaVolShort = EMA.calculate({
     period: shortLength,
-    values: candles.map((candle) => candle.volume),
+    values: candles.map((candle) => candle.volume).slice(-shortLength - 1),
   });
 
-  for (let i = 0; i < Math.min(emaVolLong.length, emaVolShort.length); i++) {
+  for (let i = 0; i < emaVolLong.length; i++) {
     let oscillator =
       (100 *
         (emaVolShort[emaVolShort.length - 1 - i] -
