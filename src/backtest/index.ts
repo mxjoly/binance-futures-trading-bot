@@ -1,6 +1,6 @@
 import { BotConfig } from '../init';
 import { StrategyConfig } from '../init';
-import { BasicBackTestBot } from './bots/basicBot';
+import { BasicBackTestBot } from './bot';
 
 if (process.env.NODE_ENV === 'test') {
   const BacktestConfig = BotConfig['backtest'];

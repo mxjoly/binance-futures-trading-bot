@@ -35,76 +35,12 @@ You can backtest your own strategy by running the backtest mode. To do that, you
 
 ![demo](./demo/report-preview.png)
 
-## Machine Learning
-
-### Classification with K-nearest neighbors (KNN)
-
-With the KNN algorithm, the bot will try to predict the price movement that will happen N bars later.
-
-#### Quick Start
-
-```bash
-npm run build:test
-npm run ai:knn:test # doesn't work at the moment
-```
-
-#### Configuration
-
-To configure the KNN classifier, go to the namespace `knn` in the file `config.json`.
-
-| Key                    | Type / Format              | Description                                                 |
-| ---------------------- | -------------------------- | ----------------------------------------------------------- |
-| `start_date_training`  | `YYYY-MM-DD HH:mm:ss`      | The start date of the training period                       |
-| `end_date_training`    | `YYYY-MM-DD HH:mm:ss`      | The end date of the training period                         |
-| `start_date_test`      | `YYYY-MM-DD HH:mm:ss`      | The start date of the test period                           |
-| `end_date_test`        | `YYYY-MM-DD HH:mm:ss`      | The end date of the test period                             |
-| `prediction_period`    | `number`                   | The prediction is made for N bars later                     |
-| `prediction_threshold` | `number` (between 0 and 1) | The bot make a prediction only when the probability is high |
-| `price_change`         | `number` (percentage)      | The price change to predict                                 |
-| `features/*`           | `boolean`                  | The indicators to use in the dataset                        |
-
-### Neuro Evolution of Augmented Topologies (NEAT)
-
-I implemented the NEAT algorithm using the template of Code-Bullet [here](https://github.com/Code-Bullet/NEAT-Template-JavaScript).
-
-#### Quick Start
-
-```bash
-npm run build:test
-npm run ai:neat:train
-npm run test:neat
-```
-
-#### Configuration
-
-To configure the parameters of the algorithm, go to the namespace `neat` in the file `config.json`.
-
-| Key                                   | Type / Format                         | Description                                                                                                                                    |
-| ------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `start_date_training`                 | `YYYY-MM-DD HH:mm:ss`                 | The start date of the training period                                                                                                          |
-| `end_date_training`                   | `YYYY-MM-DD HH:mm:ss`                 | The end date of the training period                                                                                                            |
-| `start_date_test`                     | `YYYY-MM-DD HH:mm:ss`                 | The start date of the test period                                                                                                              |
-| `end_date_test`                       | `YYYY-MM-DD HH:mm:ss`                 | The end date of the test period                                                                                                                |
-| `initial_capital`                     | `number`                              | The initial capital for the players                                                                                                            |
-| `population`                          | `number`                              | The number of genomes for each generation                                                                                                      |
-| `generations`                         | `number`                              | The total number of generations                                                                                                                |
-| `goals/win_rate`                      | `number` (between 0 and 1) or `null`  | The win rate to reach by the players to keep them alive                                                                                        |
-| `goals/profit_ratio`                  | `number` (> 1) or `null`              | The profit ratio to reach by the players to keep them alive (Same as Risk Reward). It's the result of `total_profit - total_loss + total_fees` |
-| `goals/max_relative_drawdown`         | `number` (between -1 and 0) or `null` | The maximum relative drawdown authorized                                                                                                       |
-| `neural_network/inputs_mode`          | `candles` or `indicators`             | Use candles data or indicator values for the inputs of network                                                                                 |
-| `neural_network/candle_inputs/length` | `number`                              | The number of candles to use for the inputs                                                                                                    |
-| `neural_network/candle_inputs/close`  | `open`, `high`, `low`, `close`, `hl2` | The type of data used in the candles                                                                                                           |
-| `neural_network/indicator_inputs/*`   | `boolean`                             | Use or not the indicator values                                                                                                                |
-
 ## Todo
 
 - [ ] Calculation of the average buying price of an asset in spot
-- [x] Implement genetic algorithm (NEAT)
 - [ ] Add custom Telegram channel with the notifications of the robot when an action is executed
 - [ ] Trade managements
-- [x] Add a trade configuration property to limited the holding duration of a trade
 - [ ] Spot portfolio arbitrage in spot
-- [ ] Add backtesting for KNN
 
 ## Documentation
 

@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import dayjs from 'dayjs';
 import { BINANCE_MODE, logger } from '../init';
 import { decimalFloor } from '../utils/math';
-import { DEBUG } from './bots/basicBot';
+import { DEBUG } from './bot';
 
 export function log(message: any, chalkColor?: any) {
   if (DEBUG) {
