@@ -11,7 +11,6 @@
     "data": "node ./scripts/generateData 1m,5m,15m,1h,4h",
     "test": "cross-env NODE_ENV=test node ./build/backtest/index.js DEBUG=false",
     "test:debug": "cross-env NODE_ENV=test node ./build/backtest/index.js DEBUG=true",
-    "clear-temp": "rm -rd ./temp",
     "depgraph": "depcruise -c .dependency-cruiser.js --exclude \"node_modules/*\" --output-type dot src | dot -T svg > dependency-graph.svg"
   },
   "keywords": [],
