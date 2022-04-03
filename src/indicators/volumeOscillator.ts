@@ -26,11 +26,11 @@ export function calculate({
 
   let emaVolLong = EMA.calculate({
     period: longLength,
-    values: candles.map((candle) => candle.volume).slice(-longLength - 1),
+    values: candles.map((candle) => candle.volume),
   });
   let emaVolShort = EMA.calculate({
     period: shortLength,
-    values: candles.map((candle) => candle.volume).slice(-shortLength - 1),
+    values: candles.map((candle) => candle.volume),
   });
 
   for (let i = 0; i < emaVolLong.length; i++) {

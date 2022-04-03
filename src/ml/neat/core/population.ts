@@ -43,11 +43,12 @@ class Population {
   updateAlive(
     strategyConfig: StrategyConfig,
     candles: CandleData[],
-    currentPrice: number
+    currentPrice: number,
+    indicators: number[]
   ) {
     for (var i = 0; i < this.players.length; i++) {
       if (!this.players[i].dead) {
-        this.players[i].look(candles); // get inputs for brain
+        this.players[i].look(candles, indicators); // get inputs for brain
         this.players[i].think(); // use outputs from neural network
         this.players[i].update(strategyConfig, candles, currentPrice); // move the player according to the outputs from the neural network
         if (this.players[i].score > this.globalBestScore) {

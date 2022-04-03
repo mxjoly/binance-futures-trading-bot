@@ -1,4 +1,3 @@
-import { CANDLE_MIN_LENGTH } from '.';
 import { normalize } from '../../utils/math';
 import * as VolumeOscillator from '../../indicators/volumeOscillator';
 import { NEURAL_NETWORK_INDICATORS_INPUTS } from './loadConfig';
@@ -26,7 +25,9 @@ export function calculateIndicators(candles: CandleData[]) {
       ? EMA.calculate({
           period: 21,
           values: candles.map((c) => c.close),
-        }).map((v, i, l) => candles[candles.length - (l.length - i)].close - v)
+        }).map(
+          (v, i, l) => (candles[candles.length - (l.length - i)].close - v) / v
+        )
       : null;
 
   // EMA50 (difference between current price and the value of ema)
@@ -34,7 +35,9 @@ export function calculateIndicators(candles: CandleData[]) {
     ? EMA.calculate({
         period: 50,
         values: candles.map((c) => c.close),
-      }).map((v, i, l) => candles[candles.length - (l.length - i)].close - v)
+      }).map(
+        (v, i, l) => (candles[candles.length - (l.length - i)].close - v) / v
+      )
     : null;
 
   // EMA100 (difference between current price and the value of ema)
@@ -42,7 +45,9 @@ export function calculateIndicators(candles: CandleData[]) {
     ? EMA.calculate({
         period: 100,
         values: candles.map((c) => c.close),
-      }).map((v, i, l) => candles[candles.length - (l.length - i)].close - v)
+      }).map(
+        (v, i, l) => (candles[candles.length - (l.length - i)].close - v) / v
+      )
     : null;
 
   // Average Directional Index
@@ -112,7 +117,7 @@ export function calculateIndicators(candles: CandleData[]) {
       })
     : null;
 
-  // Ichimoku
+  // Ichimoku diff %
   const kijun = NEURAL_NETWORK_INDICATORS_INPUTS.KIJUN
     ? IchimokuCloud.calculate({
         conversionPeriod: 9,
@@ -121,7 +126,10 @@ export function calculateIndicators(candles: CandleData[]) {
         displacement: 26,
         high: candles.map((c) => c.high),
         low: candles.map((c) => c.low),
-      }).map((v) => v.base)
+      }).map(
+        (v, i, l) =>
+          (candles[candles.length - (l.length - i)].close - v.base) / v.base
+      )
     : null;
 
   // Volume Weighted Average Price
@@ -172,12 +180,17 @@ export function calculateIndicators(candles: CandleData[]) {
     priceChange,
   ]
     .filter((i) => i !== null)
-    .slice(CANDLE_MIN_LENGTH)
     .map((values) => {
       let min = Math.min(...values);
       let max = Math.max(...values);
-      // Normalize the values and get the last
-      return normalize(values[values.length - 1], min, max, 0, 1);
+      return values.map((v) => {
+        return normalize(v, min, max, 0, 1);
+      });
+    })
+    .map((values) => {
+      // Set the same length for the array of indicator values
+      let diff = candles.length - values.length;
+      return new Array(diff).fill(null).concat(values);
     });
 
   return inputs;

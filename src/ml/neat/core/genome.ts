@@ -646,7 +646,7 @@ class Genome {
           tempConnectionGenesObj[_c.uid] = connection;
         });
 
-      let genome = new Genome(inputs, outputs, true);
+      let genome = new Genome(inputs, outputs, false);
       genome.layers = layers;
       genome.nextNode = nextNode;
       genome.biasNode = biasNode;

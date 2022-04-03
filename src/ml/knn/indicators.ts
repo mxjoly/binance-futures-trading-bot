@@ -106,7 +106,7 @@ export function calculateIndicators(candles: CandleData[]) {
       })
     : null;
 
-  // Ichimoku
+  // Ichimoku diff %
   const kijun = FEATURES_INDICATORS.KIJUN
     ? IchimokuCloud.calculate({
         conversionPeriod: 9,
@@ -115,7 +115,10 @@ export function calculateIndicators(candles: CandleData[]) {
         displacement: 26,
         high: candles.map((c) => c.high),
         low: candles.map((c) => c.low),
-      }).map((v) => v.base)
+      }).map(
+        (v, i, l) =>
+          (candles[candles.length - (l.length - i)].close - v.base) / v.base
+      )
     : null;
 
   // Volume Weighted Average Price
@@ -272,16 +275,17 @@ export function calculateIndicatorsForLastCandle(candles: CandleData[]) {
       }).slice(-1)[0]
     : null;
 
-  // Ichimoku
+  // Ichimoku diff %
+  let base = IchimokuCloud.calculate({
+    conversionPeriod: 9,
+    basePeriod: 26,
+    spanPeriod: 52,
+    displacement: 26,
+    high: candles.map((c) => c.high).slice(-53),
+    low: candles.map((c) => c.low).slice(-53),
+  }).slice(-1)[0].base;
   const kijun = FEATURES_INDICATORS.KIJUN
-    ? IchimokuCloud.calculate({
-        conversionPeriod: 9,
-        basePeriod: 26,
-        spanPeriod: 52,
-        displacement: 26,
-        high: candles.map((c) => c.high).slice(-53),
-        low: candles.map((c) => c.low).slice(-53),
-      }).slice(-1)[0].base
+    ? (candles[candles.length - 1].close - base) / base
     : null;
 
   // Volume Weighted Average Price

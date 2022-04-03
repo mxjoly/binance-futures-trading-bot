@@ -138,13 +138,8 @@ export class NeuralNetworkBot extends BasicBackTestBot {
       // Add to the array
       vision = vision.concat(candleVision);
     } else {
-      let indicatorVision = calculateIndicators(candles);
-      // Get max and min
-      let min = Math.min(...indicatorVision);
-      let max = Math.max(...indicatorVision);
-      // Normalize values
-      indicatorVision = indicatorVision.map((val) =>
-        normalize(val, min, max, 0, 1)
+      let indicatorVision = calculateIndicators(candles).map(
+        (v) => v.slice(-1)[0]
       );
       // Add to the array
       vision = vision.concat(indicatorVision);

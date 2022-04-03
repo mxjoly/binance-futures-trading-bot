@@ -144,7 +144,7 @@ class Player {
   /**
    * Get inputs for brain
    */
-  public look(candles: CandleData[]) {
+  public look(candles: CandleData[], indicators: number[]) {
     let vision: number[] = [];
 
     // If not exit strategy, we add an input to know if the player hold a position
@@ -178,7 +178,7 @@ class Player {
       vision = vision.concat(candleVision);
     } else {
       // The values are already normalized
-      let indicatorVision = calculateIndicators(candles);
+      let indicatorVision = indicators;
       // Add to the array
       vision = vision.concat(indicatorVision);
     }
