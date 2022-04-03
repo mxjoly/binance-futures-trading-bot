@@ -4,7 +4,6 @@ build/
 # Data
 data/
 reports/
-temp/
 
 # Logs
 logs
