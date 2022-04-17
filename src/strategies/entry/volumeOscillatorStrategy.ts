@@ -21,8 +21,7 @@ export const isBuySignal = (
 ) => {
   if (candles.length < options.longLength) return false;
 
-  const values = VolumeOscillator.calculate({
-    candles: candles,
+  const values = VolumeOscillator.calculate(candles, {
     longLength: options.longLength,
     shortLength: options.shortLength,
   });

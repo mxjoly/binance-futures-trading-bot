@@ -14,8 +14,7 @@ export const isBuySignal = (
   candles: CandleData[],
   options = defaultOptions
 ) => {
-  const levels = Fibonacci.calculate({
-    candles,
+  const levels = Fibonacci.calculate(candles, {
     period: options.period,
     trend: options.trend,
   });
@@ -36,8 +35,7 @@ export const isSellSignal = (
   candles: CandleData[],
   options = defaultOptions
 ) => {
-  const levels = Fibonacci.calculate({
-    candles,
+  const levels = Fibonacci.calculate(candles, {
     period: options.period,
     trend: options.trend,
   });

@@ -28,7 +28,7 @@ export enum FibonacciTrend {
 
 interface Options {
   period?: number;
-  trend?: FibonacciTrend;
+  trend: FibonacciTrend;
 }
 
 const defaultOptions: Options = {
@@ -36,18 +36,14 @@ const defaultOptions: Options = {
   trend: undefined,
 };
 
-function findHighestLowest(
-  candles: CandleData[],
-  trend: FibonacciTrend,
-  period?: number
-) {
-  let startIndex = period ? candles.length - period : 0;
+function findHighestLowest(candles: CandleData[], options: Options) {
+  let startIndex = options.period ? candles.length - options.period : 0;
   let lowestIndex = candles.length - 1;
   let highestIndex = candles.length - 1;
   let i = candles.length - 1;
   let j = candles.length - 1;
 
-  if (trend == FibonacciTrend.UP) {
+  if (options.trend == FibonacciTrend.UP) {
     while (i >= startIndex) {
       if (candles[i].low < candles[lowestIndex].low) lowestIndex = i;
       i--;
@@ -73,18 +69,13 @@ function findHighestLowest(
   };
 }
 
-export function calculate({
-  candles,
-  period = defaultOptions.period,
-  trend = defaultOptions.trend,
-}: {
-  candles: CandleData[];
-  period?: number;
-  trend?: FibonacciTrend;
-}): FibonacciLevels {
-  const { highest, lowest } = findHighestLowest(candles, trend, period);
+export function calculate(
+  candles: CandleData[],
+  options = defaultOptions
+): FibonacciLevels {
+  const { highest, lowest } = findHighestLowest(candles, options);
 
-  if (trend == FibonacciTrend.UP)
+  if (options.trend == FibonacciTrend.UP)
     return {
       retracementLevels: {
         _0236: highest - (highest - lowest) * 0.236,
@@ -104,7 +95,7 @@ export function calculate({
       },
     };
 
-  if (trend == FibonacciTrend.DOWN)
+  if (options.trend == FibonacciTrend.DOWN)
     return {
       retracementLevels: {
         _0236: lowest + (highest - lowest) * 0.236,

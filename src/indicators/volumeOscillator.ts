@@ -13,23 +13,15 @@ const defaultOptions: Options = {
 /**
  * Oscillator volume
  */
-export function calculate({
-  candles,
-  longLength = defaultOptions.longLength,
-  shortLength = defaultOptions.shortLength,
-}: {
-  candles: CandleData[];
-  longLength?: number;
-  shortLength?: number;
-}) {
+export function calculate(candles: CandleData[], options = defaultOptions) {
   let results: number[] = [];
 
   let emaVolLong = EMA.calculate({
-    period: longLength,
+    period: options.longLength,
     values: candles.map((candle) => candle.volume),
   });
   let emaVolShort = EMA.calculate({
-    period: shortLength,
+    period: options.shortLength,
     values: candles.map((candle) => candle.volume),
   });
 

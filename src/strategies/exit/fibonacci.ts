@@ -46,12 +46,10 @@ const strategy = (
   side: OrderSide,
   options = defaultOptions
 ) => {
-  const levelsInUpTrend = Fibonacci.calculate({
-    candles,
+  const levelsInUpTrend = Fibonacci.calculate(candles, {
     trend: Fibonacci.FibonacciTrend.UP,
   });
-  const levelsInDownTrend = Fibonacci.calculate({
-    candles,
+  const levelsInDownTrend = Fibonacci.calculate(candles, {
     trend: Fibonacci.FibonacciTrend.DOWN,
   });
 

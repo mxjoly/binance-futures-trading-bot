@@ -1,9 +1,17 @@
 import dayjs from 'dayjs';
-import { ExchangeInfo, OrderSide, OrderType } from 'binance-api-node';
+import {
+  CandleChartInterval,
+  ExchangeInfo,
+  OrderSide,
+  OrderType,
+} from 'binance-api-node';
 import { decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient, BINANCE_MODE } from './init';
-import { loadCandlesMultiTimeFramesFromAPI } from './utils/loadCandleData';
+import {
+  loadCandlesFromAPI,
+  loadCandlesMultiTimeFramesFromAPI,
+} from './utils/loadCandleData';
 import { Counter } from './tools/counter';
 import { calculateActivationPrice } from './utils/trailingStop';
 import {
@@ -11,6 +19,7 @@ import {
   getQuantityPrecision,
   isValidQuantity,
 } from './utils/currencyInfo';
+import { JMA } from './indicators';
 
 // ====================================================================== //
 
@@ -82,6 +91,14 @@ export class Bot {
       BINANCE_MODE === 'spot'
         ? binanceClient.ws.candles
         : binanceClient.ws.futuresCandles;
+
+    loadCandlesFromAPI(
+      'BTCUSDT',
+      CandleChartInterval.ONE_HOUR,
+      binanceClient
+    ).then((candles) => {});
+
+    return;
 
     this.strategyConfigs.forEach((tradeConfig) => {
       const pair = tradeConfig.asset + tradeConfig.base;

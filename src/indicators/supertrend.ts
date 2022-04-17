@@ -1,8 +1,8 @@
 import { ATR, Lowest, Highest } from 'technicalindicators';
 
 interface Options {
-  atrPeriod?: number;
-  atrMultiplier?: number;
+  atrPeriod: number;
+  atrMultiplier: number;
 }
 
 const defaultOptions: Options = {
@@ -10,38 +10,36 @@ const defaultOptions: Options = {
   atrMultiplier: 3.0,
 };
 
-/**
- * Calculate the fibonacci levels (retracements or extensions)
- */
-export function calculate({
-  candles,
-  atrPeriod = defaultOptions.atrPeriod,
-  atrMultiplier = defaultOptions.atrMultiplier,
-}: {
-  candles: CandleData[];
-  atrPeriod?: number;
-  atrMultiplier?: number;
-}): { trend: number; up: number; down: number }[] {
-  if (candles.length > atrPeriod * 2) {
-    const high = candles.map((candle) => candle.high).slice(-atrPeriod - 1);
-    const low = candles.map((candle) => candle.low).slice(-atrPeriod - 1);
-    const close = candles.map((candle) => candle.close).slice(-atrPeriod - 1);
+export function calculate(
+  candles: CandleData[],
+  options = defaultOptions
+): { trend: number; up: number; down: number }[] {
+  if (candles.length > options.atrPeriod * 2) {
+    const high = candles
+      .map((candle) => candle.high)
+      .slice(-options.atrPeriod - 1);
+    const low = candles
+      .map((candle) => candle.low)
+      .slice(-options.atrPeriod - 1);
+    const close = candles
+      .map((candle) => candle.close)
+      .slice(-options.atrPeriod - 1);
 
-    const atr = ATR.calculate({ high, low, close, period: atrPeriod });
+    const atr = ATR.calculate({ high, low, close, period: options.atrPeriod });
 
     const highest = Highest.calculate({
       values: close,
-      period: atrPeriod,
+      period: options.atrPeriod,
     }).slice(-atr.length);
 
     const lowest = Lowest.calculate({
       values: close,
-      period: atrPeriod,
+      period: options.atrPeriod,
     }).slice(-atr.length);
 
     const bases = atr.map((atr, i) => ({
-      up: (highest[i] + lowest[i]) / 2 - atrMultiplier * atr,
-      down: (highest[i] + lowest[i]) / 2 + atrMultiplier * atr,
+      up: (highest[i] + lowest[i]) / 2 - options.atrMultiplier * atr,
+      down: (highest[i] + lowest[i]) / 2 + options.atrMultiplier * atr,
     }));
 
     const nz = (a, b) => (isNaN(a) ? b : a);

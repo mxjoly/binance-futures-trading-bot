@@ -4,7 +4,7 @@
  * @param leftBars
  * @param rightBars
  */
-export function pivotHighs(
+export function pivotsHigh(
   values: number[],
   leftBars: number,
   rightBars: number
@@ -28,7 +28,7 @@ export function pivotHighs(
  * @param leftBars
  * @param rightBars
  */
-export function pivotLows(
+export function pivotsLow(
   values: number[],
   leftBars: number,
   rightBars: number
