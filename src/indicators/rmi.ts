@@ -27,4 +27,25 @@ export function calculate(candles: CandleData[], options = defaultOptions) {
         return c.close;
     }
   });
+
+  let diff1 = [];
+  let diff2 = [];
+  for (let i = options.momentum; i < candles.length; i++) {
+    diff1.push(Math.max(sources[i] - sources[i - options.momentum], 0));
+    diff2.push(Math.max(sources[i - options.momentum] - sources[i], 0));
+  }
+
+  let up = EMA.calculate({ period: options.length, values: diff1 });
+  let down = EMA.calculate({ period: options.length, values: diff2 });
+
+  let rmi = [];
+  for (
+    let i = 0;
+    i < candles.length - options.momentum - options.length + 1;
+    i++
+  ) {
+    rmi.push(down[i] === 0 ? 0 : 100 - 100 / (1 + up[i] / down[i]));
+  }
+
+  return rmi;
 }

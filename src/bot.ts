@@ -19,7 +19,6 @@ import {
   getQuantityPrecision,
   isValidQuantity,
 } from './utils/currencyInfo';
-import { JMA } from './indicators';
 
 // ====================================================================== //
 
@@ -91,14 +90,6 @@ export class Bot {
       BINANCE_MODE === 'spot'
         ? binanceClient.ws.candles
         : binanceClient.ws.futuresCandles;
-
-    loadCandlesFromAPI(
-      'BTCUSDT',
-      CandleChartInterval.ONE_HOUR,
-      binanceClient
-    ).then((candles) => {});
-
-    return;
 
     this.strategyConfigs.forEach((tradeConfig) => {
       const pair = tradeConfig.asset + tradeConfig.base;
