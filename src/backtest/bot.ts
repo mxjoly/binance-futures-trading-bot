@@ -9,7 +9,13 @@ import { decimalCeil, decimalFloor } from '../utils/math';
 import { clone } from '../utils/object';
 import { loadCandlesMultiTimeFramesFromCSV } from '../utils/loadCandleData';
 import { createDatabase, saveFuturesState, saveState } from './database';
-import { debugLastCandle, debugWallet, log, printDateBanner } from './debug';
+import {
+  debugLastCandle,
+  debugOrders,
+  debugWallet,
+  log,
+  printDateBanner,
+} from './debug';
 import generateHTMLReport from './generateReport';
 import { Counter } from '../tools/counter';
 import { calculateActivationPrice } from '../utils/trailingStop';
@@ -401,6 +407,7 @@ export class BasicBackTestBot {
 
       // Debugging
       debugWallet(this.wallet, this.futuresWallet);
+      debugOrders(this.openOrders, this.futuresOpenOrders);
       log(''); // \n
 
       if (!DEBUG)
@@ -2006,13 +2013,6 @@ export class BasicBackTestBot {
       };
 
       this.openOrders.push(order);
-
-      log(
-        `Create a ${side.toLowerCase()} limit order #${
-          order.id
-        } for ${quantity}${asset} at ${price}`,
-        chalk.magenta
-      );
     } else {
       console.error(
         `Limit order for the pair ${
@@ -2230,14 +2230,6 @@ export class BasicBackTestBot {
         quantity,
       };
       this.futuresOpenOrders.push(order);
-      log(
-        `Create a new ${
-          positionSide === 'LONG' ? 'buy' : 'sell'
-        } limit order #${order.id} on ${pair} with size ${Math.abs(
-          quantity
-        )} at ${price}`,
-        chalk.magenta
-      );
     } else {
       console.error(
         `Limit order for the pair ${pair} cannot be placed. quantity=${quantity} price=${price}`
@@ -2293,10 +2285,6 @@ export class BasicBackTestBot {
         },
       };
       this.futuresOpenOrders.push(order);
-      log(
-        `Create a trailing stop order #${order.id} on ${pair}`,
-        chalk.magenta
-      );
     } else {
       console.error(
         `Trailing stop order for the pair ${pair} cannot be placed`

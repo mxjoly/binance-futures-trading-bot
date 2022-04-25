@@ -70,3 +70,29 @@ export function debugWallet(wallet: Wallet, futuresWallet: FuturesWallet) {
     log(positionsString, chalk.grey);
   }
 }
+
+export function debugOrders(
+  openOrders: OpenOrder[],
+  futuresOpenOrders: FuturesOpenOrder[]
+) {
+  if (BINANCE_MODE === 'spot' && openOrders.length > 0) {
+    let ordersString = `orders: [ ${openOrders
+      .map(
+        (o) =>
+          `{ id: ${o.id} | pair: ${o.pair} | type: ${o.type} | side: ${o.side} | qty: ${o.quantity} | price: ${o.price} }`
+      )
+      .join(' , ')} ]`;
+
+    log(ordersString, chalk.grey);
+  }
+  if (BINANCE_MODE === 'futures' && futuresOpenOrders.length > 0) {
+    let ordersString = `orders: [ ${futuresOpenOrders
+      .map(
+        (o) =>
+          `{ id: ${o.id} | pair: ${o.pair} | type: ${o.type} | side: ${o.positionSide} | qty: ${o.quantity} | price: ${o.price} }`
+      )
+      .join(' , ')} ]`;
+
+    log(ordersString, chalk.grey);
+  }
+}

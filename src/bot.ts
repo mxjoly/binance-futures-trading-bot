@@ -1,17 +1,9 @@
 import dayjs from 'dayjs';
-import {
-  CandleChartInterval,
-  ExchangeInfo,
-  OrderSide,
-  OrderType,
-} from 'binance-api-node';
+import { ExchangeInfo, OrderSide, OrderType } from 'binance-api-node';
 import { decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient, BINANCE_MODE } from './init';
-import {
-  loadCandlesFromAPI,
-  loadCandlesMultiTimeFramesFromAPI,
-} from './utils/loadCandleData';
+import { loadCandlesMultiTimeFramesFromAPI } from './utils/loadCandleData';
 import { Counter } from './tools/counter';
 import { calculateActivationPrice } from './utils/trailingStop';
 import {
