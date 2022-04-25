@@ -11,7 +11,7 @@ interface StrategyConfig {
   allowPyramiding?: boolean; // Allow cumulative longs/shorts to average the entry price
   maxPyramidingAllocation?: number; // Max allocation for a position in pyramiding (between 0 and 1)
   unidirectional?: boolean; // When take the profit, close the position instead of opening new position in futures
-  tradingSession?: TradingSession; // The robot trades only during these session
+  tradingSessions?: TradingSession[]; // The robot trades only during these sessions
   maxTradeDuration?: number; // Max duration of a trade in the unit of the loopInterval
   buyStrategy: EntryStrategy;
   sellStrategy: EntryStrategy;
@@ -79,4 +79,8 @@ type RiskManagement = (options: RiskManagementOptions) => number; // Return the 
 // type QueryOrderResult from the library binance-api-node
 type TradeManagement = (orderInfos: QueryOrderResult[]) => void;
 
-type TradingSession = { start: string; end: string }; // HH:mm
+type TradingSession = {
+  day: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 (Sunday) to 6 (Saturday)
+  start: { hour: number; minute: number };
+  end: { hour: number; minutes };
+};

@@ -1,4 +1,3 @@
-import dayjs from 'dayjs';
 import { ExchangeInfo, OrderSide, OrderType } from 'binance-api-node';
 import { decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
@@ -6,6 +5,7 @@ import { binanceClient, BINANCE_MODE } from './init';
 import { loadCandlesMultiTimeFramesFromAPI } from './utils/loadCandleData';
 import { Counter } from './tools/counter';
 import { calculateActivationPrice } from './utils/trailingStop';
+import { isOnTradingSession } from './utils/tradingSession';
 import {
   getPricePrecision,
   getQuantityPrecision,
@@ -135,7 +135,7 @@ export class Bot {
       sellStrategy,
       exitStrategy,
       riskManagement,
-      tradingSession,
+      tradingSessions,
       allowPyramiding,
       maxPyramidingAllocation,
       loopInterval,
@@ -164,9 +164,9 @@ export class Bot {
         assetBalance * currentPrice <= baseBalance * maxPyramidingAllocation);
 
     // Check if we are in the trading sessions
-    const isTradingSessionActive = this.isTradingSessionActive(
+    const isTradingSessionActive = isOnTradingSession(
       candles[loopInterval][candles[loopInterval].length - 1].closeTime,
-      tradingSession
+      tradingSessions
     );
 
     // Precisions
@@ -174,7 +174,7 @@ export class Bot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // The current trade is too long
-    if (maxTradeDuration && assetBalance > 0 && this.counters[pair]) {
+    if (this.counters[pair] && maxTradeDuration && assetBalance > 0) {
       this.counters[pair].decrement();
       if (this.counters[pair].getValue() == 0) {
         binanceClient
@@ -203,6 +203,7 @@ export class Bot {
 
     // Reset the counter if a previous trade close a the position
     if (
+      this.counters[pair] &&
       maxTradeDuration &&
       assetBalance === 0 &&
       this.counters[pair].getValue() < maxTradeDuration
@@ -217,7 +218,6 @@ export class Bot {
           type: OrderType.MARKET,
           symbol: pair,
           quantity: String(assetBalance),
-          recvWindow: 60000,
         })
         .then(() => {
           this.closeOpenOrders(pair);
@@ -244,7 +244,7 @@ export class Bot {
           type: OrderType.MARKET,
           symbol: pair,
           quantity: String(quantity),
-          recvWindow: 60000,
+
           timeInForce: 'GTC',
         })
         .then(({ price: orderPrice }) => {
@@ -274,7 +274,6 @@ export class Bot {
                     quantityPrecision
                   )
                 ),
-                recvWindow: 60000,
               })
               .catch(error);
           } else {
@@ -285,8 +284,9 @@ export class Bot {
                 binanceClient
                   .order({
                     side: OrderSide.SELL,
-                    type: OrderType.LIMIT,
+                    type: OrderType.TAKE_PROFIT_LIMIT,
                     symbol: pair,
+                    stopPrice: String(price),
                     price: String(price),
                     quantity: String(
                       decimalFloor(
@@ -294,7 +294,6 @@ export class Bot {
                         quantityPrecision
                       )
                     ),
-                    recvWindow: 60000,
                   })
                   .catch(error);
               });
@@ -305,11 +304,11 @@ export class Bot {
               binanceClient
                 .order({
                   side: OrderSide.SELL,
-                  type: OrderType.LIMIT,
+                  type: OrderType.STOP_LOSS_LIMIT,
                   symbol: pair,
+                  stopPrice: String(stopLoss),
                   price: String(stopLoss),
                   quantity: String(quantity),
-                  recvWindow: 60000,
                 })
                 .catch(error);
             }
@@ -351,7 +350,7 @@ export class Bot {
       exitStrategy,
       trendFilter,
       riskManagement,
-      tradingSession,
+      tradingSessions,
       trailingStopConfig,
       allowPyramiding,
       maxPyramidingAllocation,
@@ -399,9 +398,9 @@ export class Bot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Check if we are in the trading sessions
-    const isTradingSessionActive = this.isTradingSessionActive(
+    const isTradingSessionActive = isOnTradingSession(
       candles[loopInterval][candles[loopInterval].length - 1].closeTime,
-      tradingSession
+      tradingSessions
     );
 
     // The current position is too long
@@ -559,7 +558,6 @@ export class Bot {
                       quantityPrecision
                     )
                   ),
-                  recvWindow: 60000,
                 })
                 .catch(error);
             });
@@ -570,11 +568,11 @@ export class Bot {
             binanceClient
               .futuresOrder({
                 side: OrderSide.SELL,
-                type: OrderType.LIMIT,
+                type: OrderType.STOP,
                 symbol: pair,
+                stopPrice: stopLoss,
                 price: stopLoss,
                 quantity: String(positionTotalSize),
-                recvWindow: 60000,
               })
               .catch(error);
           }
@@ -630,7 +628,6 @@ export class Bot {
             type: OrderType.MARKET,
             symbol: pair,
             quantity: String(positionSize),
-            recvWindow: 60000,
           })
           .then(() => {
             this.closeOpenOrders(pair);
@@ -692,7 +689,6 @@ export class Bot {
           type: OrderType.MARKET,
           symbol: pair,
           quantity: String(quantity),
-          recvWindow: 60000,
         })
         .then(() => {
           // Cancel the previous orders to update them
@@ -731,7 +727,6 @@ export class Bot {
                       quantityPrecision
                     )
                   ),
-                  recvWindow: 60000,
                 })
                 .catch(error);
             });
@@ -742,11 +737,11 @@ export class Bot {
             binanceClient
               .futuresOrder({
                 side: OrderSide.BUY,
-                type: OrderType.LIMIT,
+                type: OrderType.STOP,
                 symbol: pair,
+                stopPrice: stopLoss,
                 price: stopLoss,
                 quantity: String(positionTotalSize),
-                recvWindow: 60000,
               })
               .catch(error);
           }
@@ -809,29 +804,5 @@ export class Bot {
         })
         .catch(reject);
     });
-  }
-
-  /**
-   * Check if we are in a trading session. If not, the robot waits, and does nothing
-   * @param currentDate
-   * @param tradingSession
-   */
-  private isTradingSessionActive(
-    currentDate: Date,
-    tradingSession?: TradingSession
-  ) {
-    if (tradingSession) {
-      // Check if we are in the trading sessions
-      const currentTime = dayjs(currentDate);
-      const currentDay = currentTime.format('YYYY-MM-DD');
-      const startSessionTime = `${currentDay} ${tradingSession.start}:00`;
-      const endSessionTime = `${currentDay} ${tradingSession.end}:00`;
-      return dayjs(currentTime.format('YYYY-MM-DD HH:mm:ss')).isBetween(
-        startSessionTime,
-        endSessionTime
-      );
-    } else {
-      return true;
-    }
   }
 }

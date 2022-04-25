@@ -8,6 +8,7 @@ import { binanceClient, BINANCE_MODE } from '../init';
 import { decimalCeil, decimalFloor } from '../utils/math';
 import { clone } from '../utils/object';
 import { loadCandlesMultiTimeFramesFromCSV } from '../utils/loadCandleData';
+import { isOnTradingSession } from '../utils/tradingSession';
 import { createDatabase, saveFuturesState, saveState } from './database';
 import {
   debugLastCandle,
@@ -823,7 +824,7 @@ export class BasicBackTestBot {
       sellStrategy,
       exitStrategy,
       riskManagement,
-      tradingSession,
+      tradingSessions,
       allowPyramiding,
       maxPyramidingAllocation,
       loopInterval,
@@ -854,9 +855,9 @@ export class BasicBackTestBot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Check if we are in the trading sessions
-    const isTradingSessionActive = this.isTradingSessionActive(
+    const isTradingSessionActive = isOnTradingSession(
       candles[loopInterval][candles[loopInterval].length - 1].closeTime,
-      tradingSession
+      tradingSessions
     );
 
     // The current trade is too long
@@ -959,7 +960,7 @@ export class BasicBackTestBot {
       exitStrategy,
       trendFilter,
       riskManagement,
-      tradingSession,
+      tradingSessions,
       trailingStopConfig,
       allowPyramiding,
       maxPyramidingAllocation,
@@ -1012,9 +1013,9 @@ export class BasicBackTestBot {
     const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     // Check if we are in the trading sessions
-    const isTradingSessionActive = this.isTradingSessionActive(
+    const isTradingSessionActive = isOnTradingSession(
       candles[loopInterval][candles[loopInterval].length - 1].closeTime,
-      tradingSession
+      tradingSessions
     );
 
     // The current position is too long
@@ -1335,29 +1336,6 @@ export class BasicBackTestBot {
     const isSellSignal = strategyConfig.sellStrategy(candles);
     const closePosition = false;
     return { isBuySignal, isSellSignal, closePosition };
-  }
-
-  /**
-   * Check if we are in the trading sessions and if the robot can trade
-   * @param current
-   * @param tradingSession
-   */
-  protected isTradingSessionActive(
-    current: Date,
-    tradingSession?: TradingSession
-  ) {
-    if (tradingSession) {
-      const currentTime = dayjs(current);
-      const currentDay = currentTime.format('YYYY-MM-DD');
-      const startSessionTime = `${currentDay} ${tradingSession.start}:00`;
-      const endSessionTime = `${currentDay} ${tradingSession.end}:00`;
-      return dayjs(currentTime.format('YYYY-MM-DD HH:mm:ss')).isBetween(
-        startSessionTime,
-        endSessionTime
-      );
-    } else {
-      return true;
-    }
   }
 
   /**
