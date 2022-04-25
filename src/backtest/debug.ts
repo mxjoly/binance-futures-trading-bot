@@ -71,7 +71,7 @@ export function debugWallet(wallet: Wallet, futuresWallet: FuturesWallet) {
   }
 }
 
-export function debugOrders(
+export function debugOpenOrders(
   openOrders: OpenOrder[],
   futuresOpenOrders: FuturesOpenOrder[]
 ) {

@@ -11,7 +11,7 @@ import { loadCandlesMultiTimeFramesFromCSV } from '../utils/loadCandleData';
 import { createDatabase, saveFuturesState, saveState } from './database';
 import {
   debugLastCandle,
-  debugOrders,
+  debugOpenOrders,
   debugWallet,
   log,
   printDateBanner,
@@ -407,7 +407,7 @@ export class BasicBackTestBot {
 
       // Debugging
       debugWallet(this.wallet, this.futuresWallet);
-      debugOrders(this.openOrders, this.futuresOpenOrders);
+      debugOpenOrders(this.openOrders, this.futuresOpenOrders);
       log(''); // \n
 
       if (!DEBUG)
