@@ -20,72 +20,46 @@ export function calculate({
   atrPeriod = defaultOptions.atrPeriod,
   atrMultiplier = defaultOptions.atrMultiplier,
 }: Options): { trend: number; up: number; down: number }[] {
-  if (close.length > atrPeriod * 2) {
-    const atr = ATR.calculate({ high, low, close, period: atrPeriod });
+  const atr = ATR.calculate({ high, low, close, period: atrPeriod });
+  close = close.slice(-atr.length);
 
-    const highest = Highest.calculate({
-      values: close,
-      period: atrPeriod,
-    }).slice(-atr.length);
+  const highest = Highest.calculate({
+    values: high,
+    period: atrPeriod,
+  }).slice(-atr.length);
 
-    const lowest = Lowest.calculate({
-      values: close,
-      period: atrPeriod,
-    }).slice(-atr.length);
+  const lowest = Lowest.calculate({
+    values: low,
+    period: atrPeriod,
+  }).slice(-atr.length);
 
-    const bases = atr.map((atr, i) => ({
-      up: (highest[i] + lowest[i]) / 2 - atrMultiplier * atr,
-      down: (highest[i] + lowest[i]) / 2 + atrMultiplier * atr,
-    }));
+  let up: number[] = [];
+  let down: number[] = [];
+  let trend: number[] = [];
 
-    const nz = (a, b) => (isNaN(a) ? b : a);
+  for (let i = 0; i < atr.length; i++) {
+    up[i] = (highest[i] + lowest[i]) / 2 - atrMultiplier * atr[i];
+    down[i] = (highest[i] + lowest[i]) / 2 + atrMultiplier * atr[i];
+    trend[i] = 1;
 
-    const getUp = (i: number) => {
-      if (i < bases.length) {
-        let up = bases[bases.length - 1 - i].up;
-        let up1 = nz(getUp(i + 1), up);
-        up = close[close.length - 2 - i] > up1 ? Math.max(up, up1) : up;
-        return up;
-      }
-      return NaN;
-    };
-
-    const getDown = (i: number) => {
-      if (i < bases.length) {
-        let down = bases[bases.length - 1 - i].down;
-        let down1 = nz(getDown(i + 1), down);
-        down =
-          close[close.length - 2 - i] < down1 ? Math.min(down, down1) : down;
-        return down;
-      }
-      return NaN;
-    };
-
-    const getTrend = (i: number) => {
-      if (i < bases.length) {
-        let trend = 1;
-        trend = nz(getTrend(i + 1), trend);
-        trend =
-          trend === -1 && close[close.length - 1 - i] > getDown(i)
-            ? 1
-            : trend === 1 && close[close.length - 1 - i] < getUp(i)
-            ? -1
-            : trend;
-        return trend;
-      }
-      return NaN;
-    };
-
-    const result = [];
-    for (let i = 0; i < bases.length; i++) {
-      result.push({
-        trend: getTrend(i),
-        up: getUp(i),
-        down: getDown(i),
-      });
+    if (i > 0) {
+      up[i] = close[i - 1] > up[i - 1] ? Math.max(up[i], up[i - 1]) : up[i];
+      down[i] =
+        close[i - 1] < down[i - 1] ? Math.min(down[i], down[i - 1]) : down[i];
+      trend[i] = trend[i - 1];
+      trend[i] =
+        trend[i] === -1 && close[i] > down[i]
+          ? 1
+          : trend[i] === 1 && close[i] < up[i]
+          ? -1
+          : trend[i];
     }
-    return result.reverse();
-  } else {
-    return [];
   }
+
+  let results: { trend: number; up: number; down: number }[] = [];
+  for (let i = 0; i < atr.length; i++) {
+    results[i] = { trend: trend[i], up: up[i], down: down[i] };
+  }
+
+  return results;
 }
