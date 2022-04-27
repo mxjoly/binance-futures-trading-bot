@@ -1,45 +1,41 @@
 import { ATR, Lowest, Highest } from 'technicalindicators';
 
 interface Options {
-  atrPeriod: number;
-  atrMultiplier: number;
+  high: number[];
+  low: number[];
+  close: number[];
+  atrPeriod?: number;
+  atrMultiplier?: number;
 }
 
-const defaultOptions: Options = {
+const defaultOptions = {
   atrPeriod: 10,
   atrMultiplier: 3.0,
 };
 
-export function calculate(
-  candles: CandleData[],
-  options = defaultOptions
-): { trend: number; up: number; down: number }[] {
-  if (candles.length > options.atrPeriod * 2) {
-    const high = candles
-      .map((candle) => candle.high)
-      .slice(-options.atrPeriod - 1);
-    const low = candles
-      .map((candle) => candle.low)
-      .slice(-options.atrPeriod - 1);
-    const close = candles
-      .map((candle) => candle.close)
-      .slice(-options.atrPeriod - 1);
-
-    const atr = ATR.calculate({ high, low, close, period: options.atrPeriod });
+export function calculate({
+  high,
+  low,
+  close,
+  atrPeriod = defaultOptions.atrPeriod,
+  atrMultiplier = defaultOptions.atrMultiplier,
+}: Options): { trend: number; up: number; down: number }[] {
+  if (close.length > atrPeriod * 2) {
+    const atr = ATR.calculate({ high, low, close, period: atrPeriod });
 
     const highest = Highest.calculate({
       values: close,
-      period: options.atrPeriod,
+      period: atrPeriod,
     }).slice(-atr.length);
 
     const lowest = Lowest.calculate({
       values: close,
-      period: options.atrPeriod,
+      period: atrPeriod,
     }).slice(-atr.length);
 
     const bases = atr.map((atr, i) => ({
-      up: (highest[i] + lowest[i]) / 2 - options.atrMultiplier * atr,
-      down: (highest[i] + lowest[i]) / 2 + options.atrMultiplier * atr,
+      up: (highest[i] + lowest[i]) / 2 - atrMultiplier * atr,
+      down: (highest[i] + lowest[i]) / 2 + atrMultiplier * atr,
     }));
 
     const nz = (a, b) => (isNaN(a) ? b : a);

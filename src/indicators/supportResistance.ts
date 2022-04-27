@@ -1,55 +1,55 @@
 import { Pivots } from './index';
 
 interface Options {
+  high: number[];
+  low: number[];
   left?: number;
   right?: number;
 }
 
-const defaultOptions: Options = {
+const defaultOptions = {
   left: 5,
   right: 5,
 };
 
 export function calculate({
-  candles,
+  high,
+  low,
   left = defaultOptions.left,
   right = defaultOptions.right,
-}: {
-  candles: CandleData[];
-  left?: number;
-  right?: number;
-}) {
-  let pivotsHigh = Pivots.pivotsHigh(
-    candles.map((c) => c.high),
-    left,
-    right
-  );
+}: Options) {
+  let pivotsHigh = Pivots.pivotHighs({
+    values: high,
+    leftBars: left,
+    rightBars: right,
+  });
 
-  let pivotsLow = Pivots.pivotsLow(
-    candles.map((c) => c.low),
-    left,
-    right
-  );
+  let pivotsLow = Pivots.pivotLows({
+    values: low,
+    leftBars: left,
+    rightBars: right,
+  });
 
   const getLastPivotHigh = (n: number) => {
     for (let i = n; i >= 0; i--) {
-      if (pivotsHigh[i]) return candles[i].high;
+      if (pivotsHigh[i]) return high[i];
     }
   };
 
   const getLastPivotLow = (n: number) => {
     for (let i = n; i >= 0; i--) {
-      if (pivotsLow[i]) return candles[i].low;
+      if (pivotsLow[i]) return low[i];
     }
   };
 
-  let top = [];
-  let bottom = [];
+  let results: { top: number; bottom: number }[] = [];
 
-  for (let i = 0; i < candles.length - right; i++) {
-    top[i + right] = getLastPivotHigh(i);
-    bottom[i + right] = getLastPivotLow(i);
+  for (let i = 0; i < high.length - right; i++) {
+    results[i + right] = {
+      top: getLastPivotHigh(i),
+      bottom: getLastPivotLow(i),
+    };
   }
 
-  return { top, bottom };
+  return results;
 }

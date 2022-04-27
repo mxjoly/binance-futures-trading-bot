@@ -1,46 +1,26 @@
 import { WMA } from 'technicalindicators';
 
 interface Options {
-  sourceType: 'close' | 'open' | 'high' | 'low';
+  values: number[];
   period: number;
 }
 
-const defaultOptions: Options = {
-  sourceType: 'close',
+const defaultOptions = {
   period: 21,
 };
 
 /**
  * Calculate Hull Moving Average
- * @param candles
- * @param options
  */
-export function calculate(candles: CandleData[], options = defaultOptions) {
-  let sources = candles.map((c) => {
-    switch (options.sourceType) {
-      case 'close':
-        return c.close;
-      case 'open':
-        return c.open;
-      case 'high':
-        return c.high;
-      case 'low':
-        return c.low;
-      default:
-        return c.close;
-    }
-  });
-
-  let length = candles.length - options.period;
+export function calculate({ values, period = defaultOptions.period }: Options) {
+  let length = values.length - period;
 
   let ma1 = WMA.calculate({
-    period: Math.floor(options.period / 2),
-    values: sources,
+    period: Math.floor(period / 2),
+    values: values,
   }).slice(-length);
 
-  let ma2 = WMA.calculate({ period: options.period, values: sources }).slice(
-    -length
-  );
+  let ma2 = WMA.calculate({ period, values }).slice(-length);
 
   let ma3 = new Array(length);
   for (let i = 0; i < ma3.length; i++) {
@@ -48,7 +28,7 @@ export function calculate(candles: CandleData[], options = defaultOptions) {
   }
 
   let result = WMA.calculate({
-    period: Math.round(Math.sqrt(options.period)),
+    period: Math.round(Math.sqrt(period)),
     values: ma3,
   });
 

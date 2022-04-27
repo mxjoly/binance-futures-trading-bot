@@ -1,7 +1,7 @@
 import { EMA, SMA } from 'technicalindicators';
 
 interface Options {
-  sourceType: 'close' | 'open' | 'high' | 'low';
+  values: number[];
   fastLength: number;
   slowLength: number;
   signalLength: number;
@@ -9,8 +9,7 @@ interface Options {
   signalMaType: 'SMA' | 'EMA';
 }
 
-const defaultOptions: Options = {
-  sourceType: 'close',
+const defaultOptions = {
   fastLength: 12,
   slowLength: 26,
   signalLength: 9,
@@ -18,46 +17,37 @@ const defaultOptions: Options = {
   signalMaType: 'EMA',
 };
 
-export function calculate(candles: CandleData[], options = defaultOptions) {
-  let sources = candles.map((c) => {
-    switch (options.sourceType) {
-      case 'close':
-        return c.close;
-      case 'open':
-        return c.open;
-      case 'high':
-        return c.high;
-      case 'low':
-        return c.low;
-      default:
-        return c.close;
-    }
-  });
-
-  let length =
-    candles.length - Math.max(options.fastLength, options.slowLength);
+export function calculate({
+  values,
+  fastLength = defaultOptions.fastLength,
+  slowLength = defaultOptions.slowLength,
+  signalLength = defaultOptions.signalLength,
+  oscillatorMaType = 'EMA',
+  signalMaType = 'EMA',
+}: Options) {
+  let length = values.length - Math.max(fastLength, slowLength);
 
   let fastMa = [];
   let slowMa = [];
   let signal = [];
 
-  if (options.oscillatorMaType === 'SMA') {
+  if (oscillatorMaType === 'SMA') {
     fastMa = SMA.calculate({
-      period: options.fastLength,
-      values: sources,
+      period: fastLength,
+      values,
     }).slice(-length);
     slowMa = SMA.calculate({
-      period: options.slowLength,
-      values: sources,
+      period: slowLength,
+      values,
     }).slice(-length);
   } else {
     fastMa = EMA.calculate({
-      period: options.fastLength,
-      values: sources,
+      period: fastLength,
+      values,
     }).slice(-length);
     slowMa = EMA.calculate({
-      period: options.slowLength,
-      values: sources,
+      period: slowLength,
+      values,
     }).slice(-length);
   }
 
@@ -66,10 +56,10 @@ export function calculate(candles: CandleData[], options = defaultOptions) {
     macd[i] = fastMa[i] - slowMa[i];
   }
 
-  if (options.signalMaType === 'SMA') {
-    signal = SMA.calculate({ period: options.signalLength, values: macd });
+  if (signalMaType === 'SMA') {
+    signal = SMA.calculate({ period: signalLength, values: macd });
   } else {
-    signal = EMA.calculate({ period: options.signalLength, values: macd });
+    signal = EMA.calculate({ period: signalLength, values: macd });
   }
 
   return { macd, signal };

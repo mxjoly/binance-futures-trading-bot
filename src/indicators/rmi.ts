@@ -1,49 +1,33 @@
 import { EMA } from 'technicalindicators';
 
 interface Options {
+  values: number[];
   length: number;
   momentum: number;
-  sourceType: 'close' | 'open' | 'high' | 'low';
 }
 
-const defaultOptions: Options = {
+const defaultOptions = {
   length: 33,
   momentum: 15,
-  sourceType: 'close',
 };
 
-export function calculate(candles: CandleData[], options = defaultOptions) {
-  let sources = candles.map((c) => {
-    switch (options.sourceType) {
-      case 'close':
-        return c.close;
-      case 'open':
-        return c.open;
-      case 'high':
-        return c.high;
-      case 'low':
-        return c.low;
-      default:
-        return c.close;
-    }
-  });
-
+export function calculate({
+  values,
+  length = defaultOptions.length,
+  momentum = defaultOptions.momentum,
+}: Options) {
   let diff1 = [];
   let diff2 = [];
-  for (let i = options.momentum; i < candles.length; i++) {
-    diff1.push(Math.max(sources[i] - sources[i - options.momentum], 0));
-    diff2.push(Math.max(sources[i - options.momentum] - sources[i], 0));
+  for (let i = momentum; i < values.length; i++) {
+    diff1.push(Math.max(values[i] - values[i - momentum], 0));
+    diff2.push(Math.max(values[i - momentum] - values[i], 0));
   }
 
-  let up = EMA.calculate({ period: options.length, values: diff1 });
-  let down = EMA.calculate({ period: options.length, values: diff2 });
+  let up = EMA.calculate({ period: length, values: diff1 });
+  let down = EMA.calculate({ period: length, values: diff2 });
 
   let rmi = [];
-  for (
-    let i = 0;
-    i < candles.length - options.momentum - options.length + 1;
-    i++
-  ) {
+  for (let i = 0; i < values.length - momentum - length + 1; i++) {
     rmi.push(down[i] === 0 ? 0 : 100 - 100 / (1 + up[i] / down[i]));
   }
 

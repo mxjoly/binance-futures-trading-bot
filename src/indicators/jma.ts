@@ -1,38 +1,19 @@
 interface Options {
-  length: number;
-  sourceType: 'close' | 'open' | 'high' | 'low';
+  values: number[];
+  period: number;
 }
 
-const defaultOptions: Options = {
-  length: 14,
-  sourceType: 'close',
+const defaultOptions = {
+  period: 14,
 };
 
 /**
  * Calculate the Juryk Moving Average
- * @param candles
- * @param options
  */
-export function calculate(candles: CandleData[], options = defaultOptions) {
-  let sources = candles.map((c) => {
-    switch (options.sourceType) {
-      case 'close':
-        return c.close;
-      case 'open':
-        return c.open;
-      case 'high':
-        return c.high;
-      case 'low':
-        return c.low;
-      default:
-        return c.close;
-    }
-  });
-
+export function calculate({ values, period = defaultOptions.period }: Options) {
   let jsa = [];
-  for (let i = options.length + 1; i < candles.length; i++) {
-    jsa.push((sources[i - 1] + sources[i - options.length - 1]) / 2);
+  for (let i = period + 1; i < values.length; i++) {
+    jsa.push((values[i - 1] + values[i - period - 1]) / 2);
   }
-
   return jsa;
 }

@@ -1,59 +1,47 @@
 import { EMA } from 'technicalindicators';
 
 interface Options {
+  values: number[];
   period: number;
   multiplier: number;
-  sourceType: 'close' | 'open' | 'high' | 'low';
 }
 
-const defaultOptions: Options = {
+const defaultOptions = {
   period: 10,
   multiplier: 2.0,
-  sourceType: 'open',
 };
 
-export function calculate(candles: CandleData[], options = defaultOptions) {
-  let source = candles.map((c) => {
-    switch (options.sourceType) {
-      case 'close':
-        return c.close;
-      case 'open':
-        return c.open;
-      case 'high':
-        return c.high;
-      case 'low':
-        return c.low;
-      default:
-        return c.close;
-    }
-  });
+export function calculate({
+  values,
+  period = defaultOptions.period,
+  multiplier = defaultOptions.multiplier,
+}: Options) {
+  let upward = new Array(values.length).fill(0);
+  let downward = new Array(values.length).fill(0);
 
-  let upward = new Array(candles.length).fill(0);
-  let downward = new Array(candles.length).fill(0);
-
-  let avrng = new Array(options.period - 1).fill(0).concat(
+  let avrng = new Array(period - 1).fill(0).concat(
     EMA.calculate({
-      period: options.period,
-      values: source.map((s, i) => (i > 0 ? Math.abs(s - source[i - 1]) : 0)),
+      period,
+      values: values.map((s, i) => (i > 0 ? Math.abs(s - values[i - 1]) : 0)),
     })
   );
 
-  let smoothrng = new Array(options.period * 2 - 2)
+  let smoothrng = new Array(period * 2 - 2)
     .fill(0)
-    .concat(EMA.calculate({ period: options.period * 2 - 1, values: avrng }))
-    .map((v) => v * options.multiplier);
+    .concat(EMA.calculate({ period: period * 2 - 1, values: avrng }))
+    .map((v) => v * multiplier);
 
-  let filt = new Array(candles.length).fill(0);
+  let filt = new Array(values.length).fill(0);
 
-  for (let i = 1; i < candles.length; i++) {
+  for (let i = 1; i < values.length; i++) {
     filt[i] =
-      source[i] > filt[i - 1]
-        ? source[i] - smoothrng[i] < filt[i - 1]
+      values[i] > filt[i - 1]
+        ? values[i] - smoothrng[i] < filt[i - 1]
           ? filt[i - 1]
-          : source[i] - smoothrng[i]
-        : source[i] + smoothrng[i] > filt[i - 1]
+          : values[i] - smoothrng[i]
+        : values[i] + smoothrng[i] > filt[i - 1]
         ? filt[i - 1]
-        : source[i] + smoothrng[i];
+        : values[i] + smoothrng[i];
     upward[i] =
       filt[i] > filt[i - 1]
         ? upward[i - 1] + 1
@@ -73,7 +61,7 @@ export function calculate(candles: CandleData[], options = defaultOptions) {
   let highBand = [];
   let lowBand = [];
 
-  for (let i = options.period; i < candles.length; i++) {
+  for (let i = period; i < values.length; i++) {
     highBand.push(filt[i] + smoothrng[i]);
     lowBand.push(filt[i] - smoothrng[i]);
   }

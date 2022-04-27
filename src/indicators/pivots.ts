@@ -1,14 +1,13 @@
+interface Options {
+  values: number[];
+  leftBars: number;
+  rightBars: number;
+}
+
 /**
  * Return an array of boolean. If true, it's a pivot high, else false.
- * @param values
- * @param leftBars
- * @param rightBars
  */
-export function pivotsHigh(
-  values: number[],
-  leftBars: number,
-  rightBars: number
-) {
+export function pivotHighs({ values, leftBars, rightBars }: Options) {
   let results = new Array(values.length).fill(false);
 
   for (let i = 0; i < values.length - 1; i++) {
@@ -24,15 +23,8 @@ export function pivotsHigh(
 
 /**
  * Return an array of boolean. If true, it's a pivot low, else false.
- * @param values
- * @param leftBars
- * @param rightBars
  */
-export function pivotsLow(
-  values: number[],
-  leftBars: number,
-  rightBars: number
-) {
+export function pivotLows({ values, leftBars, rightBars }: Options) {
   let results = new Array(values.length).fill(false);
 
   for (let i = 0; i < values.length - 1; i++) {
