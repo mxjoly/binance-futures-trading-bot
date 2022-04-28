@@ -8,3 +8,4 @@ export * as MACD from './macd';
 export * as HMA from './hma';
 export * as JMA from './jma';
 export * as RMI from './rmi';
+export * as Aroon from './aroon';
