@@ -1,8 +1,16 @@
-import { ExchangeInfo, OrderSide, OrderType } from 'binance-api-node';
+import {
+  CandleChartInterval,
+  ExchangeInfo,
+  OrderSide,
+  OrderType,
+} from 'binance-api-node';
 import { decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient, BINANCE_MODE } from './init';
-import { loadCandlesMultiTimeFramesFromAPI } from './utils/loadCandleData';
+import {
+  loadCandlesFromAPI,
+  loadCandlesMultiTimeFramesFromAPI,
+} from './utils/loadCandleData';
 import { Counter } from './tools/counter';
 import { calculateActivationPrice } from './utils/trailingStop';
 import { isOnTradingSession } from './utils/tradingSession';
@@ -11,6 +19,7 @@ import {
   getQuantityPrecision,
   isValidQuantity,
 } from './utils/currencyInfo';
+import { Pivots, Zigzag } from './indicators';
 
 // ====================================================================== //
 

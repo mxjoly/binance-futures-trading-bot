@@ -9,3 +9,4 @@ export * as HMA from './hma';
 export * as JMA from './jma';
 export * as RMI from './rmi';
 export * as Aroon from './aroon';
+export * as Zigzag from './zigzag';
