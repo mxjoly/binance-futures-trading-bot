@@ -42,44 +42,45 @@ const assets = [
   'LUNA',
 ];
 
-const config: StrategyConfig[] = assets.map((asset) => ({
-  asset,
-  base: 'USDT',
-  risk: 0.01,
-  loopInterval: CandleChartInterval.ONE_HOUR,
-  indicatorIntervals: [CandleChartInterval.ONE_WEEK],
-  trendFilter: (candles) => 1, // Take only long position, supposing we are in up trend on long term
-  riskManagement: getPositionSizeByPercent,
-  exitStrategy: (price, candles, pricePrecision, side) =>
-    basicTpslStrategy(price, pricePrecision, side, {
-      profitTargets: [
-        {
-          deltaPercentage: 1, // x2
-          quantityPercentage: 0.5,
-        },
-        {
-          deltaPercentage: 3, // x4
-          quantityPercentage: 0.25,
-        },
-        {
-          deltaPercentage: 7, // x8
-          quantityPercentage: 0.125,
-        },
-        {
-          deltaPercentage: 15, // x16
-          quantityPercentage: 0.0625,
-        },
-        {
-          deltaPercentage: 31, // x32
-          quantityPercentage: 0.0625,
-        },
-      ],
-    }),
-  buyStrategy: (candles) =>
-    RELOAD_ZONE.isBuySignal(candles[CandleChartInterval.ONE_WEEK], {
-      trend: Fibonacci.FibonacciTrend.UP,
-    }),
-  sellStrategy: (candles: CandleData[]) => false,
-}));
+export const hyperParameters = {};
 
-export default config;
+export const config: AbstractStrategyConfig = (parameters) =>
+  assets.map((asset) => ({
+    asset,
+    base: 'USDT',
+    risk: 0.01,
+    loopInterval: CandleChartInterval.ONE_HOUR,
+    indicatorIntervals: [CandleChartInterval.ONE_WEEK],
+    trendFilter: (candles) => 1, // Take only long position, supposing we are in up trend on long term
+    riskManagement: getPositionSizeByPercent,
+    exitStrategy: (price, candles, pricePrecision, side) =>
+      basicTpslStrategy(price, pricePrecision, side, {
+        profitTargets: [
+          {
+            deltaPercentage: 1, // x2
+            quantityPercentage: 0.5,
+          },
+          {
+            deltaPercentage: 3, // x4
+            quantityPercentage: 0.25,
+          },
+          {
+            deltaPercentage: 7, // x8
+            quantityPercentage: 0.125,
+          },
+          {
+            deltaPercentage: 15, // x16
+            quantityPercentage: 0.0625,
+          },
+          {
+            deltaPercentage: 31, // x32
+            quantityPercentage: 0.0625,
+          },
+        ],
+      }),
+    buyStrategy: (candles) =>
+      RELOAD_ZONE.isBuySignal(candles[CandleChartInterval.ONE_WEEK], {
+        trend: Fibonacci.FibonacciTrend.UP,
+      }),
+    sellStrategy: (candles: CandleData[]) => false,
+  }));

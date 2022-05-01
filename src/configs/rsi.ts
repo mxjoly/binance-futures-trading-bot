@@ -3,8 +3,17 @@ import atrTpslStrategy from '../strategies/exit/atr';
 import { RSI } from '../strategies/entry';
 import { getPositionSizeByRisk } from '../strategies/riskManagement';
 
-// @see https://www.youtube.com/watch?v=7NM7bR2mL7U&t=69s&ab_channel=TradePro
-const config: StrategyConfig[] = [
+export const hyperParameters = {
+  takeProfitAtrRatio: { value: 2, optimization: [1, 5] },
+  stopLossAtrRatio: { value: 2, optimization: [1, 5] },
+  atrPeriod: { value: 10, optimization: [5, 30] },
+  atrMultiplier: { value: 2, optimization: [1, 3] },
+  rsiPeriod: { value: 14, optimization: [10, 30] },
+  rsiOversold: { value: 30, optimization: [10, 50] },
+  rsiOverbought: { value: 70, optimization: [50, 90] },
+};
+
+export const config: AbstractStrategyConfig = (parameters) => [
   {
     asset: 'BTC',
     base: 'USDT',
@@ -19,18 +28,22 @@ const config: StrategyConfig[] = [
         pricePrecision,
         side,
         {
-          atrPeriod: 10,
-          atrMultiplier: 2,
-          takeProfitAtrRatio: 2,
-          stopLossAtrRatio: 2,
+          takeProfitAtrRatio: parameters.takeProfitAtrRatio.value,
+          stopLossAtrRatio: parameters.stopLossAtrRatio.value,
+          atrPeriod: parameters.atrPeriod.value,
+          atrMultiplier: parameters.atrMultiplier.value,
         }
       ),
     buyStrategy: (candles) =>
-      RSI.isBuySignal(candles[CandleChartInterval.FIFTEEN_MINUTES]),
+      RSI.isBuySignal(candles[CandleChartInterval.FIFTEEN_MINUTES], {
+        rsiPeriod: parameters.rsiPeriod.value,
+        rsiOversold: parameters.rsiOversold.value,
+      }),
     sellStrategy: (candles) =>
-      RSI.isSellSignal(candles[CandleChartInterval.FIFTEEN_MINUTES]),
+      RSI.isSellSignal(candles[CandleChartInterval.FIFTEEN_MINUTES], {
+        rsiPeriod: parameters.rsiPeriod.value,
+        rsiOverbought: parameters.rsiOverbought.value,
+      }),
     riskManagement: getPositionSizeByRisk,
   },
 ];
-
-export default config;

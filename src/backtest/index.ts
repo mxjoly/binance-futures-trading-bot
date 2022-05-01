@@ -1,5 +1,5 @@
 import { BotConfig } from '../init';
-import { StrategyConfig } from '../init';
+import { StrategyConfig, StrategyHyperParameters } from '../init';
 import { BasicBackTestBot } from './bot';
 
 if (process.env.NODE_ENV === 'test') {
@@ -11,6 +11,7 @@ if (process.env.NODE_ENV === 'test') {
 
   const bot = new BasicBackTestBot(
     StrategyConfig,
+    StrategyHyperParameters,
     strategyName,
     startDate,
     endDate,

@@ -56,8 +56,15 @@ if (
 }
 
 // Import the strategy config
-export const StrategyConfig =
-  require(`./configs/${BotConfig['strategy_config_file_name']}`).default;
+const { config, hyperParameters } =
+  require(`./configs/${BotConfig['strategy_config_file_name']}`) as {
+    hyperParameters: HyperParameters;
+    config: AbstractStrategyConfig;
+  };
+
+export const AbstractStrategy = config;
+export const StrategyConfig = config(hyperParameters);
+export const StrategyHyperParameters = hyperParameters;
 
 export const binanceClient = Binance(
   process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'test'

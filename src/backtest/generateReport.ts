@@ -4,12 +4,14 @@ import path from 'path';
 /**
  * Generate the strategy report with an html file
  * @param strategyName
+ * @param strategyHyperParameters
  * @param strategyReport
  * @param labels
  * @param lineData
  */
 export default function (
   strategyName: string,
+  strategyHyperParameters: HyperParameters,
   strategyReport: StrategyReport,
   labels: string[],
   lineData: number[]
@@ -32,12 +34,26 @@ export default function (
             text-align: center;
           }
           h1 {
+            margin-top: 10px;
+          }
+          p {
+            margin-top: 30px;
             margin-bottom: 30px;
           }
-          .block {
-            display: inline-block;
-            margin: 50px;
-            padding: 25px;
+          .report {
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            align-items: center;
+            border: solid 1px black;
+            width: max-content;
+            margin: 50px auto;
+          }
+          .report-frame {
+            display: block;
+            margin: 10px;
+            padding: 15px;
+            max-width: 600px;
           }
           table {
           }
@@ -54,101 +70,109 @@ export default function (
       </head>
       <body>
         <h1>Strategy Report</h1>
-        <div class="block">
-          <table>
-            <tr>
-              <td><b>Test period:</b></td>
-              <td>${strategyReport.testPeriod}</td>
-            </tr>
-            <tr>
-              <td><b>Total bars:</b></td>
-              <td>${strategyReport.totalBars}</td>
-            </tr>
-            <tr>
-              <td><b>Initial capital:</b></td>
-              <td>${strategyReport.initialCapital}</td>
-            </tr>
-            <tr>
-              <td><b>Final capital:</b></td>
-              <td>${strategyReport.finalCapital}</td>
-            </tr>
-            <tr>
-              <td><b>Total net profit:</b></td>
-              <td>${strategyReport.totalNetProfit}</td>
-            </tr>
-            <tr>
-              <td><b>Total profit:</b></td>
-              <td>${strategyReport.totalProfit}</td>
-            </tr>
-            <tr>
-              <td><b>Total loss:</b></td>
-              <td>${strategyReport.totalLoss}</td>
-            </tr>
-            <tr>
-              <td><b>Total fees:</b></td>
-              <td>${strategyReport.totalFees}</td>
-            </tr>
-            <tr>
-              <td><b>Profit factor:</b></td>
-              <td>${strategyReport.profitFactor}</td>
-            </tr>
-            <tr>
-              <td><b>Max absolute drawdown:</b></td>
-              <td>${strategyReport.maxAbsoluteDrawdown}%</td>
-            </tr>
-            <tr>
-              <td><b>Max relative drawdown:</b></td>
-              <td>${strategyReport.maxRelativeDrawdown}%</td>
-            </tr>
-          </table>
-        </div>
-        <div class="block">
-          <table>
-            <tr>
-              <td><b>Total trades:</b></td>
-              <td>${strategyReport.totalTrades}</td>
-            </tr>
-            <tr>
-              <td><b>Total win rate:</b></td>
-              <td>${strategyReport.totalWinRate}%</td>
-            </tr>
-            <tr>
-              <td><b>Long trades won:</b></td>
-              <td>${strategyReport.longWinRate}% (${
+        <h3>${strategyName}</h3>
+
+        <p>Parameters: { ${Object.entries(strategyHyperParameters)
+          .map(([name, config]) => `<b>${name}:</b> ${config.value}`)
+          .join(', ')} }</p>
+
+        <div class="report">
+          <div class="report-frame">
+            <table>
+              <tr>
+                <td><b>Test period:</b></td>
+                <td>${strategyReport.testPeriod}</td>
+              </tr>
+              <tr>
+                <td><b>Total bars:</b></td>
+                <td>${strategyReport.totalBars}</td>
+              </tr>
+              <tr>
+                <td><b>Initial capital:</b></td>
+                <td>${strategyReport.initialCapital}</td>
+              </tr>
+              <tr>
+                <td><b>Final capital:</b></td>
+                <td>${strategyReport.finalCapital}</td>
+              </tr>
+              <tr>
+                <td><b>Total net profit:</b></td>
+                <td>${strategyReport.totalNetProfit}</td>
+              </tr>
+              <tr>
+                <td><b>Total profit:</b></td>
+                <td>${strategyReport.totalProfit}</td>
+              </tr>
+              <tr>
+                <td><b>Total loss:</b></td>
+                <td>${strategyReport.totalLoss}</td>
+              </tr>
+              <tr>
+                <td><b>Total fees:</b></td>
+                <td>${strategyReport.totalFees}</td>
+              </tr>
+              <tr>
+                <td><b>Profit factor:</b></td>
+                <td>${strategyReport.profitFactor}</td>
+              </tr>
+              <tr>
+                <td><b>Max absolute drawdown:</b></td>
+                <td>${strategyReport.maxAbsoluteDrawdown}%</td>
+              </tr>
+              <tr>
+                <td><b>Max relative drawdown:</b></td>
+                <td>${strategyReport.maxRelativeDrawdown}%</td>
+              </tr>
+            </table>
+          </div>
+          <div class="report-frame">
+            <table>
+              <tr>
+                <td><b>Total trades:</b></td>
+                <td>${strategyReport.totalTrades}</td>
+              </tr>
+              <tr>
+                <td><b>Total win rate:</b></td>
+                <td>${strategyReport.totalWinRate}%</td>
+              </tr>
+              <tr>
+                <td><b>Long trades won:</b></td>
+                <td>${strategyReport.longWinRate}% (${
     strategyReport.longWinningTrade
   }/${strategyReport.totalLongTrades})</td>
-            </tr>
-            <tr>
-              <td><b>Short trades won:</b></td>
-              <td>${strategyReport.shortWinRate}% (${
+              </tr>
+              <tr>
+                <td><b>Short trades won:</b></td>
+                <td>${strategyReport.shortWinRate}% (${
     strategyReport.shortWinningTrade
   }/${strategyReport.totalShortTrades})</td>
-            </tr>
-            <tr>
-              <td><b>Max profit:</b></td>
-              <td>${strategyReport.maxProfit}</td>
-            </tr>
-            <tr>
-              <td><b>Max loss:</b></td>
-              <td>${strategyReport.maxLoss}</td>
-            </tr>
-            <tr>
-              <td><b>Max consecutive profit:</b></td>
-              <td>${strategyReport.maxConsecutiveProfit}</td>
-            </tr>
-            <tr>
-              <td><b>Max consecutive loss:</b></td>
-              <td>${strategyReport.maxConsecutiveLoss}</td>
-            </tr>
-            <tr>
-              <td><b>Max consecutive wins (count):</b></td>
-              <td>${strategyReport.maxConsecutiveWinsCount}</td>
-            </tr>
-            <tr>
-              <td><b>Max consecutive losses (count):</b></td>
-              <td>${strategyReport.maxConsecutiveLossesCount}</td>
-            </tr>
-          </table>
+              </tr>
+              <tr>
+                <td><b>Max profit:</b></td>
+                <td>${strategyReport.maxProfit}</td>
+              </tr>
+              <tr>
+                <td><b>Max loss:</b></td>
+                <td>${strategyReport.maxLoss}</td>
+              </tr>
+              <tr>
+                <td><b>Max consecutive profit:</b></td>
+                <td>${strategyReport.maxConsecutiveProfit}</td>
+              </tr>
+              <tr>
+                <td><b>Max consecutive loss:</b></td>
+                <td>${strategyReport.maxConsecutiveLoss}</td>
+              </tr>
+              <tr>
+                <td><b>Max consecutive wins (count):</b></td>
+                <td>${strategyReport.maxConsecutiveWinsCount}</td>
+              </tr>
+              <tr>
+                <td><b>Max consecutive losses (count):</b></td>
+                <td>${strategyReport.maxConsecutiveLossesCount}</td>
+              </tr>
+            </table>
+          </div>
         </div>
         <canvas id="chart"></canvas>
         <script>

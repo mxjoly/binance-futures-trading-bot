@@ -4,8 +4,18 @@ import { STOCHASTIC_RSI } from '../strategies/entry';
 import { threeEma } from '../strategies/trend';
 import { getPositionSizeByRisk } from '../strategies/riskManagement';
 
+export const hyperParameters: HyperParameters = {
+  takeProfitAtrRatio: { value: 2, optimization: [1, 5] },
+  stopLossAtrRatio: { value: 3, optimization: [1, 5] },
+  atrPeriod: { value: 10, optimization: [5, 30] },
+  atrMultiplier: { value: 2, optimization: [1, 3] },
+  emaShortPeriod: { value: 8, optimization: [5, 10] },
+  emaMediumPeriod: { value: 14, optimization: [11, 20] },
+  emaLongPeriod: { value: 50, optimization: [21, 50] },
+};
+
 // @see https://www.youtube.com/watch?v=7NM7bR2mL7U&t=69s&ab_channel=TradePro
-const config: StrategyConfig[] = [
+export const config: AbstractStrategyConfig = (parameters) => [
   {
     asset: 'BTC',
     base: 'USDT',
@@ -15,9 +25,9 @@ const config: StrategyConfig[] = [
     leverage: 10,
     trendFilter: (candles) =>
       threeEma.getTrend(candles[CandleChartInterval.FIFTEEN_MINUTES], {
-        emaShortPeriod: 8,
-        emaMediumPeriod: 14,
-        emaLongPeriod: 50,
+        emaShortPeriod: parameters.emaShortPeriod.value,
+        emaMediumPeriod: parameters.emaMediumPeriod.value,
+        emaLongPeriod: parameters.emaLongPeriod.value,
       }),
     exitStrategy: (price, candles, pricePrecision, side) =>
       atrTpslStrategy(
@@ -26,10 +36,10 @@ const config: StrategyConfig[] = [
         pricePrecision,
         side,
         {
-          atrPeriod: 10,
-          atrMultiplier: 2,
-          takeProfitAtrRatio: 2,
-          stopLossAtrRatio: 3,
+          takeProfitAtrRatio: parameters.takeProfitAtrRatio.value,
+          stopLossAtrRatio: parameters.stopLossAtrRatio.value,
+          atrPeriod: parameters.atrPeriod.value,
+          atrMultiplier: parameters.atrMultiplier.value,
         }
       ),
     buyStrategy: (candles) =>
@@ -39,5 +49,3 @@ const config: StrategyConfig[] = [
     riskManagement: getPositionSizeByRisk,
   },
 ];
-
-export default config;

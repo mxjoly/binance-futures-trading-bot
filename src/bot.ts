@@ -1,16 +1,8 @@
-import {
-  CandleChartInterval,
-  ExchangeInfo,
-  OrderSide,
-  OrderType,
-} from 'binance-api-node';
+import { ExchangeInfo, OrderSide, OrderType } from 'binance-api-node';
 import { decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient, BINANCE_MODE } from './init';
-import {
-  loadCandlesFromAPI,
-  loadCandlesMultiTimeFramesFromAPI,
-} from './utils/loadCandleData';
+import { loadCandlesMultiTimeFramesFromAPI } from './utils/loadCandleData';
 import { Counter } from './tools/counter';
 import { calculateActivationPrice } from './utils/trailingStop';
 import { isOnTradingSession } from './utils/tradingSession';
@@ -19,7 +11,6 @@ import {
   getQuantityPrecision,
   isValidQuantity,
 } from './utils/currencyInfo';
-import { Pivots, Zigzag } from './indicators';
 
 // ====================================================================== //
 
@@ -92,25 +83,25 @@ export class Bot {
         ? binanceClient.ws.candles
         : binanceClient.ws.futuresCandles;
 
-    this.strategyConfigs.forEach((tradeConfig) => {
-      const pair = tradeConfig.asset + tradeConfig.base;
+    this.strategyConfigs.forEach((strategyConfig) => {
+      const pair = strategyConfig.asset + strategyConfig.base;
       log(`The bot trades the pair ${pair}`);
 
-      getCandles(pair, tradeConfig.loopInterval, (candle) => {
+      getCandles(pair, strategyConfig.loopInterval, (candle) => {
         if (candle.isFinal) {
           // Load the candle data for each the time frames that will be use on the strategy
-          loadCandlesMultiTimeFramesFromAPI(tradeConfig, binanceClient).then(
+          loadCandlesMultiTimeFramesFromAPI(strategyConfig, binanceClient).then(
             (candlesMultiTimeFrames) => {
               if (BINANCE_MODE === 'spot') {
                 this.tradeWithSpot(
-                  tradeConfig,
+                  strategyConfig,
                   Number(candle.close),
                   candlesMultiTimeFrames,
                   exchangeInfo
                 );
               } else {
                 this.tradeWithFutures(
-                  tradeConfig,
+                  strategyConfig,
                   Number(candle.close),
                   candlesMultiTimeFrames,
                   exchangeInfo

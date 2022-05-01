@@ -1,11 +1,20 @@
 import { CandleChartInterval } from 'binance-api-node';
 import atrTpslStrategy from '../strategies/exit/atr';
 import { VOLUME_OSCILLATOR } from '../strategies/entry';
-import { supertrend } from '../strategies/trend';
+import { threeEma } from '../strategies/trend';
 import { getPositionSizeByRisk } from '../strategies/riskManagement';
 
-// @see https://www.youtube.com/watch?v=7NM7bR2mL7U&t=69s&ab_channel=TradePro
-const config: StrategyConfig[] = [
+export const hyperParameters: HyperParameters = {
+  takeProfitAtrRatio: { value: 3, optimization: [1, 3] },
+  stopLossAtrRatio: { value: 1, optimization: [1, 3] },
+  atrPeriod: { value: 10, optimization: [5, 30] },
+  atrMultiplier: { value: 2, optimization: [1, 3] },
+  emaShortPeriod: { value: 8, optimization: [5, 10] },
+  emaMediumPeriod: { value: 14, optimization: [11, 20] },
+  emaLongPeriod: { value: 21, optimization: [21, 40] },
+};
+
+export const config: AbstractStrategyConfig = (parameters) => [
   {
     asset: 'BTC',
     base: 'USDT',
@@ -13,8 +22,6 @@ const config: StrategyConfig[] = [
     indicatorIntervals: [CandleChartInterval.FIVE_MINUTES],
     risk: 0.01,
     leverage: 10,
-    trendFilter: (candles) =>
-      supertrend.getTrend(candles[CandleChartInterval.FIVE_MINUTES]),
     exitStrategy: (price, candles, pricePrecision, side) =>
       atrTpslStrategy(
         price,
@@ -22,23 +29,22 @@ const config: StrategyConfig[] = [
         pricePrecision,
         side,
         {
-          takeProfitAtrRatio: 3,
-          stopLossAtrRatio: 1,
-          atrPeriod: 10,
-          atrMultiplier: 2,
+          takeProfitAtrRatio: parameters.takeProfitAtrRatio.value,
+          stopLossAtrRatio: parameters.stopLossAtrRatio.value,
+          atrPeriod: parameters.atrPeriod.value,
+          atrMultiplier: parameters.atrMultiplier.value,
         }
       ),
     buyStrategy: (candles) =>
-      VOLUME_OSCILLATOR.isBuySignal(
-        candles[CandleChartInterval.FIVE_MINUTES]
-      ) && supertrend.getTrend(candles[CandleChartInterval.FIVE_MINUTES]) === 1,
+      VOLUME_OSCILLATOR.isBuySignal(candles[CandleChartInterval.FIVE_MINUTES]),
     sellStrategy: (candles) =>
-      VOLUME_OSCILLATOR.isSellSignal(
-        candles[CandleChartInterval.FIVE_MINUTES]
-      ) &&
-      supertrend.getTrend(candles[CandleChartInterval.FIVE_MINUTES]) === -1,
+      VOLUME_OSCILLATOR.isSellSignal(candles[CandleChartInterval.FIVE_MINUTES]),
+    trendFilter: (candles) =>
+      threeEma.getTrend(candles[CandleChartInterval.FIVE_MINUTES], {
+        emaShortPeriod: parameters.emaShortPeriod.value,
+        emaMediumPeriod: parameters.emaMediumPeriod.value,
+        emaLongPeriod: parameters.emaLongPeriod.value,
+      }),
     riskManagement: getPositionSizeByRisk,
   },
 ];
-
-export default config;

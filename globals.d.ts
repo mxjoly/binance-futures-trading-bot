@@ -1,5 +1,9 @@
 type BinanceMode = 'spot' | 'futures';
 
+type AbstractStrategyConfig = (
+  hyperParameters: HyperParameters
+) => StrategyConfig[];
+
 interface StrategyConfig {
   asset: string;
   base: string;
@@ -34,6 +38,15 @@ interface CandleData {
   openTime: Date;
   closeTime: Date;
 }
+
+type HyperParameters = {
+  [parameterName: string]: HyperParameter;
+};
+
+type HyperParameter = {
+  value: number /* The value of parameter */;
+  optimization?: [number, number] /* min - max for optimization */;
+};
 
 type EntryStrategy = (candles: CandlesDataMultiTimeFrames) => boolean;
 

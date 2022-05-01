@@ -17,7 +17,7 @@ import {
   log,
   printDateBanner,
 } from './debug';
-import generateHTMLReport from './generateReport';
+import generateHtmlReport from './generateReport';
 import { Counter } from '../tools/counter';
 import { calculateActivationPrice } from '../utils/trailingStop';
 import {
@@ -92,6 +92,7 @@ const MAKER_FEES =
 export class BasicBackTestBot {
   // Configuration
   private strategyConfigs: StrategyConfig[];
+  private strategyHyperParameters: HyperParameters;
   private strategyName: string;
 
   // Candles
@@ -115,6 +116,7 @@ export class BasicBackTestBot {
 
   // For the calculation of some properties of the strategy report
   public strategyReport: StrategyReport = {};
+  private generateReport: boolean;
   private maxBalance: number;
   private maxAbsoluteDrawdown = 1;
   private maxRelativeDrawdown = 1;
@@ -131,17 +133,21 @@ export class BasicBackTestBot {
 
   constructor(
     strategyConfigs: StrategyConfig[],
+    strategyHyperParameters: HyperParameters,
     strategyName: string,
     startDate: Date,
     endDate: Date,
-    initialCapital: number
+    initialCapital: number,
+    generateReport = true
   ) {
     this.strategyConfigs = strategyConfigs;
+    this.strategyHyperParameters = strategyHyperParameters;
     this.strategyName = strategyName;
     this.startDate = startDate;
     this.endDate = endDate;
     this.initialCapital = initialCapital;
     this.maxBalance = initialCapital;
+    this.generateReport = generateReport;
   }
 
   /**
@@ -434,13 +440,16 @@ export class BasicBackTestBot {
 
     // Display the strategy report
     this.calculateStrategyStats();
-    this.displayStrategyReport();
-    generateHTMLReport(
-      this.strategyName,
-      this.strategyReport,
-      this.chartLabels,
-      this.chartData
-    );
+    if (this.generateReport) {
+      this.displayStrategyReport();
+      generateHtmlReport(
+        this.strategyName,
+        this.strategyHyperParameters,
+        this.strategyReport,
+        this.chartLabels,
+        this.chartData
+      );
+    }
   }
 
   /**
@@ -960,6 +969,8 @@ export class BasicBackTestBot {
       exitStrategy,
       trendFilter,
       riskManagement,
+      buyStrategy,
+      sellStrategy,
       tradingSessions,
       trailingStopConfig,
       allowPyramiding,
@@ -983,12 +994,6 @@ export class BasicBackTestBot {
     const position = positions.find((position) => position.pair === pair);
     const hasLongPosition = position.size > 0;
     const hasShortPosition = position.size < 0;
-
-    // Decision to take
-    const { isBuySignal, isSellSignal, closePosition } = this.takeDecision(
-      strategyConfig,
-      candles
-    );
 
     // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
@@ -1056,27 +1061,11 @@ export class BasicBackTestBot {
       this.counters[pair].reset();
     }
 
-    // Close the current position
-    if (
-      closePosition &&
-      (hasLongPosition || hasShortPosition) &&
-      canClosePosition
-    ) {
-      this.futuresOrderMarket(
-        pair,
-        currentPrice,
-        Math.abs(position.size),
-        hasLongPosition ? 'SELL' : 'BUY'
-      );
-      log(`Close the position on ${pair}`);
-      return;
-    }
-
     if (
       (isTradingSessionActive || position.size !== 0) &&
       (allowPyramiding || currentOpenOrders.length === 0) &&
       canTakeLongPosition &&
-      isBuySignal
+      buyStrategy(candles)
     ) {
       // Take the profit and not open a new position
       if (hasShortPosition && unidirectional) {
@@ -1203,7 +1192,7 @@ export class BasicBackTestBot {
       (isTradingSessionActive || position.size !== 0) &&
       (allowPyramiding || currentOpenOrders.length === 0) &&
       canTakeShortPosition &&
-      isSellSignal
+      sellStrategy(candles)
     ) {
       // Take the profit and not open a new position
       if (hasLongPosition && unidirectional) {
@@ -1321,21 +1310,6 @@ export class BasicBackTestBot {
         );
       }
     }
-  }
-
-  /**
-   * The bot take a decision : Buy, Sell ?
-   * @param strategyConfig
-   * @param candles
-   */
-  private takeDecision(
-    strategyConfig: StrategyConfig,
-    candles: CandlesDataMultiTimeFrames
-  ) {
-    const isBuySignal = strategyConfig.buyStrategy(candles);
-    const isSellSignal = strategyConfig.sellStrategy(candles);
-    const closePosition = false;
-    return { isBuySignal, isSellSignal, closePosition };
   }
 
   /**
