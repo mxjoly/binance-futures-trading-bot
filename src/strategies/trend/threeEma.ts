@@ -20,7 +20,7 @@ export function getTrend(
   options = defaultOptions
 ): Trend {
   if (
-    candles.length <=
+    candles.length <
     Math.max(
       options.emaShortPeriod,
       options.emaMediumPeriod,

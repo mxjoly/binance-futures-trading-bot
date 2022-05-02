@@ -103,11 +103,13 @@ if (process.env.NODE_ENV === 'test') {
       });
     })
     .then(() => {
-      console.log('\n================== Strategy Report ==================');
-      console.log(bestResultStrategyReport);
       console.log(
         '\n================== Optimized Parameters Found =================='
       );
       console.log(bestResultParameters);
+      console.log(
+        '\n================== Report With the Optimized Parameters =================='
+      );
+      console.log(bestResultStrategyReport);
     });
 }

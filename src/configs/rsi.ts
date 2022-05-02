@@ -2,6 +2,7 @@ import { CandleChartInterval } from 'binance-api-node';
 import atrTpslStrategy from '../strategies/exit/atr';
 import { RSI } from '../strategies/entry';
 import { getPositionSizeByRisk } from '../strategies/riskManagement';
+import { MAX_LOADED_CANDLE_LENGTH_API } from '../init';
 
 export const hyperParameters = {
   takeProfitAtrRatio: { value: 2, optimization: [1, 5] },
@@ -24,7 +25,9 @@ export const config: AbstractStrategyConfig = (parameters) => [
     exitStrategy: (price, candles, pricePrecision, side) =>
       atrTpslStrategy(
         price,
-        candles[CandleChartInterval.FIFTEEN_MINUTES],
+        candles[CandleChartInterval.FIFTEEN_MINUTES].slice(
+          -MAX_LOADED_CANDLE_LENGTH_API
+        ),
         pricePrecision,
         side,
         {
@@ -35,15 +38,25 @@ export const config: AbstractStrategyConfig = (parameters) => [
         }
       ),
     buyStrategy: (candles) =>
-      RSI.isBuySignal(candles[CandleChartInterval.FIFTEEN_MINUTES], {
-        rsiPeriod: parameters.rsiPeriod.value,
-        rsiOversold: parameters.rsiOversold.value,
-      }),
+      RSI.isBuySignal(
+        candles[CandleChartInterval.FIFTEEN_MINUTES].slice(
+          -MAX_LOADED_CANDLE_LENGTH_API
+        ),
+        {
+          rsiPeriod: parameters.rsiPeriod.value,
+          rsiOversold: parameters.rsiOversold.value,
+        }
+      ),
     sellStrategy: (candles) =>
-      RSI.isSellSignal(candles[CandleChartInterval.FIFTEEN_MINUTES], {
-        rsiPeriod: parameters.rsiPeriod.value,
-        rsiOverbought: parameters.rsiOverbought.value,
-      }),
+      RSI.isSellSignal(
+        candles[CandleChartInterval.FIFTEEN_MINUTES].slice(
+          -MAX_LOADED_CANDLE_LENGTH_API
+        ),
+        {
+          rsiPeriod: parameters.rsiPeriod.value,
+          rsiOverbought: parameters.rsiOverbought.value,
+        }
+      ),
     riskManagement: getPositionSizeByRisk,
   },
 ];

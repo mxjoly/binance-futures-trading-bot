@@ -26,8 +26,8 @@ const strategy = (
   const atr = ATR.calculate({
     period: options.atrPeriod,
     close: candles.map((c) => c.close),
-    low: candles.map((c) => c.close),
-    high: candles.map((c) => c.close),
+    low: candles.map((c) => c.low),
+    high: candles.map((c) => c.high),
   });
 
   return {

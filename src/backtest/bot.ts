@@ -4,12 +4,19 @@ import chalk from 'chalk';
 import cliProgress from 'cli-progress';
 import dayjs from 'dayjs';
 import safeRequire from 'safe-require';
-import { binanceClient, BINANCE_MODE } from '../init';
+import {
+  binanceClient,
+  BINANCE_MODE,
+  MAX_LOADED_CANDLE_LENGTH_API,
+} from '../init';
 import { decimalCeil, decimalFloor } from '../utils/math';
 import { clone } from '../utils/object';
 import { loadCandlesMultiTimeFramesFromCSV } from '../utils/loadCandleData';
 import { isOnTradingSession } from '../utils/tradingSession';
 import { createDatabase, saveFuturesState, saveState } from './database';
+import generateHtmlReport from './generateReport';
+import { Counter } from '../tools/counter';
+import { calculateActivationPrice } from '../utils/trailingStop';
 import {
   debugLastCandle,
   debugOpenOrders,
@@ -17,9 +24,7 @@ import {
   log,
   printDateBanner,
 } from './debug';
-import generateHtmlReport from './generateReport';
-import { Counter } from '../tools/counter';
-import { calculateActivationPrice } from '../utils/trailingStop';
+
 import {
   getPricePrecision,
   getQuantityPrecision,
@@ -67,13 +72,6 @@ export const DEBUG = process.argv[2]
     : false
   : false;
 
-// Max length of the candle arrays needed for the strategy and the calculation of indicators
-// Better to have the minimum to get a higher performance
-const MAX_CANDLE_LENGTH = 200;
-
-// The bot starts to trade when it has X available candles
-const MIN_CANDLE_LENGTH = 150;
-
 // Exchange fee info
 const TAKER_FEES =
   BINANCE_MODE === 'spot'
@@ -83,6 +81,12 @@ const MAKER_FEES =
   BINANCE_MODE === 'spot'
     ? BotConfig['maker_fees_spot']
     : BotConfig['maker_fees_futures']; // %
+
+// ====================================================================== //
+
+let candleDataCache: {
+  [symbol: string]: CandlesDataMultiTimeFrames;
+} = null;
 
 // ====================================================================== //
 
@@ -240,19 +244,26 @@ export class BasicBackTestBot {
    * Load the candles from the downloaded data
    */
   private async prepareCandleHistoric(strategyConfigs: StrategyConfig[]) {
-    // Load all the data
-    this.historicCandleDataMultiTimeFrames =
-      await loadCandlesMultiTimeFramesFromCSV(
-        strategyConfigs,
-        this.startDate,
-        this.endDate
-      );
+    if (candleDataCache) {
+      this.historicCandleDataMultiTimeFrames = candleDataCache;
+    } else {
+      // Load all the data
+      this.historicCandleDataMultiTimeFrames =
+        await loadCandlesMultiTimeFramesFromCSV(
+          strategyConfigs,
+          this.startDate,
+          this.endDate
+        );
 
-    // Check if the candles has been loaded successfully. If not, stop the backtesting
-    let historyError = false;
-    this.strategyConfigs.forEach(({ asset, base }) => {
-      Object.keys(this.historicCandleDataMultiTimeFrames[asset + base]).forEach(
-        (interval) => {
+      // Save to cache
+      candleDataCache = this.historicCandleDataMultiTimeFrames;
+
+      // Check if the candles has been loaded successfully. If not, stop the backtesting
+      let historyError = false;
+      this.strategyConfigs.forEach(({ asset, base }) => {
+        Object.keys(
+          this.historicCandleDataMultiTimeFrames[asset + base]
+        ).forEach((interval) => {
           if (
             this.historicCandleDataMultiTimeFrames[asset + base][interval]
               .length === 0
@@ -268,38 +279,38 @@ export class BasicBackTestBot {
               )}`
             );
           }
-        }
-      );
-    });
-    if (historyError) return process.exit();
+        });
+      });
+      if (historyError) return process.exit();
 
-    // Check the start date and end date comparing to the date range of the historic data downloaded
-    Object.keys(this.historicCandleDataMultiTimeFrames).forEach((pair) => {
-      let candles = this.historicCandleDataMultiTimeFrames[pair];
-      Object.keys(this.historicCandleDataMultiTimeFrames[pair]).forEach(
-        (timeFrame) => {
-          let candleTimeFrame = candles[timeFrame];
-          let startDate = candleTimeFrame[0].openTime;
-          let endDate = dayjs(
-            candleTimeFrame[candleTimeFrame.length - 1].openTime
-          ).add(1, 'minute');
-          if (dayjs(startDate).isBefore(this.startDate)) {
-            console.warn(
-              `Your start date is too old comparing to your downloaded candle data for ${pair} in ${timeFrame}. The earliest possible date is ${dayjs(
-                startDate
-              ).format('YYYY-MM-DD HH:mm:ss')}\n`
-            );
+      // Check the start date and end date comparing to the date range of the historic data downloaded
+      Object.keys(this.historicCandleDataMultiTimeFrames).forEach((pair) => {
+        let candles = this.historicCandleDataMultiTimeFrames[pair];
+        Object.keys(this.historicCandleDataMultiTimeFrames[pair]).forEach(
+          (timeFrame) => {
+            let candleTimeFrame = candles[timeFrame];
+            let startDate = candleTimeFrame[0].openTime;
+            let endDate = dayjs(
+              candleTimeFrame[candleTimeFrame.length - 1].openTime
+            ).add(1, 'minute');
+            if (dayjs(startDate).isBefore(this.startDate)) {
+              console.warn(
+                `Your start date is too old comparing to your downloaded candle data for ${pair} in ${timeFrame}. The earliest possible date is ${dayjs(
+                  startDate
+                ).format('YYYY-MM-DD HH:mm:ss')}\n`
+              );
+            }
+            if (dayjs(endDate).isAfter(this.endDate)) {
+              console.warn(
+                `Your end date is too recent comparing to your downloaded candle data for ${pair} in ${timeFrame}. The latest possible date is ${dayjs(
+                  endDate
+                ).format('YYYY-MM-DD HH:mm:ss')}\n`
+              );
+            }
           }
-          if (dayjs(endDate).isAfter(this.endDate)) {
-            console.warn(
-              `Your end date is too recent comparing to your downloaded candle data for ${pair} in ${timeFrame}. The latest possible date is ${dayjs(
-                endDate
-              ).format('YYYY-MM-DD HH:mm:ss')}\n`
-            );
-          }
-        }
-      );
-    });
+        );
+      });
+    }
   }
 
   /**
@@ -382,7 +393,7 @@ export class BasicBackTestBot {
         let candles = this.generateCandleDataFromIndexes(pair, indexes[pair]);
         let candlesStream: CandleData[] = candles[pair][loopInterval];
 
-        if (candlesStream.length > MIN_CANDLE_LENGTH) {
+        if (candlesStream.length >= MAX_LOADED_CANDLE_LENGTH_API) {
           const currentCandle = candlesStream[candlesStream.length - 1];
           const currentPrice = currentCandle.close;
 
@@ -535,7 +546,7 @@ export class BasicBackTestBot {
       }
 
       // Update the index start to have the same range between the index start and index end
-      if (i - indexStart > MAX_CANDLE_LENGTH) indexStart++;
+      if (i - indexStart > MAX_LOADED_CANDLE_LENGTH_API) indexStart++;
     }
 
     return { indexStart, indexEnd };

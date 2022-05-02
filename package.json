@@ -8,7 +8,7 @@
     "build:prod": "cross-env NODE_ENV=production tsc",
     "build:dev": "cross-env NODE_ENV=development tsc",
     "build:test": "cross-env NODE_ENV=test tsc",
-    "data": "node ./scripts/generateData 1m,5m,15m,1h,4h",
+    "data": "node ./scripts/generateData 1m,5m,15m,30m,1h,4h",
     "test": "cross-env NODE_ENV=test node ./build/backtest/index.js DEBUG=false",
     "test:debug": "cross-env NODE_ENV=test node ./build/backtest/index.js DEBUG=true",
     "optimize": "cross-env NODE_ENV=test node ./build/backtest/optimize.js",
@@ -20,7 +20,6 @@
   "dependencies": {
     "ansi-colors": "^4.1.1",
     "binance-api-node": "^0.11.35",
-    "ccxt": "^1.80.63",
     "chalk": "^4.1.2",
     "cli-progress": "^3.10.0",
     "csv-parser": "^3.0.0",

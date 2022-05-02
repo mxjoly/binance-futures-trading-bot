@@ -3,6 +3,7 @@ import atrTpslStrategy from '../strategies/exit/atr';
 import { STOCHASTIC_RSI } from '../strategies/entry';
 import { threeEma } from '../strategies/trend';
 import { getPositionSizeByRisk } from '../strategies/riskManagement';
+import { MAX_LOADED_CANDLE_LENGTH_API } from '../init';
 
 export const hyperParameters: HyperParameters = {
   takeProfitAtrRatio: { value: 2, optimization: [1, 5] },
@@ -24,15 +25,22 @@ export const config: AbstractStrategyConfig = (parameters) => [
     risk: 0.1,
     leverage: 10,
     trendFilter: (candles) =>
-      threeEma.getTrend(candles[CandleChartInterval.FIFTEEN_MINUTES], {
-        emaShortPeriod: parameters.emaShortPeriod.value,
-        emaMediumPeriod: parameters.emaMediumPeriod.value,
-        emaLongPeriod: parameters.emaLongPeriod.value,
-      }),
+      threeEma.getTrend(
+        candles[CandleChartInterval.FIFTEEN_MINUTES].slice(
+          -MAX_LOADED_CANDLE_LENGTH_API
+        ),
+        {
+          emaShortPeriod: parameters.emaShortPeriod.value,
+          emaMediumPeriod: parameters.emaMediumPeriod.value,
+          emaLongPeriod: parameters.emaLongPeriod.value,
+        }
+      ),
     exitStrategy: (price, candles, pricePrecision, side) =>
       atrTpslStrategy(
         price,
-        candles[CandleChartInterval.FIFTEEN_MINUTES],
+        candles[CandleChartInterval.FIFTEEN_MINUTES].slice(
+          -MAX_LOADED_CANDLE_LENGTH_API
+        ),
         pricePrecision,
         side,
         {
@@ -43,9 +51,17 @@ export const config: AbstractStrategyConfig = (parameters) => [
         }
       ),
     buyStrategy: (candles) =>
-      STOCHASTIC_RSI.isBuySignal(candles[CandleChartInterval.FIFTEEN_MINUTES]),
+      STOCHASTIC_RSI.isBuySignal(
+        candles[CandleChartInterval.FIFTEEN_MINUTES].slice(
+          -MAX_LOADED_CANDLE_LENGTH_API
+        )
+      ),
     sellStrategy: (candles) =>
-      STOCHASTIC_RSI.isSellSignal(candles[CandleChartInterval.FIFTEEN_MINUTES]),
+      STOCHASTIC_RSI.isSellSignal(
+        candles[CandleChartInterval.FIFTEEN_MINUTES].slice(
+          -MAX_LOADED_CANDLE_LENGTH_API
+        )
+      ),
     riskManagement: getPositionSizeByRisk,
   },
 ];

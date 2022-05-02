@@ -93,6 +93,9 @@ export const binanceClient = Binance(
 // The bot will trade with the binance mode:
 export const BINANCE_MODE: BinanceMode = BotConfig['mode'];
 
+// The maximum number of candles to be loaded by the binance api
+export const MAX_LOADED_CANDLE_LENGTH_API = 499;
+
 // Supported time frame by the robot in development and production mode
 export const supportedTimeFrames = [
   CandleChartInterval.ONE_MINUTE,

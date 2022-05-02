@@ -13,7 +13,7 @@ const defaultOptions: Options = {
 };
 
 /**
- * Return true if the k signal crosses up the d signal and we are in uptrend
+ * Return true if the volume oscillator crosses up the threshold
  */
 export const isBuySignal = (
   candles: CandleData[],
@@ -34,7 +34,7 @@ export const isBuySignal = (
 };
 
 /**
- * Return true if k signal crosses down the d signal and we are in downtrend
+ * Return true if the volume oscillator crosses up the threshold
  */
 export const isSellSignal = (
   candles: CandleData[],
