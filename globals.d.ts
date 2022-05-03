@@ -30,6 +30,7 @@ type CandlesDataMultiTimeFrames = {
 };
 
 interface CandleData {
+  symbol: string;
   open: number;
   high: number;
   low: number;
@@ -45,7 +46,10 @@ type HyperParameters = {
 
 type HyperParameter = {
   value: number /* The value of parameter */;
-  optimization?: [number, number] /* min - max for optimization */;
+  optimization?:
+    | [number, number] /* A range between two value */
+    | number[] // Specified number value
+    | string[]; // Specified string value
 };
 
 type EntryStrategy = (candles: CandlesDataMultiTimeFrames) => boolean;

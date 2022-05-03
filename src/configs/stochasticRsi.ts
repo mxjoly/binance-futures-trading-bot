@@ -1,6 +1,6 @@
 import { CandleChartInterval } from 'binance-api-node';
 import atrTpslStrategy from '../strategies/exit/atr';
-import { STOCHASTIC_RSI } from '../strategies/entry';
+import { Basics } from '../strategies/entry';
 import { threeEma } from '../strategies/trend';
 import { getPositionSizeByRisk } from '../strategies/riskManagement';
 import { MAX_LOADED_CANDLE_LENGTH_API } from '../init';
@@ -51,13 +51,13 @@ export const config: AbstractStrategyConfig = (parameters) => [
         }
       ),
     buyStrategy: (candles) =>
-      STOCHASTIC_RSI.isBuySignal(
+      Basics.STOCHASTIC_RSI.isBuySignal(
         candles[CandleChartInterval.FIFTEEN_MINUTES].slice(
           -MAX_LOADED_CANDLE_LENGTH_API
         )
       ),
     sellStrategy: (candles) =>
-      STOCHASTIC_RSI.isSellSignal(
+      Basics.STOCHASTIC_RSI.isSellSignal(
         candles[CandleChartInterval.FIFTEEN_MINUTES].slice(
           -MAX_LOADED_CANDLE_LENGTH_API
         )

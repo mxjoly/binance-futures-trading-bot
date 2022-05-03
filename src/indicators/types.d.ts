@@ -1,3 +1,5 @@
+type SourceType = 'open' | 'high' | 'low' | 'close' | 'hl2' | 'hlc3' | 'hlcc4';
+
 type FibonacciRetracementLevel =
   | 'RET_0236'
   | 'RET_0382'

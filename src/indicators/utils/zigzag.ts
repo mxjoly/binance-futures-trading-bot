@@ -1,28 +1,22 @@
-import { Pivots } from '.';
+import { Pivots } from '..';
 
 interface Options {
-  high: number[];
-  low: number[];
-  maxPivotSize: number;
-  length: number;
+  maxPivotSize?: number;
+  length?: number;
 }
 
-const defaultOptions = {
+const defaultOptions: Options = {
   maxPivotSize: 100,
+  length: 30,
 };
 
-export function calculate({ high, low, maxPivotSize, length }: Options) {
-  let pivotHighs = Pivots.pivotHighs({
-    values: high,
-    leftBars: length,
-    rightBars: 0,
-  });
+export function calculate(candles: CandleData[], options?: Options) {
+  options = { ...defaultOptions, ...options };
+  let high = candles.map((c) => c.high);
+  let low = candles.map((c) => c.low);
 
-  let pivotLows = Pivots.pivotLows({
-    values: low,
-    leftBars: length,
-    rightBars: 0,
-  });
+  let pivotHighs = Pivots.pivotHighs(high, length, 0);
+  let pivotLows = Pivots.pivotLows(low, length, 0);
 
   let directions = new Array(high.length).fill(0);
 
@@ -72,7 +66,7 @@ export function calculate({ high, low, maxPivotSize, length }: Options) {
         pivotDirection: newDirection,
       });
 
-      if (zigzag.length > maxPivotSize) {
+      if (zigzag.length > options.maxPivotSize) {
         zigzag.pop();
       }
     }

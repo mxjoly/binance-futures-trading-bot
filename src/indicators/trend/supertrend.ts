@@ -1,36 +1,35 @@
 import { ATR, Lowest, Highest } from 'technicalindicators';
 
 interface Options {
-  high: number[];
-  low: number[];
-  close: number[];
   atrPeriod?: number;
   atrMultiplier?: number;
 }
 
-const defaultOptions = {
+const defaultOptions: Options = {
   atrPeriod: 10,
   atrMultiplier: 3.0,
 };
 
-export function calculate({
-  high,
-  low,
-  close,
-  atrPeriod = defaultOptions.atrPeriod,
-  atrMultiplier = defaultOptions.atrMultiplier,
-}: Options): { trend: number; up: number; down: number }[] {
-  const atr = ATR.calculate({ high, low, close, period: atrPeriod });
+export function calculate(
+  candles: CandleData[],
+  options?: Options
+): { trend: number; up: number; down: number }[] {
+  options = { ...defaultOptions, ...options };
+  let high = candles.map((c) => c.high);
+  let low = candles.map((c) => c.low);
+  let close = candles.map((c) => c.close);
+
+  const atr = ATR.calculate({ high, low, close, period: options.atrPeriod });
   close = close.slice(-atr.length);
 
   const highest = Highest.calculate({
     values: high,
-    period: atrPeriod,
+    period: options.atrPeriod,
   }).slice(-atr.length);
 
   const lowest = Lowest.calculate({
     values: low,
-    period: atrPeriod,
+    period: options.atrPeriod,
   }).slice(-atr.length);
 
   let up: number[] = [];
@@ -38,8 +37,8 @@ export function calculate({
   let trend: number[] = [];
 
   for (let i = 0; i < atr.length; i++) {
-    up[i] = (highest[i] + lowest[i]) / 2 - atrMultiplier * atr[i];
-    down[i] = (highest[i] + lowest[i]) / 2 + atrMultiplier * atr[i];
+    up[i] = (highest[i] + lowest[i]) / 2 - options.atrMultiplier * atr[i];
+    down[i] = (highest[i] + lowest[i]) / 2 + options.atrMultiplier * atr[i];
     trend[i] = 1;
 
     if (i > 0) {

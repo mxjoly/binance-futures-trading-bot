@@ -1,18 +1,17 @@
 interface Options {
-  high: number[];
-  low: number[];
-  length: number;
+  length?: number;
 }
 
-const defaultOptions = {
+const defaultOptions: Options = {
   length: 14,
 };
 
-export function calculate({
-  high,
-  low,
-  length = defaultOptions.length,
-}: Options) {
+export function calculate(candles: CandleData[], options?: Options) {
+  options = { ...defaultOptions, ...options };
+
+  const high = candles.map((c) => c.high);
+  const low = candles.map((c) => c.low);
+
   const highestBars = (high: number[]) => {
     let maxHigh = -Infinity;
     let maxHighIndex = 0;
@@ -39,12 +38,17 @@ export function calculate({
 
   let result: { upper: number; lower: number }[] = [];
 
-  for (let i = length; i < high.length; i++) {
+  for (let i = options.length; i < high.length; i++) {
     result.push({
       upper:
-        (100 * (highestBars(high.slice(i - length, i + 1)) + length)) / length,
+        (100 *
+          (highestBars(high.slice(i - options.length, i + 1)) +
+            options.length)) /
+        options.length,
       lower:
-        (100 * (lowestBars(low.slice(i - length, i + 1)) + length)) / length,
+        (100 *
+          (lowestBars(low.slice(i - options.length, i + 1)) + options.length)) /
+        options.length,
     });
   }
 

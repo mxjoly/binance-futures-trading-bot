@@ -1,5 +1,5 @@
 import { CandleChartInterval } from 'binance-api-node';
-import { RELOAD_ZONE } from '../strategies/entry';
+import { Basics } from '../strategies/entry';
 import { Fibonacci } from '../indicators';
 import { basicTpslStrategy } from '../strategies/exit';
 import { getPositionSizeByPercent } from '../strategies/riskManagement';
@@ -79,7 +79,7 @@ export const config: AbstractStrategyConfig = (parameters) =>
         ],
       }),
     buyStrategy: (candles) =>
-      RELOAD_ZONE.isBuySignal(candles[CandleChartInterval.ONE_WEEK], {
+      Basics.RELOAD_ZONE.isBuySignal(candles[CandleChartInterval.ONE_WEEK], {
         trend: Fibonacci.FibonacciTrend.UP,
       }),
     sellStrategy: (candles: CandleData[]) => false,

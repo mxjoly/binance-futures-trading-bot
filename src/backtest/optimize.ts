@@ -33,13 +33,24 @@ if (process.env.NODE_ENV === 'test') {
   let parameterNames = Object.keys(StrategyHyperParameters).map((name) => name);
   let parameterValues = Object.values(StrategyHyperParameters).map(
     ({ optimization }) => {
-      if (optimization) {
-        let values = [];
-        let [min, max] = optimization;
-        for (let i = min; i <= max; i++) {
-          values.push(i);
+      if (optimization && optimization.length > 0) {
+        // A range between two value
+        if (
+          typeof optimization[0] === 'number' &&
+          optimization.length === 2 &&
+          optimization[0] < optimization[1]
+        ) {
+          let values = [];
+          let [min, max] = optimization;
+          for (let i = min; i <= max; i++) {
+            values.push(i);
+          }
+          return values;
         }
-        return values;
+        // Specified number or string values
+        else {
+          return optimization;
+        }
       } else {
         return [];
       }

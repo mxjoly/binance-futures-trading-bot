@@ -1,4 +1,5 @@
-import { SMA, EMA, WMA, WEMA, CrossUp, CrossDown } from 'technicalindicators';
+import { CrossUp, CrossDown } from 'technicalindicators';
+import { SMA, EMA, WMA, WEMA } from '../../../indicators';
 
 interface Options {
   maPeriod?: number;
@@ -25,8 +26,7 @@ export const isBuySignal = (
   const ma = getMAClass(options.maType);
   const candleValues = candles.map((candle) => candle.close);
 
-  const values = ma.calculate({
-    values: candleValues,
+  const values = ma.calculate(candles, {
     period: options.maPeriod,
   });
 
@@ -51,8 +51,7 @@ export const isSellSignal = (
   const ma = getMAClass(options.maType);
   const candleValues = candles.map((candle) => candle.close);
 
-  const values = ma.calculate({
-    values: candleValues,
+  const values = ma.calculate(candles, {
     period: options.maPeriod,
   });
 

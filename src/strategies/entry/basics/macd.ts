@@ -1,15 +1,20 @@
-import { MACD, CrossUp, CrossDown } from 'technicalindicators';
+import { CrossUp, CrossDown } from 'technicalindicators';
+import { MACD } from '../../../indicators';
 
 interface Options {
   macdFastPeriod?: number;
   macdSlowPeriod?: number;
   macdSignalperiod?: number;
+  oscillatorMaType?: 'SMA' | 'EMA';
+  signalMaType?: 'SMA' | 'EMA';
 }
 
 const defaultOptions: Options = {
   macdFastPeriod: 12,
   macdSlowPeriod: 26,
   macdSignalperiod: 9,
+  oscillatorMaType: 'EMA',
+  signalMaType: 'EMA',
 };
 
 /**
@@ -22,17 +27,16 @@ export const isBuySignal = (
   if (candles.length < Math.max(options.macdSlowPeriod, options.macdFastPeriod))
     return false;
 
-  const macd = MACD.calculate({
-    values: candles.map((candle) => candle.close),
-    fastPeriod: options.macdFastPeriod,
-    slowPeriod: options.macdSlowPeriod,
-    signalPeriod: options.macdSignalperiod,
-    SimpleMAOscillator: false,
-    SimpleMASignal: false,
+  const macd = MACD.calculate(candles, {
+    fastLength: options.macdFastPeriod,
+    slowLength: options.macdSlowPeriod,
+    signalLength: options.macdSignalperiod,
+    oscillatorMaType: options.oscillatorMaType,
+    signalMaType: options.signalMaType,
   });
 
   const results = CrossUp.calculate({
-    lineA: macd.map((a) => a.MACD),
+    lineA: macd.map((a) => a.macd),
     lineB: macd.map((a) => a.signal),
   });
 
@@ -49,17 +53,16 @@ export const isSellSignal = (
   if (candles.length < Math.max(options.macdSlowPeriod, options.macdFastPeriod))
     return false;
 
-  const macd = MACD.calculate({
-    values: candles.map((candle) => candle.close),
-    fastPeriod: options.macdFastPeriod,
-    slowPeriod: options.macdSlowPeriod,
-    signalPeriod: options.macdSignalperiod,
-    SimpleMAOscillator: false,
-    SimpleMASignal: false,
+  const macd = MACD.calculate(candles, {
+    fastLength: options.macdFastPeriod,
+    slowLength: options.macdSlowPeriod,
+    signalLength: options.macdSignalperiod,
+    oscillatorMaType: options.oscillatorMaType,
+    signalMaType: options.signalMaType,
   });
 
   const results = CrossDown.calculate({
-    lineA: macd.map((a) => a.MACD),
+    lineA: macd.map((a) => a.macd),
     lineB: macd.map((a) => a.signal),
   });
 

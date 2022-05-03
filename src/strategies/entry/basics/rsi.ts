@@ -1,17 +1,15 @@
-import { RSI } from 'technicalindicators';
+import { RSI } from '../../../indicators';
 
 interface Options {
   rsiPeriod?: number;
   rsiOverbought?: number;
   rsiOversold?: number;
-  signalAtBreakout?: boolean;
 }
 
 const defaultOptions: Options = {
   rsiPeriod: 14,
   rsiOversold: 30,
   rsiOverbought: 70,
-  signalAtBreakout: true,
 };
 
 /**
@@ -23,19 +21,14 @@ export const isBuySignal = (
 ) => {
   if (candles.length < options.rsiPeriod) return false;
 
-  const values = RSI.calculate({
-    values: candles.map((candle) => candle.close),
+  const values = RSI.calculate(candles, {
     period: options.rsiPeriod,
   });
 
   const last = values[values.length - 2];
   const current = values[values.length - 1];
 
-  if (options.signalAtBreakout) {
-    return last < options.rsiOversold && current > options.rsiOversold;
-  } else {
-    return last > options.rsiOversold && current < options.rsiOversold;
-  }
+  return last > options.rsiOversold && current < options.rsiOversold;
 };
 
 /**
@@ -47,17 +40,12 @@ export const isSellSignal = (
 ) => {
   if (candles.length < options.rsiPeriod) return false;
 
-  const values = RSI.calculate({
-    values: candles.map((candle) => candle.close),
+  const values = RSI.calculate(candles, {
     period: options.rsiPeriod,
   });
 
   const last = values[values.length - 2];
   const current = values[values.length - 1];
 
-  if (options.signalAtBreakout) {
-    return last > options.rsiOverbought && current < options.rsiOverbought;
-  } else {
-    return last < options.rsiOverbought && current > options.rsiOverbought;
-  }
+  return last < options.rsiOverbought && current > options.rsiOverbought;
 };

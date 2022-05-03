@@ -36,7 +36,9 @@ const defaultOptions: Options = {
   trend: undefined,
 };
 
-function findHighestLowest(candles: CandleData[], options: Options) {
+function findHighestLowest(candles: CandleData[], options?: Options) {
+  options = { ...defaultOptions, ...options };
+
   let startIndex = options.period ? candles.length - options.period : 0;
   let lowestIndex = candles.length - 1;
   let highestIndex = candles.length - 1;
