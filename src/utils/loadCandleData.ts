@@ -31,6 +31,7 @@ export function loadCandlesFromCSV(
         ) {
           candleData.push({
             symbol,
+            interval,
             openTime: new Date(data.openTime),
             closeTime: new Date(data.closeTime),
             open: Number(data.open),
@@ -72,6 +73,7 @@ export function loadCandlesFromAPI(
             .slice(0, onlyFinalCandle ? -1 : candles.length)
             .map((candle) => ({
               symbol,
+              interval,
               open: Number(candle.open),
               high: Number(candle.high),
               low: Number(candle.low),

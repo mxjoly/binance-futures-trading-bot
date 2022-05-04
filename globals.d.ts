@@ -38,6 +38,7 @@ interface CandleData {
   volume: number;
   openTime: Date;
   closeTime: Date;
+  interval: CandleChartInterval;
 }
 
 type HyperParameters = {

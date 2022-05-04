@@ -7,47 +7,75 @@ type Memory = {
 export class Cache {
   private memory: Memory = {};
 
-  createAllocation(symbol: string, timeFrame: CandleChartInterval) {
-    let key = `${symbol}-${timeFrame}`;
+  private createAllocation(
+    symbol: string,
+    timeFrame: CandleChartInterval,
+    optionsHash: string
+  ) {
+    let key = `${symbol}-${timeFrame}-${optionsHash}`;
     if (!this.memory[key]) {
       this.memory[key] = {};
     }
   }
 
-  saveData(
+  /**
+   * Save a value to the cache by using the date of the candle as index
+   * @param symbol
+   * @param timeFrame
+   * @param optionsHash
+   * @param date
+   * @param value
+   */
+  public save(
     symbol: string,
     timeFrame: CandleChartInterval,
-    dates: number[], // timestamps
-    values: any[]
+    optionsHash: string, // The options used in hash
+    date: number, // timestamp
+    value: any
   ) {
-    let key = `${symbol}-${timeFrame}`;
+    let key = `${symbol}-${timeFrame}-${optionsHash}`;
     if (!this.memory[key]) {
-      this.createAllocation(symbol, timeFrame);
+      this.createAllocation(symbol, timeFrame, optionsHash);
     }
-    dates.forEach((date, i) => {
-      this.memory[key][date] = values[i];
-    });
+    this.memory[key][date] = value;
   }
 
-  getData(
+  /**
+   * Check the existence of the values on a timeFrame with a specific config
+   * @param symbol
+   * @param timeFrame
+   * @param optionsHash
+   */
+  public exist(
     symbol: string,
     timeFrame: CandleChartInterval,
-    indicatorName: string,
-    index: number
+    optionsHash: string
   ) {
-    let key = `${symbol}-${timeFrame}-${indicatorName}`;
-    if (!this.memory[key][index]) {
-      console.error(
-        `There is no allocation memory for ${indicatorName} on ${symbol} ${timeFrame}`
-      );
-      return;
+    let key = `${symbol}-${timeFrame}-${optionsHash}`;
+    return this.memory[key] ? true : false;
+  }
+
+  /**
+   * Get the value at a specified date
+   * @param symbol
+   * @param timeFrame
+   * @param optionsHash
+   * @param date
+   */
+  public get(
+    symbol: string,
+    timeFrame: CandleChartInterval,
+    optionsHash: string,
+    date: number // Timestamp
+  ) {
+    let key = `${symbol}-${timeFrame}-${optionsHash}`;
+    if (!this.memory[key] || !this.memory[key][date]) {
+      return null;
     }
-    if (index >= 0 && index < this.memory[key].length) {
-      return this.memory[key][index];
+    if (date >= 0 && date < this.memory[key].length) {
+      return this.memory[key][date];
     } else {
-      console.error(
-        `The index memory for ${indicatorName} on ${symbol} ${timeFrame} doesn't exist: ${index}`
-      );
+      return null;
     }
   }
 }

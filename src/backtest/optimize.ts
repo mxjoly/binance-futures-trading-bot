@@ -2,6 +2,8 @@ import { BotConfig } from '../init';
 import { AbstractStrategy, StrategyHyperParameters } from '../init';
 import { BasicBackTestBot } from './bot';
 
+var startTime = performance.now();
+
 if (process.env.NODE_ENV === 'test') {
   const BacktestConfig = BotConfig['backtest'];
   const startDate = new Date(BacktestConfig['start_date']);
@@ -23,7 +25,18 @@ if (process.env.NODE_ENV === 'test') {
     return new Promise<[StrategyReport, HyperParameters]>((resolve, reject) => {
       bot
         .run()
-        .then(() => resolve([bot.strategyReport, parameters]))
+        .then(() => {
+          let parametersString =
+            '[ ' +
+            Object.entries(parameters)
+              .map(
+                ([parameterName, config]) => `${parameterName}: ${config.value}`
+              )
+              .join(', ') +
+            ' ]';
+          console.log(parametersString + ' done!');
+          resolve([bot.strategyReport, parameters]);
+        })
         .catch(reject);
     });
   }
@@ -33,7 +46,7 @@ if (process.env.NODE_ENV === 'test') {
   let parameterNames = Object.keys(StrategyHyperParameters).map((name) => name);
   let parameterValues = Object.values(StrategyHyperParameters).map(
     ({ optimization }) => {
-      if (optimization && optimization.length > 0) {
+      if (optimization && optimization.length > 1) {
         // A range between two value
         if (
           typeof optimization[0] === 'number' &&
@@ -60,15 +73,25 @@ if (process.env.NODE_ENV === 'test') {
   // ========================================================================================== //
 
   let allHyperParameters: HyperParameters[] = []; // Combination of all hyper parameters
+  let indexToOptimize: number[] = [];
+
+  // Find the parameters index to optimize
+  for (let i = 0; i < parameterValues.length; i++) {
+    if (parameterValues[i].length > 0) indexToOptimize.push(i);
+  }
 
   let parameterCombinations = (i: number, parameters: HyperParameters) => {
-    if (i >= parameterNames.length || parameterValues[i].length === 0) {
+    let currentIndexToOptimize = indexToOptimize[i];
+
+    if (i >= indexToOptimize.length) {
       allHyperParameters.push({ ...parameters });
       return;
     }
 
-    for (let n = 0; n < parameterValues[i].length; n++) {
-      parameters[parameterNames[i]] = { value: parameterValues[i][n] };
+    for (let n = 0; n < parameterValues[currentIndexToOptimize].length; n++) {
+      parameters[parameterNames[currentIndexToOptimize]] = {
+        value: parameterValues[currentIndexToOptimize][n],
+      };
       parameterCombinations(i + 1, parameters);
     }
   };
@@ -122,5 +145,10 @@ if (process.env.NODE_ENV === 'test') {
         '\n================== Report With the Optimized Parameters =================='
       );
       console.log(bestResultStrategyReport);
+
+      var endTime = performance.now();
+      console.log(
+        `Call to doSomething took ${endTime - startTime} milliseconds`
+      );
     });
 }
