@@ -17,6 +17,7 @@ interface StrategyConfig {
   unidirectional?: boolean; // When take the profit, close the position instead of opening new position in futures
   tradingSessions?: TradingSession[]; // The robot trades only during these sessions
   maxTradeDuration?: number; // Max duration of a trade in the unit of the loopInterval
+  canOpenNewPositionToCloseLast?: boolean; // can close the last open position even if tp and sl is placed
   buyStrategy: EntryStrategy;
   sellStrategy: EntryStrategy;
   exitStrategy?: ExitStrategy; // Placement of take profits and stop loss
@@ -46,7 +47,7 @@ type HyperParameters = {
 };
 
 type HyperParameter = {
-  value: number /* The value of parameter */;
+  value: any /* The value of parameter */;
   optimization?:
     | [number, number] /* A range between two value */
     | number[] // Specified number value
@@ -67,10 +68,11 @@ type TakeProfit = { price: number; quantityPercentage: number }; // quantityPerc
 
 // Strategy for Take Profits and Stop Loss
 type ExitStrategy = (
-  price?: number,
+  price: number,
   candles?: CandlesDataMultiTimeFrames,
-  pricePrecision?: number,
-  side: OrderSide // type from binance api lib
+  pricePrecision: number,
+  side: OrderSide, // type from binance api lib
+  exchangeInfo: ExchangeInfo
 ) => {
   takeProfits: TakeProfit[];
   stopLoss?: number;

@@ -1,4 +1,4 @@
-import { OrderSide } from 'binance-api-node';
+import { ExchangeInfo, OrderSide } from 'binance-api-node';
 import { decimalFloor } from '../../utils/math';
 
 interface Options {
@@ -12,6 +12,7 @@ const strategy = (
   price: number,
   pricePrecision: number,
   side: OrderSide,
+  exchangeInfo: ExchangeInfo,
   options = defaultOptions
 ) => {
   let takeProfits = options.profitTargets

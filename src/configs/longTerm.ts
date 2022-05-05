@@ -46,11 +46,12 @@ export const config: AbstractStrategyConfig = (parameters) =>
     indicatorIntervals: [CandleChartInterval.ONE_WEEK],
     trendFilter: (candles) => 1, // Take only long position, supposing we are in up trend on long term
     riskManagement: getPositionSizeByPercent,
-    exitStrategy: (price, candles, pricePrecision, side) =>
+    exitStrategy: (price, candles, pricePrecision, side, exchangeInfo) =>
       fibonacciTpslStrategy(
         candles[CandleChartInterval.ONE_WEEK],
         pricePrecision,
         side,
+        exchangeInfo,
         {
           profitTargets: [
             { fibonacciLevel: 'EXT_1618', quantityPercentage: 0.5 },

@@ -13,3 +13,9 @@ export const Basics = {
   RELOAD_ZONE,
   STOCHASTIC_RSI,
 };
+
+import * as BITCOIN_SNIPER_V1 from './complex/bitcoinSniperV1';
+
+export const Complex = {
+  BITCOIN_SNIPER_V1,
+};

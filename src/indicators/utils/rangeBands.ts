@@ -56,14 +56,24 @@ export function calculate(candles: CandleData[], options?: Options) {
         : downward[i - 1];
   }
 
+  upward = upward.slice(-values.length);
+  downward = downward.slice(-values.length);
+
   // Calculate the high band and low band
 
-  let result: { highBand: number; lowBand: number }[] = [];
+  let result: {
+    highBand: number;
+    lowBand: number;
+    upward: number;
+    downward: number;
+  }[] = [];
 
   for (let i = options.period; i < values.length; i++) {
     result.push({
       highBand: filt[i] + smoothrng[i],
       lowBand: filt[i] - smoothrng[i],
+      upward: upward[i],
+      downward: downward[i],
     });
   }
 

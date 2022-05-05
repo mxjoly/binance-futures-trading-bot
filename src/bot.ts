@@ -89,7 +89,19 @@ export class Bot {
       'BTCUSDT',
       CandleChartInterval.ONE_HOUR,
       binanceClient
-    ).then((candles) => {});
+    ).then((candles) => {
+      binanceClient.exchangeInfo().then((info) => {
+        let r = info.symbols.filter((f) => f.symbol === 'BTCUSDT')[0];
+        let tickSize =
+          // @ts-ignore
+          r.filters.filter((f) => f.filterType === 'PRICE_FILTER')[0].tickSize;
+
+        let entry = 38648.9;
+        let sorti = (entry * (1 + 0.009) - entry) / tickSize / 100;
+
+        console.log(entry + sorti);
+      });
+    });
 
     return;
 
@@ -243,7 +255,12 @@ export class Bot {
           );
         })
         .catch(error);
-    } else if (isTradingSessionActive && canBuy && buyStrategy(candles)) {
+    } else if (
+      isTradingSessionActive &&
+      (allowPyramiding || currentOpenOrders.length === 0) &&
+      canBuy &&
+      buyStrategy(candles)
+    ) {
       const quantity = riskManagement({
         asset,
         base,
@@ -266,7 +283,13 @@ export class Bot {
         .then(({ price: orderPrice }) => {
           // Calculate the tp and sl
           const { takeProfits, stopLoss } = exitStrategy
-            ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
+            ? exitStrategy(
+                currentPrice,
+                candles,
+                pricePrecision,
+                OrderSide.BUY,
+                exchangeInfo
+              )
             : { takeProfits: [], stopLoss: null };
 
           // Remove the current open orders to update them
@@ -367,6 +390,7 @@ export class Bot {
       trendFilter,
       riskManagement,
       tradingSessions,
+      canOpenNewPositionToCloseLast,
       trailingStopConfig,
       allowPyramiding,
       maxPyramidingAllocation,
@@ -394,20 +418,38 @@ export class Bot {
     const positionSize = Math.abs(Number(position.positionAmt));
     const positionEntryPrice = Number(position.entryPrice);
 
+    // Open Orders
+    const currentOpenOrders = await binanceClient.futuresOpenOrders({
+      symbol: pair,
+    });
+
     // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
       ? Number(position.initialMargin) + Number(assetBalance) * risk <=
         Number(assetBalance) * maxPyramidingAllocation
       : false;
     const canTakeLongPosition =
-      (!allowPyramiding && !hasLongPosition) || allowPyramiding;
+      (canOpenNewPositionToCloseLast && hasShortPosition) ||
+      (!canOpenNewPositionToCloseLast &&
+        hasShortPosition &&
+        currentOpenOrders.length === 0) ||
+      (!allowPyramiding && !hasLongPosition) ||
+      (allowPyramiding && hasShortPosition && currentOpenOrders.length === 0) ||
+      (allowPyramiding &&
+        hasShortPosition &&
+        currentOpenOrders.length > 0 &&
+        canOpenNewPositionToCloseLast);
     const canTakeShortPosition =
-      (!allowPyramiding && !hasShortPosition) || allowPyramiding;
-
-    // Open Orders
-    const currentOpenOrders = await binanceClient.futuresOpenOrders({
-      symbol: pair,
-    });
+      (canOpenNewPositionToCloseLast && hasLongPosition) ||
+      (!canOpenNewPositionToCloseLast &&
+        hasLongPosition &&
+        currentOpenOrders.length === 0) ||
+      (!allowPyramiding && !hasShortPosition) ||
+      (allowPyramiding && hasLongPosition && currentOpenOrders.length === 0) ||
+      (allowPyramiding &&
+        hasLongPosition &&
+        currentOpenOrders.length > 0 &&
+        canOpenNewPositionToCloseLast);
 
     // Precision
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
@@ -464,7 +506,6 @@ export class Bot {
     if (
       (isTradingSessionActive || positionSize !== 0) &&
       canTakeLongPosition &&
-      currentOpenOrders.length === 0 &&
       buyStrategy(candles)
     ) {
       // Take the profit and not open a new position
@@ -491,18 +532,15 @@ export class Bot {
       // Do not add to the current position if the allocation is over the max allocation
       if (allowPyramiding && hasLongPosition && !canAddToPosition) return;
 
-      // Do not close the current short position built progressively in pyramiding mode
-      if (allowPyramiding && hasShortPosition) return;
-
-      // Do not buy now if a take profit is already set on the last short position
-      let hasTakeProfits = currentOpenOrders.some(
-        (order) => order.price < position.entryPrice
-      );
-      if (hasShortPosition && hasTakeProfits) return;
-
       // Calculate TP and SL
       let { takeProfits, stopLoss } = exitStrategy
-        ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
+        ? exitStrategy(
+            currentPrice,
+            candles,
+            pricePrecision,
+            OrderSide.BUY,
+            exchangeInfo
+          )
         : { takeProfits: [], stopLoss: null };
 
       //Calculate the quantity for the position according to the risk management of the strategy
@@ -553,7 +591,13 @@ export class Bot {
           if (allowPyramiding && hasLongPosition) {
             let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
               exitStrategy
-                ? exitStrategy(avgPrice, candles, pricePrecision, OrderSide.BUY)
+                ? exitStrategy(
+                    avgPrice,
+                    candles,
+                    pricePrecision,
+                    OrderSide.BUY,
+                    exchangeInfo
+                  )
                 : { takeProfits: [], stopLoss: null };
             takeProfits = updatedTakeProfits;
             stopLoss = updatedStopLoss;
@@ -633,7 +677,6 @@ export class Bot {
     } else if (
       (isTradingSessionActive || positionSize !== 0) &&
       canTakeShortPosition &&
-      currentOpenOrders.length === 0 &&
       sellStrategy(candles)
     ) {
       // Take the profit and not open a new position
@@ -660,18 +703,15 @@ export class Bot {
       // Do not add to the current position if the allocation is over the max allocation
       if (allowPyramiding && hasShortPosition && !canAddToPosition) return;
 
-      // Do not close the current short position built progressively in pyramiding mode
-      if (allowPyramiding && hasLongPosition) return;
-
-      // Do not sell now if a take profit is already set on the last long position
-      let hasTakeProfits = currentOpenOrders.some(
-        (order) => order.price > position.entryPrice
-      );
-      if (hasLongPosition && hasTakeProfits) return;
-
       // Calculate TP and SL
       let { takeProfits, stopLoss } = exitStrategy
-        ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.SELL)
+        ? exitStrategy(
+            currentPrice,
+            candles,
+            pricePrecision,
+            OrderSide.SELL,
+            exchangeInfo
+          )
         : { takeProfits: [], stopLoss: null };
 
       // Calculate the quantity for the position according to the risk management of the strategy
@@ -722,7 +762,13 @@ export class Bot {
           if (allowPyramiding && hasShortPosition) {
             let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
               exitStrategy
-                ? exitStrategy(avgPrice, candles, pricePrecision, OrderSide.BUY)
+                ? exitStrategy(
+                    avgPrice,
+                    candles,
+                    pricePrecision,
+                    OrderSide.BUY,
+                    exchangeInfo
+                  )
                 : { takeProfits: [], stopLoss: null };
             takeProfits = updatedTakeProfits;
             stopLoss = updatedStopLoss;

@@ -200,6 +200,8 @@ export function getCandleSourceType(
       return candles.map((c) => (c.high + c.low + c.close) / 3);
     case 'hlcc4':
       return candles.map((c) => (c.high + c.low + c.close * 2) / 3);
+    case 'volume':
+      return candles.map((c) => c.volume);
     default:
       return candles.map((c) => c.close);
   }

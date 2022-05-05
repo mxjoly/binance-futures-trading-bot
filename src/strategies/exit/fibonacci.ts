@@ -1,4 +1,4 @@
-import { OrderSide } from 'binance-api-node';
+import { ExchangeInfo, OrderSide } from 'binance-api-node';
 import { Fibonacci } from '../../indicators';
 import { decimalFloor } from '../../utils/math';
 
@@ -44,6 +44,7 @@ const strategy = (
   candles: CandleData[],
   pricePrecision: number,
   side: OrderSide,
+  exchangeInfo: ExchangeInfo,
   options = defaultOptions
 ) => {
   const levelsInUpTrend = Fibonacci.calculate(candles, {

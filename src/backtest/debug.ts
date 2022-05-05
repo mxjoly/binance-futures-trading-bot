@@ -21,8 +21,8 @@ export function printDateBanner(date: Date) {
   );
 }
 
-export function debugLastCandle(lastCandle: CandleData) {
-  let { close, open, high, low } = lastCandle;
+export function debugCandle(candle: CandleData) {
+  let { close, open, high, low } = candle;
   log(
     `candle: [ open: ${open} | high: ${high} | low: ${low} | close: ${close} ]`,
     chalk.yellow

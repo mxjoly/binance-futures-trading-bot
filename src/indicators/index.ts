@@ -1,6 +1,6 @@
 export * as Fibonacci from './utils/fibonacci';
 export * as Supertrend from './trend/supertrend';
-export * as VolumeOscillator from './oscillators/volumeOscillator';
+export * as VolumeOscillator from './volume/volumeOscillator';
 export * as Pivots from './utils/pivots';
 export * as SupportResistance from './utils/supportResistance';
 export * as RangeBands from './utils/rangeBands';
@@ -21,3 +21,5 @@ export * as WMA from './trend/wma';
 export * as WEMA from './trend/wma';
 export * as ADX from './trend/adx';
 export * as ATR from './volatility/atr';
+export * as BollingerBands from './volatility/bollingerBands';
+export * as VWMA from './volume/vwma';

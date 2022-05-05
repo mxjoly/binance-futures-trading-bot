@@ -28,7 +28,7 @@ export const isBuySignal = (
   const last = values[values.length - 2];
   const current = values[values.length - 1];
 
-  return last > options.rsiOversold && current < options.rsiOversold;
+  return last < options.rsiOversold && current > options.rsiOversold;
 };
 
 /**
@@ -47,5 +47,5 @@ export const isSellSignal = (
   const last = values[values.length - 2];
   const current = values[values.length - 1];
 
-  return last < options.rsiOverbought && current > options.rsiOverbought;
+  return last > options.rsiOverbought && current < options.rsiOverbought;
 };

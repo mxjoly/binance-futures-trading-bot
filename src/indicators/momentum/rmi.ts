@@ -13,8 +13,6 @@ const defaultOptions: Options = {
   momentum: 15,
 };
 
-let cache = new Cache();
-
 /**
  * Relative Momentum Index
  * @param candles

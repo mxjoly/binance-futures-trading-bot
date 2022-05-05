@@ -53,8 +53,8 @@ export const config: AbstractStrategyConfig = (parameters) =>
     indicatorIntervals: [CandleChartInterval.ONE_WEEK],
     trendFilter: (candles) => 1, // Take only long position, supposing we are in up trend on long term
     riskManagement: getPositionSizeByPercent,
-    exitStrategy: (price, candles, pricePrecision, side) =>
-      basicTpslStrategy(price, pricePrecision, side, {
+    exitStrategy: (price, candles, pricePrecision, side, exchangeInfo) =>
+      basicTpslStrategy(price, pricePrecision, side, exchangeInfo, {
         profitTargets: [
           {
             deltaPercentage: 1, // x2

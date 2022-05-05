@@ -2,18 +2,18 @@ import { HeikinAshi, EMA } from 'technicalindicators';
 
 interface Options {
   emaScalpingLength?: number;
-  fastEMAlength?: number;
-  mediumEMAlength?: number;
-  slowEMAlength?: number;
+  fastEmaLength?: number;
+  mediumEmaLength?: number;
+  slowEmaLength?: number;
   lookBack?: number;
   useHeikinAshiCandles?: boolean;
 }
 
 const defaultOptions: Options = {
   emaScalpingLength: 3,
-  fastEMAlength: 10,
-  mediumEMAlength: 120,
-  slowEMAlength: 250,
+  fastEmaLength: 10,
+  mediumEmaLength: 120,
+  slowEmaLength: 250,
   lookBack: 12,
   useHeikinAshiCandles: true,
 };
@@ -41,15 +41,15 @@ export function calculate(candles: CandleData[], options?: Options) {
   }
 
   let fastEma = EMA.calculate({
-    period: options.fastEMAlength,
+    period: options.fastEmaLength,
     values: close,
   });
   let mediumEma = EMA.calculate({
-    period: options.mediumEMAlength,
+    period: options.mediumEmaLength,
     values: close,
   });
   let slowEma = EMA.calculate({
-    period: options.slowEMAlength,
+    period: options.slowEmaLength,
     values: close,
   });
 

@@ -17,16 +17,17 @@ export const config: AbstractStrategyConfig = (parameters) => [
   {
     asset: 'BTC',
     base: 'USDT',
-    loopInterval: CandleChartInterval.FIFTEEN_MINUTES,
-    indicatorIntervals: [CandleChartInterval.FIFTEEN_MINUTES],
+    loopInterval: CandleChartInterval.ONE_HOUR,
+    indicatorIntervals: [CandleChartInterval.ONE_HOUR],
     risk: 0.01,
     leverage: 10,
-    exitStrategy: (price, candles, pricePrecision, side) =>
+    exitStrategy: (price, candles, pricePrecision, side, exchangeInfo) =>
       atrTpslStrategy(
         price,
-        candles[CandleChartInterval.FIFTEEN_MINUTES],
+        candles[CandleChartInterval.ONE_HOUR],
         pricePrecision,
         side,
+        exchangeInfo,
         {
           takeProfitAtrRatio: parameters.takeProfitAtrRatio.value,
           stopLossAtrRatio: parameters.stopLossAtrRatio.value,
@@ -35,12 +36,12 @@ export const config: AbstractStrategyConfig = (parameters) => [
         }
       ),
     buyStrategy: (candles) =>
-      Basics.RSI.isBuySignal(candles[CandleChartInterval.FIFTEEN_MINUTES], {
+      Basics.RSI.isBuySignal(candles[CandleChartInterval.ONE_HOUR], {
         rsiPeriod: parameters.rsiPeriod.value,
         rsiOversold: parameters.rsiOversold.value,
       }),
     sellStrategy: (candles) =>
-      Basics.RSI.isSellSignal(candles[CandleChartInterval.FIFTEEN_MINUTES], {
+      Basics.RSI.isSellSignal(candles[CandleChartInterval.ONE_HOUR], {
         rsiPeriod: parameters.rsiPeriod.value,
         rsiOverbought: parameters.rsiOverbought.value,
       }),

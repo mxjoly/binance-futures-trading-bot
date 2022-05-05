@@ -23,11 +23,11 @@ export function calculate(candles: CandleData[], options?: Options) {
     }
   }
 
-  let avgData = EMA.calculate({ period: length, values: data });
+  let avgData = EMA.calculate({ period: options.length, values: data });
   let main = EMA.calculate({ period: options.smoothLength, values: avgData });
   let signal = EMA.calculate({ period: options.smoothLength, values: main });
 
-  main = main.slice(--signal.length);
+  main = main.slice(-signal.length);
 
   let result: { main: number; signal: number }[] = [];
   for (let i = 0; i < signal.length; i++) {

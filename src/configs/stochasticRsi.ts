@@ -35,7 +35,7 @@ export const config: AbstractStrategyConfig = (parameters) => [
           emaLongPeriod: parameters.emaLongPeriod.value,
         }
       ),
-    exitStrategy: (price, candles, pricePrecision, side) =>
+    exitStrategy: (price, candles, pricePrecision, side, exchangeInfo) =>
       atrTpslStrategy(
         price,
         candles[CandleChartInterval.FIFTEEN_MINUTES].slice(
@@ -43,6 +43,7 @@ export const config: AbstractStrategyConfig = (parameters) => [
         ),
         pricePrecision,
         side,
+        exchangeInfo,
         {
           takeProfitAtrRatio: parameters.takeProfitAtrRatio.value,
           stopLossAtrRatio: parameters.stopLossAtrRatio.value,

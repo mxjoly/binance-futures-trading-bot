@@ -18,7 +18,7 @@ import generateHtmlReport from './generateReport';
 import { Counter } from '../tools/counter';
 import { calculateActivationPrice } from '../utils/trailingStop';
 import {
-  debugLastCandle,
+  debugCandle,
   debugOpenOrders,
   debugWallet,
   log,
@@ -397,7 +397,7 @@ export class BasicBackTestBot {
           const currentCandle = candlesStream[candlesStream.length - 1];
           const currentPrice = currentCandle.close;
 
-          debugLastCandle(currentCandle);
+          debugCandle(currentCandle);
 
           // Check the current trades/positions
           if (BINANCE_MODE === 'spot') {
@@ -409,7 +409,34 @@ export class BasicBackTestBot {
 
           // The loop time frames could be different of the smaller time frame for all the trading configurations
           if (dateMatchTimeFrame(currentDate, strategyConfig.loopInterval)) {
-            this.update(strategyConfig, currentPrice, candles, exchangeInfo);
+            if (BINANCE_MODE === 'spot') {
+              this.tradeWithSpot(
+                strategyConfig,
+                currentPrice,
+                candles[pair],
+                exchangeInfo
+              );
+            } else {
+              this.tradeWithFutures(
+                strategyConfig,
+                currentPrice,
+                candles[pair],
+                exchangeInfo
+              );
+              this.updatePNL(
+                strategyConfig.asset,
+                strategyConfig.base,
+                currentPrice
+              );
+            }
+          }
+
+          // Check the current trades/positions
+          if (BINANCE_MODE === 'spot') {
+            this.checkSpotOpenOrders(asset, base, candlesStream);
+          } else {
+            this.checkPositionMargin(pair, currentPrice); // If the position margin reach 0, close the position (liquidation)
+            this.checkFuturesOpenOrders(asset, base, candlesStream);
           }
         }
       });
@@ -460,33 +487,6 @@ export class BasicBackTestBot {
         this.chartLabels,
         this.chartData
       );
-    }
-  }
-
-  /**
-   * Actions that make the bot each new bars
-   */
-  private update(
-    config: StrategyConfig,
-    currentPrice: number,
-    candles: CandlesDataMultiTimeFrames,
-    exchangeInfo: ExchangeInfo
-  ) {
-    if (BINANCE_MODE === 'spot') {
-      this.tradeWithSpot(
-        config,
-        currentPrice,
-        candles[config.asset + config.base],
-        exchangeInfo
-      );
-    } else {
-      this.tradeWithFutures(
-        config,
-        currentPrice,
-        candles[config.asset + config.base],
-        exchangeInfo
-      );
-      this.updatePNL(config.asset, config.base, currentPrice);
     }
   }
 
@@ -918,7 +918,12 @@ export class BasicBackTestBot {
       this.closeOpenOrders(pair);
     }
 
-    if (isTradingSessionActive && canBuy && buyStrategy(candles)) {
+    if (
+      isTradingSessionActive &&
+      (allowPyramiding || currentOpenOrders.length === 0) &&
+      canBuy &&
+      buyStrategy(candles)
+    ) {
       const quantity = riskManagement({
         asset,
         base,
@@ -933,7 +938,13 @@ export class BasicBackTestBot {
 
       // Calculate the tp and sl
       const { takeProfits, stopLoss } = exitStrategy
-        ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
+        ? exitStrategy(
+            currentPrice,
+            candles,
+            pricePrecision,
+            OrderSide.BUY,
+            exchangeInfo
+          )
         : { takeProfits: [], stopLoss: null };
 
       // Remove the current open orders to update them
@@ -983,6 +994,7 @@ export class BasicBackTestBot {
       buyStrategy,
       sellStrategy,
       tradingSessions,
+      canOpenNewPositionToCloseLast,
       trailingStopConfig,
       allowPyramiding,
       maxPyramidingAllocation,
@@ -1006,23 +1018,38 @@ export class BasicBackTestBot {
     const hasLongPosition = position.size > 0;
     const hasShortPosition = position.size < 0;
 
+    // Open orders
+    const currentOpenOrders = this.futuresOpenOrders.filter(
+      (order) => order.pair === pair
+    );
+
     // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
       ? position.margin + assetBalance * risk <=
         assetBalance * maxPyramidingAllocation
       : false;
     const canTakeLongPosition =
-      (!allowPyramiding && !hasLongPosition) || allowPyramiding;
+      (canOpenNewPositionToCloseLast && hasShortPosition) ||
+      (!canOpenNewPositionToCloseLast &&
+        hasShortPosition &&
+        currentOpenOrders.length === 0) ||
+      (!allowPyramiding && !hasLongPosition) ||
+      (allowPyramiding && hasShortPosition && currentOpenOrders.length === 0) ||
+      (allowPyramiding &&
+        hasShortPosition &&
+        currentOpenOrders.length > 0 &&
+        canOpenNewPositionToCloseLast);
     const canTakeShortPosition =
-      (!allowPyramiding && !hasShortPosition) || allowPyramiding;
-    const canClosePosition =
-      Math.abs(currentPrice - position.entryPrice) >=
-      position.entryPrice * 0.01;
-
-    // Open orders
-    const currentOpenOrders = this.futuresOpenOrders.filter(
-      (order) => order.pair === pair
-    );
+      (canOpenNewPositionToCloseLast && hasLongPosition) ||
+      (!canOpenNewPositionToCloseLast &&
+        hasLongPosition &&
+        currentOpenOrders.length === 0) ||
+      (!allowPyramiding && !hasShortPosition) ||
+      (allowPyramiding && hasLongPosition && currentOpenOrders.length === 0) ||
+      (allowPyramiding &&
+        hasLongPosition &&
+        currentOpenOrders.length > 0 &&
+        canOpenNewPositionToCloseLast);
 
     // Currency infos
     const pricePrecision = getPricePrecision(pair, exchangeInfo);
@@ -1074,7 +1101,6 @@ export class BasicBackTestBot {
 
     if (
       (isTradingSessionActive || position.size !== 0) &&
-      (allowPyramiding || currentOpenOrders.length === 0) &&
       canTakeLongPosition &&
       buyStrategy(candles)
     ) {
@@ -1096,19 +1122,16 @@ export class BasicBackTestBot {
       // Do not add to the current position if the allocation is over the max allocation
       if (allowPyramiding && hasLongPosition && !canAddToPosition) return;
 
-      // Do not close the current short position built progressively in pyramiding mode
-      if (allowPyramiding && hasShortPosition) return;
-
-      // Do not buy now if a take profit is already set on the last short position
-      let hasTakeProfits = currentOpenOrders.some(
-        (order) => order.price < position.entryPrice
-      );
-      if (hasShortPosition && hasTakeProfits) return;
-
       // Calculate TP and SL
       let { takeProfits, stopLoss } =
         !allowPyramiding && exitStrategy
-          ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.BUY)
+          ? exitStrategy(
+              currentPrice,
+              candles,
+              pricePrecision,
+              OrderSide.BUY,
+              exchangeInfo
+            )
           : { takeProfits: [], stopLoss: null };
 
       // Calculation of the quantity for the position according to the risk management
@@ -1153,7 +1176,8 @@ export class BasicBackTestBot {
                 position.entryPrice,
                 candles,
                 pricePrecision,
-                OrderSide.BUY
+                OrderSide.BUY,
+                exchangeInfo
               )
             : { takeProfits: [], stopLoss: null };
         takeProfits = updatedTakeProfits;
@@ -1201,7 +1225,6 @@ export class BasicBackTestBot {
       }
     } else if (
       (isTradingSessionActive || position.size !== 0) &&
-      (allowPyramiding || currentOpenOrders.length === 0) &&
       canTakeShortPosition &&
       sellStrategy(candles)
     ) {
@@ -1223,18 +1246,15 @@ export class BasicBackTestBot {
       // Do not add to the current position if the allocation is over the max allocation
       if (allowPyramiding && hasShortPosition && !canAddToPosition) return;
 
-      // Do not close the current long position built progressively in pyramiding mode
-      if (allowPyramiding && hasLongPosition) return;
-
-      // Do not sell now if a take profit is already set on the last long position
-      let hasTakeProfits = currentOpenOrders.some(
-        (order) => order.price > position.entryPrice
-      );
-      if (hasLongPosition && hasTakeProfits) return;
-
       // Calculate TP and SL
       let { takeProfits, stopLoss } = exitStrategy
-        ? exitStrategy(currentPrice, candles, pricePrecision, OrderSide.SELL)
+        ? exitStrategy(
+            currentPrice,
+            candles,
+            pricePrecision,
+            OrderSide.SELL,
+            exchangeInfo
+          )
         : { takeProfits: [], stopLoss: null };
 
       // Calculation of the quantity for the position according to the risk management
@@ -1279,7 +1299,8 @@ export class BasicBackTestBot {
                 position.entryPrice,
                 candles,
                 pricePrecision,
-                OrderSide.BUY
+                OrderSide.BUY,
+                exchangeInfo
               )
             : { takeProfits: [], stopLoss: null };
         takeProfits = updatedTakeProfits;

@@ -1,4 +1,4 @@
-import { OrderSide } from 'binance-api-node';
+import { ExchangeInfo, OrderSide } from 'binance-api-node';
 import { decimalFloor } from '../../utils/math';
 import { ATR } from 'technicalindicators';
 
@@ -21,6 +21,7 @@ const strategy = (
   candles: CandleData[],
   pricePrecision: number,
   side: OrderSide,
+  exchangeInfo: ExchangeInfo,
   options = defaultOptions
 ) => {
   const atr = ATR.calculate({
