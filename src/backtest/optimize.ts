@@ -45,7 +45,7 @@ if (process.env.NODE_ENV === 'test') {
 
   let parameterNames = Object.keys(StrategyHyperParameters).map((name) => name);
   let parameterValues = Object.values(StrategyHyperParameters).map(
-    ({ optimization }) => {
+    ({ optimization, optimizationStep }) => {
       if (optimization && optimization.length > 1) {
         // A range between two value
         if (
@@ -55,7 +55,8 @@ if (process.env.NODE_ENV === 'test') {
         ) {
           let values = [];
           let [min, max] = optimization;
-          for (let i = min; i <= max; i++) {
+          let step = optimizationStep || 1;
+          for (let i = min; i <= max; i += step) {
             values.push(i);
           }
           return values;

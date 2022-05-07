@@ -1,5 +1,5 @@
 import { ExchangeInfo, OrderSide } from 'binance-api-node';
-import { decimalFloor } from '../../utils/math';
+import { decimalCeil, decimalFloor } from '../../utils/math';
 
 interface Options {
   profitTargets?: BuySellProperty[];
@@ -24,23 +24,20 @@ const strategy = (
         .map(({ deltaPercentage, quantityPercentage }) => {
           if (deltaPercentage)
             return {
-              price: decimalFloor(
+              price:
                 side === OrderSide.BUY
-                  ? price * (1 + deltaPercentage)
-                  : price * (1 - deltaPercentage),
-                pricePrecision
-              ),
-              quantityPercentage: quantityPercentage,
+                  ? decimalFloor(price * (1 + deltaPercentage), pricePrecision)
+                  : decimalCeil(price * (1 - deltaPercentage), pricePrecision),
+              quantityPercentage,
             };
         })
     : [];
 
-  let stopLoss = decimalFloor(
-    side === OrderSide.BUY
-      ? price * (1 - options.lossTolerance)
-      : price * (1 + options.lossTolerance),
-    pricePrecision
-  );
+  let stopLoss = options.lossTolerance
+    ? side === OrderSide.BUY
+      ? decimalCeil(price * (1 - options.lossTolerance), pricePrecision)
+      : decimalFloor(price * (1 + options.lossTolerance), pricePrecision)
+    : null;
 
   return { takeProfits, stopLoss };
 };

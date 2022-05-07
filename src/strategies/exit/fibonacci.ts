@@ -1,6 +1,6 @@
 import { ExchangeInfo, OrderSide } from 'binance-api-node';
 import { Fibonacci } from '../../indicators';
-import { decimalFloor } from '../../utils/math';
+import { decimalCeil, decimalFloor } from '../../utils/math';
 
 interface Options {
   profitTargets?: BuySellProperty[];
@@ -61,17 +61,24 @@ const strategy = (
             profitTarget.fibonacciLevel && !profitTarget.fibonacciLevel
         )
         .map(({ fibonacciLevel, quantityPercentage }) => ({
-          price: decimalFloor(
+          price:
             side === OrderSide.BUY
-              ? getPriceFromFibonacciLevels(fibonacciLevel, levelsInUpTrend)
-              : getPriceFromFibonacciLevels(fibonacciLevel, levelsInDownTrend),
-            pricePrecision
-          ),
+              ? decimalFloor(
+                  getPriceFromFibonacciLevels(fibonacciLevel, levelsInUpTrend),
+                  pricePrecision
+                )
+              : decimalCeil(
+                  getPriceFromFibonacciLevels(
+                    fibonacciLevel,
+                    levelsInDownTrend
+                  ),
+                  pricePrecision
+                ),
           quantityPercentage,
         }))
     : [];
 
-  return { takeProfits, stopLosses: [] };
+  return { takeProfits, stopLoss: null };
 };
 
 export default strategy;

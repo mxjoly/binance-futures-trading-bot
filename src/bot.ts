@@ -1,24 +1,23 @@
 import {
-  CandleChartInterval,
   ExchangeInfo,
+  FuturesAccountInfoResult,
   OrderSide,
   OrderType,
 } from 'binance-api-node';
 import { decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
-import { binanceClient, BINANCE_MODE } from './init';
-import {
-  loadCandlesFromAPI,
-  loadCandlesMultiTimeFramesFromAPI,
-} from './utils/loadCandleData';
+import { binanceClient } from './init';
+import { loadCandlesMultiTimeFramesFromAPI } from './utils/loadCandleData';
 import { Counter } from './tools/counter';
 import { calculateActivationPrice } from './utils/trailingStop';
 import { isOnTradingSession } from './utils/tradingSession';
+import { sendTelegramMessage } from './telegram';
 import {
   getPricePrecision,
   getQuantityPrecision,
   isValidQuantity,
 } from './utils/currencyInfo';
+import dayjs from 'dayjs';
 
 // ====================================================================== //
 
@@ -28,41 +27,52 @@ import {
 export class Bot {
   private strategyConfigs: StrategyConfig[];
 
+  private exchangeInfo: ExchangeInfo;
+  private accountInfo: FuturesAccountInfoResult;
+  private hasOpenPosition: { [pair: string]: boolean };
+
   // Counter to fix the max duration of each trade
   private counters: { [symbol: string]: Counter };
+
+  private currentDay: string;
+  private lastDayBalance: number;
+  private currentBalance: number; // temp balance
 
   constructor(tradeConfigs: StrategyConfig[]) {
     this.strategyConfigs = tradeConfigs;
     this.counters = {};
+    this.hasOpenPosition = {};
+    this.currentDay = dayjs(Date.now()).format('DD/MM/YYYY');
   }
 
   /**
    * Prepare the account
    */
-  public async prepare() {
-    if (BINANCE_MODE === 'futures') {
-      // Set the margin type and initial leverage for the futures
-      this.strategyConfigs.forEach((tradeConfig) => {
-        const pair = tradeConfig.asset + tradeConfig.base;
+  public prepare() {
+    // Set the margin type and initial leverage for the futures
+    this.strategyConfigs.forEach((tradeConfig) => {
+      const pair = tradeConfig.asset + tradeConfig.base;
 
-        binanceClient
-          .futuresLeverage({
-            symbol: pair,
-            leverage: tradeConfig.leverage || 1,
-          })
-          .then(() =>
-            log(`Leverage for ${pair} is set to ${tradeConfig.leverage || 1}`)
-          )
-          .catch(error);
+      binanceClient
+        .futuresLeverage({
+          symbol: pair,
+          leverage: tradeConfig.leverage || 1,
+        })
+        .then(() =>
+          log(`Leverage for ${pair} is set to ${tradeConfig.leverage || 1}`)
+        )
+        .catch(error);
 
-        binanceClient
-          .futuresMarginType({
-            symbol: pair,
-            marginType: 'ISOLATED',
-          })
-          .catch(error);
-      });
-    }
+      binanceClient
+        .futuresMarginType({
+          symbol: pair,
+          marginType: 'ISOLATED',
+        })
+        .catch(error);
+
+      // No position is open at the launch
+      this.hasOpenPosition[pair] = false;
+    });
 
     // Initialize the counters
     this.strategyConfigs.forEach(({ asset, base, maxTradeDuration }) => {
@@ -80,305 +90,68 @@ export class Bot {
     );
 
     // Get the exchange info
-    const exchangeInfo =
-      BINANCE_MODE === 'spot'
-        ? await binanceClient.exchangeInfo()
-        : await binanceClient.futuresExchangeInfo();
+    this.exchangeInfo = await binanceClient.futuresExchangeInfo();
 
-    loadCandlesFromAPI(
-      'BTCUSDT',
-      CandleChartInterval.ONE_HOUR,
-      binanceClient
-    ).then((candles) => {
-      binanceClient.exchangeInfo().then((info) => {
-        let r = info.symbols.filter((f) => f.symbol === 'BTCUSDT')[0];
-        let tickSize =
-          // @ts-ignore
-          r.filters.filter((f) => f.filterType === 'PRICE_FILTER')[0].tickSize;
+    // Store account information to local
+    this.lastDayBalance = Number(
+      (await binanceClient.futuresAccountBalance()).find(
+        (b) => b.asset === 'USDT'
+      ).balance
+    );
+    this.currentBalance = this.lastDayBalance;
 
-        let entry = 38648.9;
-        let sorti = (entry * (1 + 0.009) - entry) / tickSize / 100;
-
-        console.log(entry + sorti);
-      });
-    });
-
-    return;
-
-    // Socket
-    const getCandles =
-      BINANCE_MODE === 'spot'
-        ? binanceClient.ws.candles
-        : binanceClient.ws.futuresCandles;
-
+    // Main
     this.strategyConfigs.forEach((strategyConfig) => {
       const pair = strategyConfig.asset + strategyConfig.base;
       log(`The bot trades the pair ${pair}`);
 
-      getCandles(pair, strategyConfig.loopInterval, (candle) => {
-        if (candle.isFinal) {
-          // Load the candle data for each the time frames that will be use on the strategy
-          loadCandlesMultiTimeFramesFromAPI(strategyConfig, binanceClient).then(
-            (candlesMultiTimeFrames) => {
-              if (BINANCE_MODE === 'spot') {
-                this.tradeWithSpot(
-                  strategyConfig,
-                  Number(candle.close),
-                  candlesMultiTimeFrames,
-                  exchangeInfo
-                );
-              } else {
-                this.tradeWithFutures(
-                  strategyConfig,
-                  Number(candle.close),
-                  candlesMultiTimeFrames,
-                  exchangeInfo
-                );
-              }
-            }
+      binanceClient.ws.futuresCandles(
+        pair,
+        strategyConfig.loopInterval,
+        async (candle) => {
+          if (candle.isFinal) {
+            // Check if a previous trade has been closed
+            this.syncOpenPosition(pair);
+
+            // Load the candle data for each the time frames that will be use on the strategy
+            loadCandlesMultiTimeFramesFromAPI(
+              strategyConfig,
+              binanceClient
+            ).then((candlesMultiTimeFrames) => {
+              this.trade(
+                strategyConfig,
+                Number(candle.close),
+                candlesMultiTimeFrames
+              ).then(() => {
+                // Check if a previous trade has been closed
+                this.syncOpenPosition(pair);
+              });
+            });
+          }
+
+          // Day change
+          let candleDate = dayjs(new Date(candle.closeTime)).format(
+            'DD/MM/YYYY'
           );
+          if (candleDate !== this.currentDay) {
+            this.sendDailyResults();
+            this.currentDay = candleDate;
+          }
         }
-      });
+      );
     });
   }
 
   /**
-   * Main spot function (buy/sell, open/close orders)
+   * Main function (long/short, open/close orders)
    * @param strategyConfig
    * @param currentPrice
    * @param candles
-   * @param exchangeInfo
    */
-  private async tradeWithSpot(
+  private async trade(
     strategyConfig: StrategyConfig,
     currentPrice: number,
-    candles: CandlesDataMultiTimeFrames,
-    exchangeInfo: ExchangeInfo
-  ) {
-    const {
-      asset,
-      base,
-      risk,
-      buyStrategy,
-      sellStrategy,
-      exitStrategy,
-      riskManagement,
-      tradingSessions,
-      allowPyramiding,
-      maxPyramidingAllocation,
-      loopInterval,
-      maxTradeDuration,
-    } = strategyConfig;
-    const pair = asset + base;
-
-    // Balance information
-    const { balances } = await binanceClient.accountInfo();
-    const assetBalance = Number(
-      balances.find((balance) => balance.asset === asset).free
-    );
-    const baseBalance = Number(
-      balances.find((balance) => balance.asset === base).free
-    );
-
-    // Open orders
-    const currentOpenOrders = await binanceClient.openOrders({
-      symbol: pair,
-    });
-
-    // Conditions
-    const canBuy =
-      !allowPyramiding ||
-      (allowPyramiding &&
-        assetBalance * currentPrice <= baseBalance * maxPyramidingAllocation);
-
-    // Check if we are in the trading sessions
-    const isTradingSessionActive = isOnTradingSession(
-      candles[loopInterval][candles[loopInterval].length - 1].closeTime,
-      tradingSessions
-    );
-
-    // Precisions
-    const pricePrecision = getPricePrecision(pair, exchangeInfo);
-    const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
-
-    // The current trade is too long
-    if (this.counters[pair] && maxTradeDuration && assetBalance > 0) {
-      this.counters[pair].decrement();
-      if (this.counters[pair].getValue() == 0) {
-        binanceClient
-          .order({
-            symbol: pair,
-            type: OrderType.MARKET,
-            quantity: String(assetBalance),
-            side: OrderSide.SELL,
-          })
-          .then(() => {
-            this.counters[pair].reset();
-            this.closeOpenOrders(pair);
-            log(
-              `The trade on ${pair} is longer that the maximum authorized duration. Trade has been closed.`
-            );
-          })
-          .catch(error);
-        return;
-      }
-    }
-
-    // Prevent remaining open orders
-    if (assetBalance === 0 && currentOpenOrders.length > 0) {
-      this.closeOpenOrders(pair);
-    }
-
-    // Reset the counter if a previous trade close a the position
-    if (
-      this.counters[pair] &&
-      maxTradeDuration &&
-      assetBalance === 0 &&
-      this.counters[pair].getValue() < maxTradeDuration
-    ) {
-      this.counters[pair].reset();
-    }
-
-    if (assetBalance > 0 && sellStrategy(candles)) {
-      binanceClient
-        .order({
-          side: OrderSide.SELL,
-          type: OrderType.MARKET,
-          symbol: pair,
-          quantity: String(assetBalance),
-        })
-        .then(() => {
-          this.closeOpenOrders(pair);
-          const totalValue = currentPrice * Number(assetBalance);
-          log(
-            `Sell ${assetBalance}${asset} at the price ${currentPrice} for ${totalValue}${base}.`
-          );
-        })
-        .catch(error);
-    } else if (
-      isTradingSessionActive &&
-      (allowPyramiding || currentOpenOrders.length === 0) &&
-      canBuy &&
-      buyStrategy(candles)
-    ) {
-      const quantity = riskManagement({
-        asset,
-        base,
-        balance: baseBalance,
-        risk,
-        enterPrice: currentPrice,
-        exchangeInfo,
-      });
-
-      // Buy market order
-      binanceClient
-        .order({
-          side: OrderSide.BUY,
-          type: OrderType.MARKET,
-          symbol: pair,
-          quantity: String(quantity),
-
-          timeInForce: 'GTC',
-        })
-        .then(({ price: orderPrice }) => {
-          // Calculate the tp and sl
-          const { takeProfits, stopLoss } = exitStrategy
-            ? exitStrategy(
-                currentPrice,
-                candles,
-                pricePrecision,
-                OrderSide.BUY,
-                exchangeInfo
-              )
-            : { takeProfits: [], stopLoss: null };
-
-          // Remove the current open orders to update them
-          if (currentOpenOrders.length > 0) this.closeOpenOrders(pair);
-
-          return { orderPrice, takeProfits, stopLoss };
-        })
-        .then(({ orderPrice, stopLoss, takeProfits }) => {
-          if (takeProfits.length === 1 && stopLoss) {
-            // Sell oco order as TP/SL
-            binanceClient
-              .orderOco({
-                side: OrderSide.SELL,
-                symbol: pair,
-                price: String(takeProfits[0].price),
-                stopPrice: String(stopLoss),
-                stopLimitPrice: String(stopLoss),
-                quantity: String(
-                  decimalFloor(
-                    quantity * takeProfits[0].quantityPercentage,
-                    quantityPrecision
-                  )
-                ),
-              })
-              .catch(error);
-          } else {
-            if (takeProfits.length > 0) {
-              // Create all the take profit targets
-              takeProfits.forEach(({ price, quantityPercentage }) => {
-                // Sell limit order as TP
-                binanceClient
-                  .order({
-                    side: OrderSide.SELL,
-                    type: OrderType.TAKE_PROFIT_LIMIT,
-                    symbol: pair,
-                    stopPrice: String(price),
-                    price: String(price),
-                    quantity: String(
-                      decimalFloor(
-                        quantity * quantityPercentage,
-                        quantityPrecision
-                      )
-                    ),
-                  })
-                  .catch(error);
-              });
-            }
-
-            if (stopLoss) {
-              // Sell limit order as SL
-              binanceClient
-                .order({
-                  side: OrderSide.SELL,
-                  type: OrderType.STOP_LOSS_LIMIT,
-                  symbol: pair,
-                  stopPrice: String(stopLoss),
-                  price: String(stopLoss),
-                  quantity: String(quantity),
-                })
-                .catch(error);
-            }
-          }
-
-          logBuySellExecutionOrder(
-            OrderSide.BUY,
-            asset,
-            base,
-            Number(orderPrice),
-            quantity,
-            takeProfits,
-            stopLoss
-          );
-        })
-        .catch(error);
-    }
-  }
-
-  /**
-   * Main futures function (long/short, open/close orders)
-   * @param tradeConfig
-   * @param currentPrice
-   * @param candles
-   * @param exchangeInfo
-   */
-  private async tradeWithFutures(
-    strategyConfig: StrategyConfig,
-    currentPrice: number,
-    candles: CandlesDataMultiTimeFrames,
-    exchangeInfo: ExchangeInfo
+    candles: CandlesDataMultiTimeFrames
   ) {
     const {
       asset,
@@ -400,18 +173,17 @@ export class Bot {
     } = strategyConfig;
     const pair = asset + base;
 
-    // Check the trend
-    const useLongPosition = trendFilter ? trendFilter(candles) === 1 : true;
-    const useShortPosition = trendFilter ? trendFilter(candles) === -1 : true;
+    // Update the account info
+    this.accountInfo = await binanceClient.futuresAccountInfo();
 
     // Balance information
-    const balances = await binanceClient.futuresAccountBalance();
-    const { balance: assetBalance, availableBalance } = balances.find(
+    const balances = this.accountInfo.assets;
+    const { walletBalance: assetBalance, availableBalance } = balances.find(
       (balance) => balance.asset === base
     );
 
     // Position information
-    const { positions } = await binanceClient.futuresAccountInfo();
+    const positions = this.accountInfo.positions;
     const position = positions.find((position) => position.symbol === pair);
     const hasLongPosition = Number(position.positionAmt) > 0;
     const hasShortPosition = Number(position.positionAmt) < 0;
@@ -422,6 +194,10 @@ export class Bot {
     const currentOpenOrders = await binanceClient.futuresOpenOrders({
       symbol: pair,
     });
+
+    // Check the trend
+    const useLongPosition = trendFilter ? trendFilter(candles) === 1 : true;
+    const useShortPosition = trendFilter ? trendFilter(candles) === -1 : true;
 
     // Conditions to take or not a position
     const canAddToPosition = allowPyramiding
@@ -452,8 +228,8 @@ export class Bot {
         canOpenNewPositionToCloseLast);
 
     // Precision
-    const pricePrecision = getPricePrecision(pair, exchangeInfo);
-    const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
+    const pricePrecision = getPricePrecision(pair, this.exchangeInfo);
+    const quantityPrecision = getQuantityPrecision(pair, this.exchangeInfo);
 
     // Check if we are in the trading sessions
     const isTradingSessionActive = isOnTradingSession(
@@ -477,10 +253,8 @@ export class Bot {
             side: hasLongPosition ? OrderSide.SELL : OrderSide.BUY,
           })
           .then(() => {
-            this.counters[pair].reset();
-            this.closeOpenOrders(pair);
             log(
-              `The position on ${pair} is longer that the maximum authorized duration. Position has been closed.`
+              `The position on ${pair} is longer that the maximum authorized duration.`
             );
           })
           .catch(error);
@@ -488,12 +262,7 @@ export class Bot {
       }
     }
 
-    // Prevent remaining open orders when all the take profit or a stop loss has been filled
-    if (!hasLongPosition && !hasShortPosition && currentOpenOrders.length > 0) {
-      this.closeOpenOrders(pair);
-    }
-
-    // Reset the counter if a previous trade close a the position
+    // Reset the counter if a previous trade close the position
     if (
       maxTradeDuration &&
       !hasLongPosition &&
@@ -517,12 +286,7 @@ export class Bot {
             symbol: pair,
             quantity: String(positionSize),
           })
-          .then(() => {
-            this.closeOpenOrders(pair);
-            log(
-              `Close the short position on ${pair}. PNL: ${position.unrealizedProfit}`
-            );
-          });
+          .catch(error);
         return;
       }
 
@@ -539,7 +303,7 @@ export class Bot {
             candles,
             pricePrecision,
             OrderSide.BUY,
-            exchangeInfo
+            this.exchangeInfo
           )
         : { takeProfits: [], stopLoss: null };
 
@@ -553,7 +317,7 @@ export class Bot {
         risk,
         enterPrice: currentPrice,
         stopLossPrice: stopLoss,
-        exchangeInfo,
+        exchangeInfo: this.exchangeInfo,
       });
 
       // Quantity to add to close the previous position
@@ -561,7 +325,11 @@ export class Bot {
 
       // To close the previous short position
       if (
-        isValidQuantity(quantity + previousPositionQuantity, pair, exchangeInfo)
+        isValidQuantity(
+          quantity + previousPositionQuantity,
+          pair,
+          this.exchangeInfo
+        )
       ) {
         quantity += previousPositionQuantity;
       } else {
@@ -596,7 +364,7 @@ export class Bot {
                     candles,
                     pricePrecision,
                     OrderSide.BUY,
-                    exchangeInfo
+                    this.exchangeInfo
                   )
                 : { takeProfits: [], stopLoss: null };
             takeProfits = updatedTakeProfits;
@@ -611,7 +379,7 @@ export class Bot {
                   side: OrderSide.SELL,
                   type: OrderType.LIMIT,
                   symbol: pair,
-                  price: price,
+                  price,
                   quantity: String(
                     decimalFloor(
                       Number(positionTotalSize) * quantityPercentage,
@@ -671,6 +439,9 @@ export class Bot {
               takeProfits,
               stopLoss
             );
+            sendTelegramMessage(
+              `Long position open on ${pair} at ${currentPrice} with ${quantity}${asset} 😈`
+            );
           }
         })
         .catch(error);
@@ -688,12 +459,7 @@ export class Bot {
             symbol: pair,
             quantity: String(positionSize),
           })
-          .then(() => {
-            this.closeOpenOrders(pair);
-            log(
-              `Close the long position on ${pair}. PNL: ${position.unrealizedProfit}`
-            );
-          });
+          .catch(error);
         return;
       }
 
@@ -710,7 +476,7 @@ export class Bot {
             candles,
             pricePrecision,
             OrderSide.SELL,
-            exchangeInfo
+            this.exchangeInfo
           )
         : { takeProfits: [], stopLoss: null };
 
@@ -724,7 +490,7 @@ export class Bot {
         risk,
         enterPrice: currentPrice,
         stopLossPrice: stopLoss,
-        exchangeInfo,
+        exchangeInfo: this.exchangeInfo,
       });
 
       // Quantity to add to close the previous position
@@ -732,7 +498,11 @@ export class Bot {
 
       // To close the previous long position
       if (
-        isValidQuantity(quantity + previousPositionQuantity, pair, exchangeInfo)
+        isValidQuantity(
+          quantity + previousPositionQuantity,
+          pair,
+          this.exchangeInfo
+        )
       ) {
         quantity += previousPositionQuantity;
       } else {
@@ -767,7 +537,7 @@ export class Bot {
                     candles,
                     pricePrecision,
                     OrderSide.BUY,
-                    exchangeInfo
+                    this.exchangeInfo
                   )
                 : { takeProfits: [], stopLoss: null };
             takeProfits = updatedTakeProfits;
@@ -842,9 +612,31 @@ export class Bot {
               takeProfits,
               stopLoss
             );
+            sendTelegramMessage(
+              `Short position open on ${pair} at ${currentPrice} with ${quantity}${asset} 😈`
+            );
           }
         })
         .catch(error);
+    }
+  }
+
+  /**
+   * Check if a position has been closed
+   * @param pair
+   */
+  private async syncOpenPosition(pair: string) {
+    this.accountInfo = await binanceClient.futuresAccountInfo();
+    const position = this.accountInfo.positions.find(
+      (position) => position.symbol === pair
+    );
+    const hasOpenPosition = Number(position.positionAmt) !== 0;
+
+    if (this.hasOpenPosition[pair] && !hasOpenPosition) {
+      this.hasOpenPosition[pair] = false;
+      this.sendTradeResult(pair);
+      this.closeOpenOrders(pair);
+      if (this.counters[pair]) this.counters[pair].reset();
     }
   }
 
@@ -854,17 +646,63 @@ export class Bot {
    */
   private closeOpenOrders(pair: string) {
     return new Promise<void>((resolve, reject) => {
-      const cancel =
-        BINANCE_MODE === 'spot'
-          ? binanceClient.cancelOpenOrders
-          : binanceClient.futuresCancelAllOpenOrders;
-
-      cancel({ symbol: pair })
+      binanceClient
+        .futuresCancelAllOpenOrders({ symbol: pair })
         .then(() => {
           log(`Close all open orders for the pair ${pair}`);
           resolve();
         })
         .catch(reject);
     });
+  }
+
+  private sendTradeResult(pair: string) {
+    // Profit percent on the total wallet balance
+    let result =
+      ((Number(this.accountInfo.totalWalletBalance) - this.currentBalance) /
+        this.currentBalance) *
+      100;
+
+    log(
+      `Trade closed on ${pair}: ${result > 0 ? `+${result}% ` : `${result}%`}`
+    );
+    sendTelegramMessage(
+      `Trade closed on ${pair}: ${result > 0 ? `+${result}% ` : `${result}%`} ${
+        result >= 0 ? '🟢' : '🔴'
+      }`
+    );
+  }
+
+  /**
+   * Send the results of the day to the telegram channel
+   */
+  private sendDailyResults() {
+    // Send message for the performance of the day
+    let performance = decimalFloor(
+      ((this.currentBalance - this.lastDayBalance) / this.lastDayBalance) * 100,
+      2
+    );
+
+    let emoji =
+      performance > 30
+        ? '🤩'
+        : performance > 20
+        ? '🤑'
+        : performance > 10
+        ? '😍'
+        : performance > 0
+        ? '🥰'
+        : performance > -10
+        ? '😢'
+        : performance > -20
+        ? '😰'
+        : '😭';
+
+    let message =
+      `RESULTATS DU ${this.currentDay}` +
+      '\n' +
+      `${performance > 0 ? `+${performance}%` : `${performance}%`} ${emoji}`;
+
+    sendTelegramMessage(message);
   }
 }

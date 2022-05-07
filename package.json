@@ -26,6 +26,7 @@
     "dayjs": "^1.11.1",
     "dotenv": "^16.0.0",
     "node-json-db": "^1.5.0",
+    "node-telegram-bot-api": "^0.57.0",
     "nodemon": "^2.0.15",
     "object-hash": "^3.0.0",
     "safe-require": "^1.0.4",
@@ -33,6 +34,7 @@
     "winston": "^3.7.2"
   },
   "devDependencies": {
+    "@types/node-telegram-bot-api": "^0.57.0",
     "@types/nodemon": "^1.19.1",
     "@types/object-hash": "^2.2.1",
     "cross-env": "^7.0.3",

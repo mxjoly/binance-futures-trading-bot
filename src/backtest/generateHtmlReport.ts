@@ -36,9 +36,9 @@ export default function (
           h1 {
             margin-top: 10px;
           }
-          p {
-            margin-top: 30px;
-            margin-bottom: 30px;
+          #parameters {
+            max-width: 50%;
+            margin: 30px auto;
           }
           .report {
             display: flex;
@@ -72,7 +72,9 @@ export default function (
         <h1>Strategy Report</h1>
         <h3>${strategyName}</h3>
 
-        <p>Parameters: { ${Object.entries(strategyHyperParameters)
+        <p id="parameters">Parameters: { ${Object.entries(
+          strategyHyperParameters
+        )
           .map(([name, config]) => `<b>${name}:</b> ${config.value}`)
           .join(', ')} }</p>
 

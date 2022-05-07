@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import csv from 'csv-parser';
 import { Binance, CandleChartInterval } from 'binance-api-node';
-import { BINANCE_MODE } from '../init';
 import dayjs from 'dayjs';
 
 /**
@@ -61,12 +60,8 @@ export function loadCandlesFromAPI(
   onlyFinalCandle = true
 ) {
   return new Promise<CandleData[]>((resolve, reject) => {
-    const getCandles =
-      BINANCE_MODE === 'spot'
-        ? binanceClient.candles
-        : binanceClient.futuresCandles;
-
-    getCandles({ symbol, interval })
+    binanceClient
+      .futuresCandles({ symbol, interval })
       .then((candles) => {
         resolve(
           candles

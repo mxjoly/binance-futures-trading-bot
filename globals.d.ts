@@ -1,5 +1,3 @@
-type BinanceMode = 'spot' | 'futures';
-
 type AbstractStrategyConfig = (
   hyperParameters: HyperParameters
 ) => StrategyConfig[];
@@ -23,7 +21,6 @@ interface StrategyConfig {
   exitStrategy?: ExitStrategy; // Placement of take profits and stop loss
   trendFilter?: TrendFilter; // Trend filter - If the trend is up, only take long, else take only short
   riskManagement: RiskManagement;
-  tradeManagement?: TradeManagement; // Manage the take profits and stop loss during a trade
 }
 
 type CandlesDataMultiTimeFrames = {
@@ -48,6 +45,7 @@ type HyperParameters = {
 
 type HyperParameter = {
   value: any /* The value of parameter */;
+  optimizationStep?: number;
   optimization?:
     | [number, number] /* A range between two value */
     | number[] // Specified number value
@@ -74,7 +72,7 @@ type ExitStrategy = (
   side: OrderSide, // type from binance api lib
   exchangeInfo: ExchangeInfo
 ) => {
-  takeProfits: TakeProfit[];
+  takeProfits?: TakeProfit[];
   stopLoss?: number;
 };
 
@@ -95,9 +93,6 @@ interface RiskManagementOptions {
   exchangeInfo: ExchangeInfo;
 }
 type RiskManagement = (options: RiskManagementOptions) => number; // Return the size of the position
-
-// type QueryOrderResult from the library binance-api-node
-type TradeManagement = (orderInfos: QueryOrderResult[]) => void;
 
 type TradingSession = {
   day: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 (Sunday) to 6 (Saturday)

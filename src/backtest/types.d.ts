@@ -5,24 +5,7 @@ interface Database {
   strategyResults: StrategyResults;
 }
 
-interface MockAccount {
-  wallet: Wallet;
-  futuresWallet: FuturesWallet;
-  openOrders: OpenOrder[];
-  futuresOpenOrders: FuturesOpenOrder[];
-}
-
 interface Wallet {
-  balances: Balance[];
-}
-
-interface Balance {
-  symbol: string;
-  quantity: number;
-  avgPrice: number;
-}
-
-interface FuturesWallet {
   availableBalance: number;
   totalWalletBalance: number;
   totalUnrealizedProfit: number;
@@ -45,16 +28,7 @@ interface OpenOrder {
   price: number;
   quantity: number;
   side: 'BUY' | 'SELL';
-  type: 'MARKET' | 'LIMIT';
-}
-
-interface FuturesOpenOrder {
-  id: string;
-  pair: string;
-  price: number;
-  quantity: number;
-  positionSide: 'LONG' | 'SHORT';
-  type: 'MARKET' | 'LIMIT' | 'TRAILING_STOP_MARKET';
+  type: 'MARKET' | 'LIMIT' | 'STOP' | 'TRAILING_STOP_MARKET';
   trailingStop?: {
     callbackRate: number; // % between 0-1
     activation: { changePercentage?: number; percentageToTP: number }; // % between 0-1

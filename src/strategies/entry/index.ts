@@ -15,7 +15,9 @@ export const Basics = {
 };
 
 import * as BITCOIN_SNIPER_V1 from './complex/bitcoinSniperV1';
+import * as BITCOIN_V1 from './complex/bitcoinV1';
 
 export const Complex = {
+  BITCOIN_V1,
   BITCOIN_SNIPER_V1,
 };

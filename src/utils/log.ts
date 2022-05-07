@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import chalk from 'chalk';
 import { OrderSide } from 'binance-api-node';
-import { logger, BINANCE_MODE } from '../init';
+import { logger } from '../init';
 
 /**
  * Main function add a log
@@ -10,8 +10,8 @@ import { logger, BINANCE_MODE } from '../init';
  */
 export function log(message: string, date = new Date()) {
   const logDate = dayjs(date).format('YYYY-MM-DD HH:mm:ss');
-  logger.info(`${logDate} : @${BINANCE_MODE} > ${message}`);
-  console.log(`${chalk.blue(logDate)} : @${BINANCE_MODE} > ${message}`);
+  logger.info(`${logDate} : ${message}`);
+  console.log(`${chalk.blue(logDate)} : ${message}`);
 }
 
 /**
@@ -21,8 +21,8 @@ export function log(message: string, date = new Date()) {
  */
 export function error(message: string, date = new Date()) {
   const logDate = dayjs(date).format('YYYY-MM-DD HH:mm:ss');
-  logger.warn(`${logDate} : @${BINANCE_MODE} > ${message}`);
-  console.log(`${chalk.blue(logDate)} : @${BINANCE_MODE} > ${message}`);
+  logger.warn(`${logDate} : ${message}`);
+  console.log(`${chalk.blue(logDate)} : ${message}`);
 }
 
 /**
@@ -44,14 +44,9 @@ export function logBuySellExecutionOrder(
   takeProfits: { price: number; quantityPercentage: number }[],
   stopLoss: number
 ) {
-  let introPhrase =
-    BINANCE_MODE === 'spot'
-      ? `${
-          orderSide === OrderSide.BUY ? 'Buy' : 'Sell'
-        } ${quantity}${asset} at the price ${price}${base}`
-      : `Open a ${
-          orderSide === OrderSide.BUY ? 'long' : 'short'
-        } position on ${asset}${base} at the price ${price} with a size of ${quantity}${asset}`;
+  let introPhrase = `Open a ${
+    orderSide === OrderSide.BUY ? 'long' : 'short'
+  } position on ${asset}${base} at the price ${price} with a size of ${quantity}${asset}`;
 
   let tp = `TP: ${
     takeProfits.length > 0

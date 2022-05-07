@@ -1,5 +1,5 @@
 import { ExchangeInfo, OrderSide } from 'binance-api-node';
-import { decimalFloor } from '../../utils/math';
+import { decimalCeil, decimalFloor } from '../../utils/math';
 import { ATR } from 'technicalindicators';
 
 interface Options {
@@ -31,41 +31,49 @@ const strategy = (
     high: candles.map((c) => c.high),
   });
 
-  return {
-    takeProfits: options.takeProfitAtrRatio
-      ? [
-          {
-            price: decimalFloor(
-              side === OrderSide.BUY
-                ? price +
-                    options.takeProfitAtrRatio *
-                      atr[atr.length - 1] *
-                      options.atrMultiplier
-                : price -
+  let takeProfits = options.takeProfitAtrRatio
+    ? [
+        {
+          price:
+            side === OrderSide.BUY
+              ? decimalFloor(
+                  price +
                     options.takeProfitAtrRatio *
                       atr[atr.length - 1] *
                       options.atrMultiplier,
-              pricePrecision
-            ),
-            quantityPercentage: 1,
-          },
-        ]
-      : [],
-    stopLoss: options.stopLossAtrRatio
-      ? decimalFloor(
-          side === OrderSide.BUY
-            ? price -
-                options.stopLossAtrRatio *
-                  atr[atr.length - 1] *
-                  options.atrMultiplier
-            : price +
-                options.stopLossAtrRatio *
-                  atr[atr.length - 1] *
-                  options.atrMultiplier,
+                  pricePrecision
+                )
+              : decimalCeil(
+                  price -
+                    options.takeProfitAtrRatio *
+                      atr[atr.length - 1] *
+                      options.atrMultiplier,
+                  pricePrecision
+                ),
+          quantityPercentage: 1,
+        },
+      ]
+    : [];
+
+  let stopLoss = options.stopLossAtrRatio
+    ? side === OrderSide.BUY
+      ? decimalCeil(
+          price -
+            options.stopLossAtrRatio *
+              atr[atr.length - 1] *
+              options.atrMultiplier,
           pricePrecision
         )
-      : null,
-  };
+      : decimalFloor(
+          price +
+            options.stopLossAtrRatio *
+              atr[atr.length - 1] *
+              options.atrMultiplier,
+          pricePrecision
+        )
+    : null;
+
+  return { takeProfits, stopLoss };
 };
 
 export default strategy;

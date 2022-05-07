@@ -17,6 +17,11 @@ if (!BotConfig) {
 // Initialize environment variables
 require('dotenv').config();
 
+if (process.env.NODE_ENV === 'production') {
+  // Init the Telegram bot
+  require('./telegram');
+}
+
 // Initialize the plugins of dayjs
 initializePlugins();
 
@@ -73,25 +78,12 @@ export const binanceClient = Binance(
         apiSecret: process.env.BINANCE_PRIVATE_KEY,
       }
     : {
-        apiKey:
-          // @ts-ignore
-          BINANCE_MODE === 'spot'
-            ? process.env.BINANCE_SPOT_TESTNET_PUBLIC_KEY
-            : process.env.BINANCE_FUTURES_TESTNET_PUBLIC_KEY,
-        apiSecret:
-          // @ts-ignore
-          BINANCE_MODE === 'spot'
-            ? process.env.BINANCE_SPOT_TESTNET_PRIVATE_KEY
-            : process.env.BINANCE_FUTURES_TESTNET_PRIVATE_KEY,
-        httpBase: 'https://testnet.binance.vision',
-        wsBase: 'wss://testnet.binance.vision/ws',
+        apiKey: process.env.BINANCE_FUTURES_TESTNET_PUBLIC_KEY,
+        apiSecret: process.env.BINANCE_FUTURES_TESTNET_PRIVATE_KEY,
         httpFutures: 'https://testnet.binancefuture.com',
         wsFutures: 'wss://fstream.binance.com/ws',
       }
 );
-
-// The bot will trade with the binance mode:
-export const BINANCE_MODE: BinanceMode = BotConfig['mode'];
 
 // The maximum number of candles to be loaded by the binance api
 export const MAX_LOADED_CANDLE_LENGTH_API = 499;
