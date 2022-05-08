@@ -21,8 +21,11 @@ export default function (
   lineData: number[]
 ) {
   let parametersHtml = `${Object.entries(strategyHyperParameters)
-    .map(([name, config]) => `<b>${name}:</b> ${config.value}`)
-    .join('<br>')}`;
+    .map(
+      ([name, config]) =>
+        `<tr><th><b>${name}</b></th><th>${config.value}</th></tr>`
+    )
+    .join('')}`;
 
   let historicHtml = tradesHistoric
     .reverse()
@@ -73,6 +76,10 @@ export default function (
           #parameters {
             margin: 30px auto;
           }
+          #parameters th {
+            padding: 0px 10px;
+            min-width: 100px;
+          }
           .report {
             display: flex;
             flex-direction: row;
@@ -114,14 +121,16 @@ export default function (
         <h3>${strategyName}</h3>
 
         <h2>Parameters</h2>
-        <p id="parameters">${parametersHtml}</p>
+        <table id="parameters">
+          ${parametersHtml}
+        </table>
 
         <h2>Resume</h2>
         <div class="report">
           <div class="report-frame">
             <table>
               <tr>
-                <td><b>Test period:</b></td>
+                <td><b>Period:</b></td>
                 <td>${strategyReport.testPeriod}</td>
               </tr>
               <tr>
