@@ -71,3 +71,17 @@ interface StrategyReport {
   maxConsecutiveWinsCount?: number;
   maxConsecutiveLossesCount?: number;
 }
+
+type TradesHistoric = TradesHistoricRow[];
+
+interface TradesHistoricRow {
+  date: Date;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  type: 'MARKET' | 'LIMIT' | 'STOP' | 'TRAILING_STOP_MARKET';
+  action: 'OPEN' | 'CLOSE';
+  size: number;
+  price: number;
+  pnl: number;
+  balance: number;
+}

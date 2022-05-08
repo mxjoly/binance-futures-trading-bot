@@ -1,5 +1,8 @@
+import dayjs from 'dayjs';
 import fs from 'fs';
 import path from 'path';
+import open from 'open';
+import { decimalFloor } from '../utils/math';
 
 /**
  * Generate the strategy report with an html file
@@ -13,9 +16,32 @@ export default function (
   strategyName: string,
   strategyHyperParameters: HyperParameters,
   strategyReport: StrategyReport,
+  tradesHistoric: TradesHistoric,
   labels: string[],
   lineData: number[]
 ) {
+  let parametersHtml = `${Object.entries(strategyHyperParameters)
+    .map(([name, config]) => `<b>${name}:</b> ${config.value}`)
+    .join('<br>')}`;
+
+  let historicHtml = tradesHistoric
+    .reverse()
+    .map(
+      (row) =>
+        '<tr>' +
+        `<th>${dayjs(row.date).format('YYYY-MM-DD HH:mm:ss')}</th>` +
+        `<th>${row.symbol}</th>` +
+        `<th>${row.side.toLowerCase()}</th>` +
+        `<th>${row.type.toLowerCase()}</th>` +
+        `<th>${row.action.toLowerCase()}</th>` +
+        `<th>${decimalFloor(row.size, 3)}</th>` +
+        `<th>${row.price}</th>` +
+        `<th>${row.pnl ? decimalFloor(row.pnl, 2) : ' '}</th>` +
+        `<th>${decimalFloor(row.balance, 2)}</th>` +
+        '</tr>'
+    )
+    .join('');
+
   let html = `
     <html lang="en">
       <head>
@@ -36,8 +62,15 @@ export default function (
           h1 {
             margin-top: 10px;
           }
+          h2 {
+            margin-top: 20px;
+            margin-bottom: 20px;
+          }
+          h3 {
+            color: #666;
+            font-style: italic;
+          }
           #parameters {
-            max-width: 50%;
             margin: 30px auto;
           }
           .report {
@@ -55,16 +88,24 @@ export default function (
             padding: 15px;
             max-width: 600px;
           }
-          table {
-          }
-          td {
-            text-align: left;
-            padding-left: 30px;
-          }
           #chart {
             padding: auto;
             margin: auto;
             width: 1200px;
+          }
+          #historic {
+            text-align: left;
+            width: auto;
+            margin: auto;
+            border-collapse: collapse;
+          }
+          #historic th {
+            padding: 10px;
+            min-width: 65px;
+            border: solid 1px #BBB;
+          }
+          #historic tbody th {
+            font-weight: 200;
           }
         </style>
       </head>
@@ -72,12 +113,10 @@ export default function (
         <h1>Strategy Report</h1>
         <h3>${strategyName}</h3>
 
-        <p id="parameters">Parameters: { ${Object.entries(
-          strategyHyperParameters
-        )
-          .map(([name, config]) => `<b>${name}:</b> ${config.value}`)
-          .join(', ')} }</p>
+        <h2>Parameters</h2>
+        <p id="parameters">${parametersHtml}</p>
 
+        <h2>Resume</h2>
         <div class="report">
           <div class="report-frame">
             <table>
@@ -176,7 +215,29 @@ export default function (
             </table>
           </div>
         </div>
+
         <canvas id="chart"></canvas>
+
+        <h2>Trades Historic</h2>
+        <table id="historic">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Symbol</th>
+              <th>Side</th>
+              <th>Type</th>
+              <th>Action</th>
+              <th>Size</th>
+              <th>Price</th>
+              <th>Pnl</th>
+              <th>Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${historicHtml}
+          </tbody>
+        </table>
+
         <script>
           var ctx = document.getElementById('chart').getContext('2d');
           const data = {
@@ -216,10 +277,14 @@ export default function (
   `;
 
   const directory = path.join(process.cwd(), 'reports');
-  let file = path.join(directory, `${strategyName}-report-${Date.now()}.html`);
+  const filename = `${strategyName
+    .replace(' ', '')
+    .toLowerCase()}-report-${Date.now()}.html`;
+  let file = path.join(directory, filename);
 
   if (!fs.existsSync(directory)) fs.mkdirSync(directory);
   if (fs.existsSync(file)) fs.unlinkSync(file);
 
   fs.writeFileSync(file, html, 'utf-8');
+  open(file);
 }

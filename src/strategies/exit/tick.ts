@@ -19,8 +19,6 @@ const strategy = (
     // @ts-ignore
     .filters.filter((f) => f.filterType === 'PRICE_FILTER')[0].tickSize;
 
-  let n = process.env.NODE_ENV === 'production' ? 100 : 10;
-
   let takeProfits = tickSize
     ? options.profitTargets
         .filter(
@@ -30,7 +28,7 @@ const strategy = (
         .map(({ deltaPercentage, quantityPercentage }) => {
           if (deltaPercentage) {
             let tpTicks =
-              (price * (1 + deltaPercentage) - price) / Number(tickSize) / n;
+              (price * (1 + deltaPercentage) - price) / Number(tickSize) / 10;
             return {
               price:
                 side === OrderSide.BUY
@@ -43,7 +41,7 @@ const strategy = (
     : [];
 
   let slTicks =
-    (price * (1 + options.lossTolerance) - price) / Number(tickSize) / n;
+    (price * (1 + options.lossTolerance) - price) / Number(tickSize) / 10;
 
   let stopLoss = options.lossTolerance
     ? side === OrderSide.BUY

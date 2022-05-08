@@ -1,3 +1,4 @@
+import path from 'path';
 import { BotConfig } from '../init';
 import { StrategyConfig, StrategyHyperParameters } from '../init';
 import { BasicBackTestBot } from './bot';

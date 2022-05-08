@@ -12,12 +12,12 @@ import { Counter } from './tools/counter';
 import { calculateActivationPrice } from './utils/trailingStop';
 import { isOnTradingSession } from './utils/tradingSession';
 import { sendTelegramMessage } from './telegram';
+import dayjs from 'dayjs';
 import {
   getPricePrecision,
   getQuantityPrecision,
   isValidQuantity,
 } from './utils/currencyInfo';
-import dayjs from 'dayjs';
 
 // ====================================================================== //
 

@@ -97,6 +97,9 @@ export class BasicBackTestBot {
   // Counter to fix the max duration of each trade
   private counters: { [symbol: string]: Counter } = {};
 
+  // Historic of trades
+  private tradesHistoric: TradesHistoric = [];
+
   // Initial parameters
   private startDate: Date;
   private endDate: Date;
@@ -147,9 +150,6 @@ export class BasicBackTestBot {
    */
   public prepare() {
     if (SAVE_HISTORY) createDatabase(this.strategyName);
-
-    // Variable used to get the number of total assets for the strategy report
-    let numberAssetsInBalance = 0;
 
     this.wallet = {
       availableBalance: this.initialCapital,
@@ -419,6 +419,7 @@ export class BasicBackTestBot {
         this.strategyName,
         this.strategyHyperParameters,
         this.strategyReport,
+        this.tradesHistoric,
         this.chartLabels,
         this.chartData
       );
@@ -726,6 +727,41 @@ export class BasicBackTestBot {
   }
 
   /**
+   * Add a row to the historic of trades
+   * @param date
+   * @param symbol
+   * @param type
+   * @param type
+   * @param action
+   * @param size
+   * @param price
+   * @param pnl
+   */
+  private addToHistoric(
+    date: Date,
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    type: 'MARKET' | 'LIMIT' | 'STOP' | 'TRAILING_STOP_MARKET',
+    action: 'OPEN' | 'CLOSE',
+    size: number,
+    price: number,
+    pnl: number
+  ) {
+    let row: TradesHistoricRow = {
+      date,
+      symbol,
+      side,
+      type,
+      action,
+      size,
+      price,
+      pnl,
+      balance: this.wallet.totalWalletBalance,
+    };
+    this.tradesHistoric.push(row);
+  }
+
+  /**
    * Main function for the futures mode
    * @param strategyConfig
    * @param currentPrice
@@ -757,6 +793,9 @@ export class BasicBackTestBot {
       maxTradeDuration,
     } = strategyConfig;
     const pair = asset + base;
+    const date = new Date(
+      candles[strategyConfig.loopInterval].slice(-1)[0].openTime
+    );
 
     // Balance information
     const assetBalance = this.wallet.totalWalletBalance;
@@ -767,6 +806,7 @@ export class BasicBackTestBot {
     const position = positions.find((position) => position.pair === pair);
     const hasLongPosition = position.size > 0;
     const hasShortPosition = position.size < 0;
+    const pnl = this.getPositionPNL(position, currentPrice);
 
     // Open orders
     const currentOpenOrders = this.openOrders.filter(
@@ -835,6 +875,16 @@ export class BasicBackTestBot {
         });
         this.counters[pair].reset();
         this.closeOpenOrders(pair);
+        this.addToHistoric(
+          date,
+          pair,
+          'SELL',
+          'MARKET',
+          'CLOSE',
+          Math.abs(position.size),
+          currentPrice,
+          pnl
+        );
         return;
       }
     }
@@ -869,6 +919,16 @@ export class BasicBackTestBot {
           type: 'MARKET',
         });
         this.closeOpenOrders(pair);
+        this.addToHistoric(
+          date,
+          pair,
+          'BUY',
+          'MARKET',
+          'CLOSE',
+          Math.abs(position.size),
+          currentPrice,
+          pnl
+        );
         return;
       }
 
@@ -924,6 +984,17 @@ export class BasicBackTestBot {
         side: 'BUY',
         type: 'MARKET',
       });
+
+      this.addToHistoric(
+        date,
+        pair,
+        'BUY',
+        'MARKET',
+        'OPEN',
+        Math.abs(position.size),
+        currentPrice,
+        null
+      );
 
       // Cancel the previous orders to update them
       if (currentOpenOrders.length > 0) {
@@ -1002,6 +1073,16 @@ export class BasicBackTestBot {
           type: 'MARKET',
         });
         this.closeOpenOrders(pair);
+        this.addToHistoric(
+          date,
+          pair,
+          'SELL',
+          'MARKET',
+          'CLOSE',
+          Math.abs(position.size),
+          currentPrice,
+          pnl
+        );
         return;
       }
 
@@ -1056,6 +1137,17 @@ export class BasicBackTestBot {
         side: 'SELL',
         type: 'MARKET',
       });
+
+      this.addToHistoric(
+        date,
+        pair,
+        'SELL',
+        'MARKET',
+        'OPEN',
+        Math.abs(position.size),
+        currentPrice,
+        pnl
+      );
 
       // Cancel the previous orders to update them
       if (currentOpenOrders.length > 0) {
@@ -1124,7 +1216,6 @@ export class BasicBackTestBot {
 
   /**
    * Check if the margin is enough to maintain the position. If not, the position is liquidated
-   * @param strategyConfig
    * @param pair
    * @param currentPrice The current price in the main loop
    */
@@ -1154,7 +1245,7 @@ export class BasicBackTestBot {
    * Check the open orders based on the current price. If the price crosses an order, this latter is activated.
    * @param asset
    * @param base
-   * @param candles
+   * @param lastCandle
    */
   private checkOpenOrders(asset: string, base: string, lastCandle: CandleData) {
     if (this.openOrders.length > 0) {
@@ -1167,6 +1258,7 @@ export class BasicBackTestBot {
       );
       const wallet = this.wallet;
       const hasPosition = position.size !== 0;
+      const date = new Date(lastCandle.openTime);
 
       // Check if a long order has been activated on the last candle
       longOrders
@@ -1202,6 +1294,17 @@ export class BasicBackTestBot {
                   this.strategyReport.totalLongTrades++;
                 }
                 this.strategyReport.totalFees += fees;
+
+                this.addToHistoric(
+                  date,
+                  pair,
+                  'BUY',
+                  'LIMIT',
+                  'OPEN',
+                  size,
+                  price,
+                  null
+                );
 
                 log(
                   `Long order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,
@@ -1244,6 +1347,17 @@ export class BasicBackTestBot {
                 this.strategyReport.shortLostTrade++;
               this.strategyReport.totalFees += fees;
 
+              this.addToHistoric(
+                date,
+                pair,
+                'BUY',
+                type,
+                'CLOSE',
+                Math.abs(size),
+                price,
+                pnl
+              );
+
               log(
                 `${
                   entryPrice < price
@@ -1284,6 +1398,17 @@ export class BasicBackTestBot {
                 if (price <= entryPrice)
                   this.strategyReport.shortWinningTrade++;
                 else this.strategyReport.shortLostTrade++;
+
+                this.addToHistoric(
+                  date,
+                  pair,
+                  'BUY',
+                  'TRAILING_STOP_MARKET',
+                  'CLOSE',
+                  size,
+                  price,
+                  pnl
+                );
 
                 log(
                   `Trailing stop long order #${id} has been activated for ${Math.abs(
@@ -1339,6 +1464,17 @@ export class BasicBackTestBot {
                 }
                 this.strategyReport.totalFees += fees;
 
+                this.addToHistoric(
+                  date,
+                  pair,
+                  'SELL',
+                  'LIMIT',
+                  'OPEN',
+                  size,
+                  price,
+                  null
+                );
+
                 log(
                   `Sell order #${id} has been activated for ${Math.abs(
                     quantity
@@ -1382,6 +1518,17 @@ export class BasicBackTestBot {
                 this.strategyReport.longLostTrade++;
               this.strategyReport.totalFees += fees;
 
+              this.addToHistoric(
+                date,
+                pair,
+                'SELL',
+                type,
+                'CLOSE',
+                size,
+                price,
+                pnl
+              );
+
               log(
                 `${
                   entryPrice > price
@@ -1420,6 +1567,17 @@ export class BasicBackTestBot {
                 this.strategyReport.totalFees += fees;
                 if (price >= entryPrice) this.strategyReport.longWinningTrade++;
                 else this.strategyReport.longLostTrade++;
+
+                this.addToHistoric(
+                  date,
+                  pair,
+                  'SELL',
+                  'TRAILING_STOP_MARKET',
+                  'CLOSE',
+                  size,
+                  price,
+                  pnl
+                );
 
                 log(
                   `Trailing stop sell order #${id} has been activated for ${Math.abs(
