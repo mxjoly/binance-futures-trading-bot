@@ -8,7 +8,7 @@ import { logger } from '../init';
  * @param message
  * @param date
  */
-export function log(message: string, date = new Date()) {
+export function log(message: string, date = Date.now()) {
   const logDate = dayjs(date).format('YYYY-MM-DD HH:mm:ss');
   logger.info(`${logDate} : ${message}`);
   console.log(`${chalk.blue(logDate)} : ${message}`);
@@ -19,7 +19,7 @@ export function log(message: string, date = new Date()) {
  * @param message
  * @param date
  */
-export function error(message: string, date = new Date()) {
+export function error(message: string, date = Date.now()) {
   const logDate = dayjs(date).format('YYYY-MM-DD HH:mm:ss');
   logger.warn(`${logDate} : ${message}`);
   console.log(`${chalk.blue(logDate)} : ${message}`);
@@ -59,7 +59,7 @@ export function logBuySellExecutionOrder(
       : '----'
   }`;
 
-  let sl = `SL: ${stopLoss ? stopLoss : '----'}`;
+  let sl = `SL: ${stopLoss ? `[${stopLoss} => 100%]` : '----'}`;
 
   log([introPhrase, tp, sl].join(' | '));
 }

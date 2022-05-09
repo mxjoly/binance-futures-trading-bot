@@ -1,5 +1,5 @@
 import { CandleChartInterval } from 'binance-api-node';
-import atrTpslStrategy from '../strategies/exit/atr';
+import { atrExitStrategy } from '../strategies/exit';
 import { Basics } from '../strategies/entry';
 import { getPositionSizeByRisk } from '../strategies/riskManagement';
 
@@ -22,7 +22,7 @@ export const config: AbstractStrategyConfig = (parameters) => [
     risk: 0.01,
     leverage: 10,
     exitStrategy: (price, candles, pricePrecision, side, exchangeInfo) =>
-      atrTpslStrategy(
+      atrExitStrategy(
         price,
         candles[CandleChartInterval.ONE_HOUR],
         pricePrecision,

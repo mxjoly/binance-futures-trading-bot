@@ -1,4 +1,5 @@
 import {
+  CandleChartInterval,
   ExchangeInfo,
   FuturesAccountInfoResult,
   OrderSide,
@@ -115,7 +116,13 @@ export class Bot {
 
             // Load the candle data for each the time frames that will be use on the strategy
             loadCandlesMultiTimeFramesFromAPI(
-              strategyConfig,
+              pair,
+              Array.from(
+                new Set<CandleChartInterval>([
+                  ...strategyConfig.indicatorIntervals,
+                  strategyConfig.loopInterval,
+                ])
+              ),
               binanceClient
             ).then((candlesMultiTimeFrames) => {
               this.trade(
@@ -407,9 +414,10 @@ export class Bot {
 
           if (trailingStopConfig) {
             let activationPrice = calculateActivationPrice(
-              trailingStopConfig,
               avgPrice,
               pricePrecision,
+              OrderSide.SELL,
+              trailingStopConfig,
               takeProfits
             );
 
@@ -580,9 +588,10 @@ export class Bot {
 
           if (trailingStopConfig) {
             let activationPrice = calculateActivationPrice(
-              trailingStopConfig,
               avgPrice,
               pricePrecision,
+              OrderSide.BUY,
+              trailingStopConfig,
               takeProfits
             );
 

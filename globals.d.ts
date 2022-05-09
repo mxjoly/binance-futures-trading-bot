@@ -58,7 +58,7 @@ type TrailingStopConfig = {
   // Activation price of trailing stop calculated by :
   // changePercentage: the price moves X% (0 to 1) in the positive
   // percentageToTP: the price reach X% (0 to 1) of the nearest take profit
-  activation: { changePercentage?: number; percentageToTP: number };
+  activation: { changePercentage?: number; percentageToTP?: number };
   callbackRate: number; // Percentage between 0 and 1 - stop loss if the price increase/decrease of % from last candle
 };
 
@@ -97,5 +97,5 @@ type RiskManagement = (options: RiskManagementOptions) => number; // Return the 
 type TradingSession = {
   day: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 (Sunday) to 6 (Saturday)
   start: { hour: number; minute: number };
-  end: { hour: number; minutes };
+  end: { hour: number; minute: number };
 };

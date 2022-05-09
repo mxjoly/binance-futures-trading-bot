@@ -1,26 +1,33 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { error, log } from '../utils/log';
 
-const token = process.env.TELEGRAM_TOKEN;
-const chatId = process.env.TELEGRAM_CHAT_ID;
+const TOKEN = process.env.TELEGRAM_TOKEN;
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-if (!token || !chatId) {
+if (!TOKEN || !CHAT_ID) {
   console.error(
     'You must set up the environment variable TELEGRAM_TOKEN and TELEGRAM_CHAT_ID to use the Telegram bot'
   );
   process.exit(1);
 }
 
-const telegramBot =
-  process.env.NODE_ENV === 'production'
-    ? new TelegramBot(token, { polling: true })
-    : null;
+export const telegramBot = new TelegramBot(TOKEN, { polling: true });
 
 export function sendTelegramMessage(message: string) {
-  telegramBot
-    .sendMessage(chatId, message)
-    .then(() => {
-      log(`Telegram message send successfully`);
-    })
-    .catch(error);
+  return new Promise<TelegramBot.Message>((resolve, reject) => {
+    telegramBot
+      .sendMessage(CHAT_ID, message)
+      .then((messageInfo) => {
+        if (process.env.NODE_ENV === 'test') {
+          telegramBot.deleteMessage(
+            messageInfo.chat.id,
+            String(messageInfo.message_id)
+          );
+        }
+
+        log(`Telegram message send successfully`);
+        resolve(messageInfo);
+      })
+      .catch(reject);
+  });
 }

@@ -1,7 +1,7 @@
 import { CandleChartInterval } from 'binance-api-node';
 import { Basics } from '../strategies/entry';
 import { Fibonacci } from '../indicators';
-import { fibonacciTpslStrategy } from '../strategies/exit';
+import { fibonacciExitStrategy } from '../strategies/exit';
 import { getPositionSizeByPercent } from '../strategies/riskManagement';
 
 const assets = [
@@ -47,7 +47,7 @@ export const config: AbstractStrategyConfig = (parameters) =>
     trendFilter: (candles) => 1, // Take only long position, supposing we are in up trend on long term
     riskManagement: getPositionSizeByPercent,
     exitStrategy: (price, candles, pricePrecision, side, exchangeInfo) =>
-      fibonacciTpslStrategy(
+      fibonacciExitStrategy(
         candles[CandleChartInterval.ONE_WEEK],
         pricePrecision,
         side,

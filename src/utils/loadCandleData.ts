@@ -51,6 +51,7 @@ export function loadCandlesFromCSV(
  * Load the candle data for a specific time frame (or interval) from the binance api
  * @param symbol
  * @param interval
+ * @param binanceClient
  * @param onlyFinalCandle
  */
 export function loadCandlesFromAPI(
@@ -85,90 +86,77 @@ export function loadCandlesFromAPI(
 
 /**
  * Load the candle data from the downloaded data on multi time frames
- * @param strategyConfigs
+ * @param symbol
+ * @param timeFrames
+ * @param startDate
+ * @param endDate
  */
 export async function loadCandlesMultiTimeFramesFromCSV(
-  strategyConfigs: StrategyConfig[],
+  symbol: string,
+  timeFrames: CandleChartInterval[],
   startDate: Date,
   endDate: Date
-) {
-  let candlesMtf: {
-    [symbol: string]: CandlesDataMultiTimeFrames;
-  } = {};
-
-  // Initialization of the arrays
-  strategyConfigs.forEach(
-    ({ asset, base, loopInterval, indicatorIntervals }) => {
-      candlesMtf[asset + base] = {};
-      new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
-        candlesMtf[asset + base][interval] = [];
-      });
-    }
-  );
-
+): Promise<CandlesDataMultiTimeFrames> {
   // Load the candle data according to the time frame of the trading configuration
-  let loadPairTimeFrame = [];
+  let loadTimeFrames: Promise<{
+    timeFrame: CandleChartInterval;
+    candles: CandleData[];
+  }>[] = [];
 
-  strategyConfigs.forEach(
-    ({ asset, base, loopInterval, indicatorIntervals }) => {
-      new Set([loopInterval, ...indicatorIntervals]).forEach((interval) => {
-        loadPairTimeFrame.push(
-          new Promise<void>((resolve, reject) => {
-            loadCandlesFromCSV(asset + base, interval, startDate, endDate)
-              .then((candles) => {
-                candlesMtf[asset + base][interval] = candles;
-                resolve();
-              })
-              .catch(reject);
-          })
-        );
-      });
-    }
-  );
+  timeFrames.forEach((timeFrame) => {
+    loadTimeFrames.push(
+      new Promise<{ timeFrame: CandleChartInterval; candles: CandleData[] }>(
+        (resolve, reject) => {
+          loadCandlesFromCSV(symbol, timeFrame, startDate, endDate)
+            .then((candles) => {
+              resolve({ timeFrame, candles });
+            })
+            .catch(reject);
+        }
+      )
+    );
+  });
 
-  await Promise.all(loadPairTimeFrame);
-  return candlesMtf;
+  return (await Promise.all(loadTimeFrames)).reduce((data, value) => {
+    data[value.timeFrame] = value.candles;
+    return data;
+  }, {});
 }
 
 /**
  * Load the candle data from binance api for all the time frames needed for the strategy
- * @param strategyConfig
+ * @param symbol
+ * @param timeFrames
+ * @param binanceClient
  */
 export async function loadCandlesMultiTimeFramesFromAPI(
-  strategyConfig: StrategyConfig,
+  symbol: string,
+  timeFrames: CandleChartInterval[],
   binanceClient: Binance
-) {
-  let loadTimeFrames: Promise<CandlesDataMultiTimeFrames>[] = [];
+): Promise<CandlesDataMultiTimeFrames> {
+  let loadTimeFrames: Promise<{
+    timeFrame: CandleChartInterval;
+    candles: CandleData[];
+  }>[] = [];
 
-  strategyConfig.indicatorIntervals.forEach((interval: CandleChartInterval) => {
+  timeFrames.forEach((timeFrame: CandleChartInterval) => {
     loadTimeFrames.push(
-      new Promise<CandlesDataMultiTimeFrames>((resolve, reject) => {
-        loadCandlesFromAPI(
-          strategyConfig.asset + strategyConfig.base,
-          interval,
-          binanceClient,
-          true
-        )
-          .then((candles) => {
-            resolve({
-              interval,
-              candles: candles.map((candle) => ({
-                open: Number(candle.open),
-                high: Number(candle.high),
-                low: Number(candle.low),
-                close: Number(candle.close),
-                volume: Number(candle.volume),
-                openTime: new Date(candle.openTime),
-                closeTime: new Date(candle.closeTime),
-              })),
-            });
-          })
-          .catch(reject);
-      })
+      new Promise<{ timeFrame: CandleChartInterval; candles: CandleData[] }>(
+        (resolve, reject) => {
+          loadCandlesFromAPI(symbol, timeFrame, binanceClient, true)
+            .then((candles) => {
+              resolve({ timeFrame, candles });
+            })
+            .catch(reject);
+        }
+      )
     );
   });
 
-  return Promise.all(loadTimeFrames);
+  return (await Promise.all(loadTimeFrames)).reduce((data, value) => {
+    data[value.timeFrame] = value.candles;
+    return data;
+  }, {});
 }
 
 /**
@@ -194,7 +182,7 @@ export function getCandleSourceType(
     case 'hlc3':
       return candles.map((c) => (c.high + c.low + c.close) / 3);
     case 'hlcc4':
-      return candles.map((c) => (c.high + c.low + c.close * 2) / 3);
+      return candles.map((c) => (c.high + c.low + c.close * 2) / 4);
     case 'volume':
       return candles.map((c) => c.volume);
     default:

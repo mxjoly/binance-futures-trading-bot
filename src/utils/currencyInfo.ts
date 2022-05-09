@@ -20,12 +20,12 @@ export function isValidQuantity(
 export function getMinOrderQuantity(
   asset: string,
   base: string,
-  usdtPrice: number,
+  basePrice: number,
   exchangeInfo: ExchangeInfo
 ) {
   const precision = getQuantityPrecision(asset + base, exchangeInfo);
   const minimumNotionalValue = 5; // threshold in USDT
-  return decimalCeil(minimumNotionalValue / usdtPrice, precision);
+  return decimalCeil(minimumNotionalValue / basePrice, precision);
 }
 
 /**

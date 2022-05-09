@@ -1,6 +1,11 @@
-import basicTpslStrategy from './basic';
-import fibonacciTpslStrategy from './fibonacci';
-import atrTpslStrategy from './atr';
-import tickTpslStrategy from './tick';
+import basicExitStrategy from './basic';
+import fibonacciExitStrategy from './fibonacci';
+import atrExitStrategy from './atr';
+import tickExitStrategy from './tick';
 
-export { basicTpslStrategy, fibonacciTpslStrategy, atrTpslStrategy, tickTpslStrategy };
+export {
+  basicExitStrategy,
+  fibonacciExitStrategy,
+  atrExitStrategy,
+  tickExitStrategy,
+};

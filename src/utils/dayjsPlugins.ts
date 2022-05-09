@@ -1,10 +1,14 @@
 import dayjs, { PluginFunc } from 'dayjs';
 
-let plugins: PluginFunc[] = [
-  require('dayjs/plugin/isBetween'),
-  require('dayjs/plugin/isSameOrBefore'),
-  require('dayjs/plugin/isSameOrAfter'),
+export let pluginNames: string[] = [
+  'isBetween',
+  'isSameOrBefore',
+  'isSameOrAfter',
 ];
+
+let plugins: PluginFunc[] = pluginNames.map((plugin) =>
+  require(`dayjs/plugin/${plugin}`)
+);
 
 /**
  * Initialize the plugins for dayjs

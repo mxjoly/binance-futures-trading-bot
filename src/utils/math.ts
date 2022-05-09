@@ -1,6 +1,6 @@
 /**
  * Math.ceil with decimals
- * @param a
+ * @param x
  * @param precision - The number of decimals after the comma
  */
 export function decimalCeil(x: number, precision: number) {
@@ -9,7 +9,7 @@ export function decimalCeil(x: number, precision: number) {
 
 /**
  * Math.floor with decimals
- * @param a
+ * @param x
  * @param precision - The number of decimals after the comma
  */
 export function decimalFloor(x: number, precision: number) {
@@ -22,28 +22,11 @@ export function decimalFloor(x: number, precision: number) {
  * @param max
  */
 export function random(min?: number, max?: number) {
-  if (min && max) return Math.floor(Math.random() * (max - min + 1) + min);
-  if (min && !max) return Math.random() * min;
+  if (typeof min === 'number' && typeof max === 'number')
+    return Math.floor(Math.random() * (max - min + 1) + min);
+  if (typeof min === 'number' && typeof max !== 'number')
+    return Math.random() + min;
   else return Math.random();
-}
-
-/**
- * Random a value with normal distribution
- * @param val
- */
-export function randomGaussian(val = 6) {
-  let r = 0;
-  for (let i = val; i > 0; i--) {
-    r += Math.random();
-  }
-  return r / val;
-}
-
-/**
- * Takes the range of randomGaussian and makes it [-1, 1]
- */
-export function std0() {
-  return (randomGaussian() - 0.5) * 2;
 }
 
 /**

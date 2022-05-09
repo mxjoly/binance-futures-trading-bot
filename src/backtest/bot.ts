@@ -20,7 +20,6 @@ import {
   log,
   printDateBanner,
 } from './debug';
-
 import {
   getPricePrecision,
   getQuantityPrecision,
@@ -206,23 +205,32 @@ export class BasicBackTestBot {
     if (candleDataCache) {
       this.historicCandleDataMultiTimeFrames = candleDataCache;
     } else {
-      // Load all the data
-      this.historicCandleDataMultiTimeFrames =
-        await loadCandlesMultiTimeFramesFromCSV(
-          strategyConfigs,
-          this.startDate,
-          this.endDate
-        );
+      // Load all the data for all the symbols
+      strategyConfigs.forEach(async (strategyConfig) => {
+        let pair = strategyConfig.asset + strategyConfig.base;
+        this.historicCandleDataMultiTimeFrames[pair] =
+          await loadCandlesMultiTimeFramesFromCSV(
+            strategyConfig.asset + strategyConfig.base,
+            Array.from(
+              new Set([
+                strategyConfig.loopInterval,
+                ...strategyConfig.indicatorIntervals,
+              ])
+            ),
+            this.startDate,
+            this.endDate
+          );
+      });
+    }
 
-      // Save to cache
-      candleDataCache = this.historicCandleDataMultiTimeFrames;
+    // Save to cache
+    candleDataCache = this.historicCandleDataMultiTimeFrames;
 
-      // Check if the candles has been loaded successfully. If not, stop the backtesting
-      let historyError = false;
-      this.strategyConfigs.forEach(({ asset, base }) => {
-        Object.keys(
-          this.historicCandleDataMultiTimeFrames[asset + base]
-        ).forEach((interval) => {
+    // Check if the candles has been loaded successfully. If not, stop the backtesting
+    let historyError = false;
+    this.strategyConfigs.forEach(({ asset, base }) => {
+      Object.keys(this.historicCandleDataMultiTimeFrames[asset + base]).forEach(
+        (interval) => {
           if (
             this.historicCandleDataMultiTimeFrames[asset + base][interval]
               .length === 0
@@ -238,38 +246,38 @@ export class BasicBackTestBot {
               )}`
             );
           }
-        });
-      });
-      if (historyError) return process.exit();
+        }
+      );
+    });
+    if (historyError) return process.exit();
 
-      // Check the start date and end date comparing to the date range of the historic data downloaded
-      Object.keys(this.historicCandleDataMultiTimeFrames).forEach((pair) => {
-        let candles = this.historicCandleDataMultiTimeFrames[pair];
-        Object.keys(this.historicCandleDataMultiTimeFrames[pair]).forEach(
-          (timeFrame) => {
-            let candleTimeFrame = candles[timeFrame];
-            let startDate = candleTimeFrame[0].openTime;
-            let endDate = dayjs(
-              candleTimeFrame[candleTimeFrame.length - 1].openTime
-            ).add(1, 'minute');
-            if (dayjs(startDate).isBefore(this.startDate)) {
-              console.warn(
-                `Your start date is too old comparing to your downloaded candle data for ${pair} in ${timeFrame}. The earliest possible date is ${dayjs(
-                  startDate
-                ).format('YYYY-MM-DD HH:mm:ss')}\n`
-              );
-            }
-            if (dayjs(endDate).isAfter(this.endDate)) {
-              console.warn(
-                `Your end date is too recent comparing to your downloaded candle data for ${pair} in ${timeFrame}. The latest possible date is ${dayjs(
-                  endDate
-                ).format('YYYY-MM-DD HH:mm:ss')}\n`
-              );
-            }
+    // Check the start date and end date comparing to the date range of the historic data downloaded
+    Object.keys(this.historicCandleDataMultiTimeFrames).forEach((pair) => {
+      let candles = this.historicCandleDataMultiTimeFrames[pair];
+      Object.keys(this.historicCandleDataMultiTimeFrames[pair]).forEach(
+        (timeFrame) => {
+          let candleTimeFrame = candles[timeFrame];
+          let startDate = candleTimeFrame[0].openTime;
+          let endDate = dayjs(
+            candleTimeFrame[candleTimeFrame.length - 1].openTime
+          ).add(1, 'minute');
+          if (dayjs(startDate).isBefore(this.startDate)) {
+            console.warn(
+              `Your start date is too old comparing to your downloaded candle data for ${pair} in ${timeFrame}. The earliest possible date is ${dayjs(
+                startDate
+              ).format('YYYY-MM-DD HH:mm:ss')}\n`
+            );
           }
-        );
-      });
-    }
+          if (dayjs(endDate).isAfter(this.endDate)) {
+            console.warn(
+              `Your end date is too recent comparing to your downloaded candle data for ${pair} in ${timeFrame}. The latest possible date is ${dayjs(
+                endDate
+              ).format('YYYY-MM-DD HH:mm:ss')}\n`
+            );
+          }
+        }
+      );
+    });
   }
 
   /**
@@ -489,7 +497,7 @@ export class BasicBackTestBot {
   }
 
   /**
-   * Calculations / adjustments before displaying the strategy report
+   * Calculation/adjustment before displaying the strategy report
    */
   private calculateStrategyStats() {
     let {
@@ -1043,9 +1051,10 @@ export class BasicBackTestBot {
 
       if (trailingStopConfig) {
         let activationPrice = calculateActivationPrice(
-          trailingStopConfig,
           position.entryPrice,
           pricePrecision,
+          OrderSide.SELL,
+          trailingStopConfig,
           takeProfits
         );
 
@@ -1196,9 +1205,10 @@ export class BasicBackTestBot {
 
       if (trailingStopConfig) {
         let activationPrice = calculateActivationPrice(
-          trailingStopConfig,
           position.entryPrice,
           pricePrecision,
+          OrderSide.BUY,
+          trailingStopConfig,
           takeProfits
         );
 

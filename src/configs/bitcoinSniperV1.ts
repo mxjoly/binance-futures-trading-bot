@@ -1,5 +1,5 @@
 import { CandleChartInterval } from 'binance-api-node';
-import { tickTpslStrategy } from '../strategies/exit';
+import { tickExitStrategy } from '../strategies/exit';
 import { Complex } from '../strategies/entry';
 import { getPositionSizeByRisk } from '../strategies/riskManagement';
 
@@ -57,7 +57,7 @@ export const config: AbstractStrategyConfig = (parameters) => [
     unidirectional: false,
     canOpenNewPositionToCloseLast: true,
     exitStrategy: (price, candles, pricePrecision, side, exchangeInfo) =>
-      tickTpslStrategy(
+      tickExitStrategy(
         price,
         candles[CandleChartInterval.ONE_HOUR],
         pricePrecision,

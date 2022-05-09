@@ -7,7 +7,7 @@ type Memory = {
 export class Cache {
   private memory: Memory = {};
 
-  private createAllocation(
+  public createKey(
     symbol: string,
     timeFrame: CandleChartInterval,
     optionsHash: string
@@ -26,7 +26,7 @@ export class Cache {
    * @param date
    * @param value
    */
-  public save(
+  public saveValue(
     symbol: string,
     timeFrame: CandleChartInterval,
     optionsHash: string, // The options used in hash
@@ -35,9 +35,39 @@ export class Cache {
   ) {
     let key = `${symbol}-${timeFrame}-${optionsHash}`;
     if (!this.memory[key]) {
-      this.createAllocation(symbol, timeFrame, optionsHash);
+      this.createKey(symbol, timeFrame, optionsHash);
     }
     this.memory[key][date] = value;
+  }
+
+  /**
+   * Save indicator values
+   * @param symbol
+   * @param timeFrame
+   * @param values
+   * @param dates
+   * @param optionsHash
+   * @returns
+   */
+  public saveValues(
+    symbol: string,
+    timeFrame: CandleChartInterval,
+    values: any[],
+    dates: number[],
+    optionsHash: string
+  ) {
+    if (values.length !== dates.length) {
+      console.error(
+        `Error of length when trying to cache the values for ${symbol} on ${timeFrame}`
+      );
+      return;
+    }
+
+    for (let i = 0; i < values.length; i++) {
+      if (!this.get(symbol, timeFrame, optionsHash, dates[i])) {
+        this.saveValue(symbol, timeFrame, optionsHash, dates[i], values[i]);
+      }
+    }
   }
 
   /**
@@ -72,10 +102,6 @@ export class Cache {
     if (!this.memory[key] || !this.memory[key][date]) {
       return null;
     }
-    if (date >= 0 && date < this.memory[key].length) {
-      return this.memory[key][date];
-    } else {
-      return null;
-    }
+    return this.memory[key][date];
   }
 }
