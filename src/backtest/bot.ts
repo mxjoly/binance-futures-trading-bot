@@ -205,21 +205,41 @@ export class BasicBackTestBot {
     if (candleDataCache) {
       this.historicCandleDataMultiTimeFrames = candleDataCache;
     } else {
+      let loadData: Promise<{
+        pair: string;
+        candles: CandlesDataMultiTimeFrames;
+      }>[] = [];
+
       // Load all the data for all the symbols
       strategyConfigs.forEach(async (strategyConfig) => {
         let pair = strategyConfig.asset + strategyConfig.base;
-        this.historicCandleDataMultiTimeFrames[pair] =
-          await loadCandlesMultiTimeFramesFromCSV(
-            strategyConfig.asset + strategyConfig.base,
-            Array.from(
-              new Set([
-                strategyConfig.loopInterval,
-                ...strategyConfig.indicatorIntervals,
-              ])
-            ),
-            this.startDate,
-            this.endDate
-          );
+        loadData.push(
+          new Promise<{ pair: string; candles: CandlesDataMultiTimeFrames }>(
+            (resolve, reject) => {
+              loadCandlesMultiTimeFramesFromCSV(
+                strategyConfig.asset + strategyConfig.base,
+                Array.from(
+                  new Set([
+                    strategyConfig.loopInterval,
+                    ...strategyConfig.indicatorIntervals,
+                  ])
+                ),
+                this.startDate,
+                this.endDate
+              )
+                .then((candles) => {
+                  resolve({ pair, candles });
+                })
+                .catch(reject);
+            }
+          )
+        );
+      });
+
+      await Promise.all(loadData).then((data) => {
+        data.forEach(({ pair, candles }) => {
+          this.historicCandleDataMultiTimeFrames[pair] = candles;
+        });
       });
     }
 

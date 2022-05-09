@@ -7,9 +7,9 @@ import dayjs from 'dayjs';
  */
 export function isOnTradingSession(
   currentDate: Date,
-  tradingSessions: TradingSession[]
+  tradingSessions?: TradingSession[]
 ) {
-  if (tradingSessions.length > 0) {
+  if (tradingSessions && tradingSessions.length > 0) {
     const currentTime = dayjs(currentDate);
 
     const formatNumber = (n: number) => {
