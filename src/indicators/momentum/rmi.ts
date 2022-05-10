@@ -19,7 +19,6 @@ const defaultOptions: Options = {
  * @param options
  */
 export function calculate(candles: CandleData[], options?: Options) {
-  let { symbol, interval, openTime } = candles[candles.length - 1];
   options = { ...defaultOptions, ...options };
 
   let values = getCandleSourceType(candles, options.sourceType);

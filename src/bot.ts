@@ -676,9 +676,9 @@ export class Bot {
       `Trade closed on ${pair}: ${result > 0 ? `+${result}% ` : `${result}%`}`
     );
     sendTelegramMessage(
-      `Trade closed on ${pair}: ${result > 0 ? `+${result}% ` : `${result}%`} ${
-        result >= 0 ? '🟢' : '🔴'
-      }`
+      `<b>Trade closed on ${pair}</b>\n${
+        result > 0 ? `+${result}% ` : `${result}%`
+      } ${result >= 0 ? '🟢' : '🔴'}`
     );
   }
 
@@ -708,7 +708,7 @@ export class Bot {
         : '😭';
 
     let message =
-      `RESULTATS DU ${this.currentDay}` +
+      `<b>RESULTATS DU ${this.currentDay}</b>` +
       '\n' +
       `${performance > 0 ? `+${performance}%` : `${performance}%`} ${emoji}`;
 

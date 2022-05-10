@@ -23,8 +23,8 @@ export function calculate(candles: CandleData[], options?: Options) {
   let values = getCandleSourceType(candles, options.sourceType);
   let results: number[] = [];
 
-  let sma1 = SMA.calculate({ period: options.fastLength, values: values });
-  let sma2 = SMA.calculate({ period: options.slowLength, values: values });
+  let sma1 = SMA.calculate({ period: options.fastLength, values });
+  let sma2 = SMA.calculate({ period: options.slowLength, values });
 
   // Adjust to have the same array length
   let length = Math.min(sma1.length, sma2.length);
@@ -32,7 +32,7 @@ export function calculate(candles: CandleData[], options?: Options) {
   sma2 = sma2.slice(-length);
 
   let delta: number[] = new Array(length);
-  for (let i = 1; i < length; i++) {
+  for (let i = 0; i < length; i++) {
     delta[i] = sma1[i] - sma2[i];
   }
 

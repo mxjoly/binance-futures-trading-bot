@@ -31,9 +31,9 @@ export function calculate(candles: CandleData[], options?: Options) {
     .concat(EMA.calculate({ period: options.period * 2 - 1, values: avrng }))
     .map((v) => v * options.multiplier);
 
-  let filt = new Array(values.length).fill(0);
+  let filt = values;
 
-  for (let i = 1; i < values.length; i++) {
+  for (let i = 1; i < filt.length; i++) {
     filt[i] =
       values[i] > filt[i - 1]
         ? values[i] - smoothrng[i] < filt[i - 1]

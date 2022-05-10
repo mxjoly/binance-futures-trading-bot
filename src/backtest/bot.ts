@@ -383,10 +383,6 @@ export class BasicBackTestBot {
 
           debugCandle(currentCandle);
 
-          // Check the current trades/positions
-          this.checkPositionMargin(pair, currentPrice); // If the position margin reach 0, close the position (liquidation)
-          this.checkOpenOrders(asset, base, currentCandle);
-
           // The loop time frames could be different of the smaller time frame for all the trading configurations
           if (dateMatchTimeFrame(currentDate, strategyConfig.loopInterval)) {
             this.trade(

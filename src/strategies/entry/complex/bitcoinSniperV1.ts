@@ -26,6 +26,7 @@ interface Options {
   volumeLength?: number;
   psarStep?: number;
   psarMax?: number;
+  rangeFilterSourceType?: SourceType;
   rangeFilterPeriod?: number;
   rangeFilterMultiplier?: number;
   macdFastLength?: number;
@@ -69,6 +70,7 @@ const defaultOptions: Options = {
   volumeLength: 24,
   psarStep: 0.2,
   psarMax: 0.1,
+  rangeFilterSourceType: 'open',
   rangeFilterPeriod: 8,
   rangeFilterMultiplier: 1.4,
   macdFastLength: 15,
@@ -90,7 +92,7 @@ const defaultOptions: Options = {
   scalpingSlowEmaLength: 250,
   scalpingLookBack: 12,
   scalpingUseHeikinAshiCandles: true,
-  rmiLength: 13,
+  rmiLength: 33,
   rmiSourceType: 'close',
   rmiMomentumLength: 15,
   rmiOversold: 44,
@@ -175,13 +177,14 @@ const volumeCondition = (
 const rangeFilterCondition = (
   candles: CandleData[],
   {
+    rangeFilterSourceType = defaultOptions.rangeFilterSourceType,
     rangeFilterPeriod = defaultOptions.rangeFilterPeriod,
     rangeFilterMultiplier = defaultOptions.rangeFilterMultiplier,
   }
 ) => {
   let { highBand, lowBand, upward, downward } = RangeBands.calculate(candles, {
     multiplier: rangeFilterMultiplier,
-    sourceType: 'open',
+    sourceType: rangeFilterSourceType,
     period: rangeFilterPeriod,
   }).slice(-1)[0];
 
@@ -395,6 +398,7 @@ export const isBuySignal = (candles: CandleData[], options?: Options) => {
     volumeMultiplier: options.volumeMultiplier,
   });
   let { rangeFilterLongCond } = rangeFilterCondition(candles, {
+    rangeFilterSourceType: options.rangeFilterSourceType,
     rangeFilterMultiplier: options.rangeFilterMultiplier,
     rangeFilterPeriod: options.rangeFilterPeriod,
   });
@@ -477,6 +481,7 @@ export const isBuySignal = (candles: CandleData[], options?: Options) => {
     rsiLongCond &&
     maLongCond;
 
+  return longCondition1;
   return longCondition1 || longCondition2 || longCondition3 || longCondition4;
 };
 
@@ -503,6 +508,7 @@ export const isSellSignal = (candles: CandleData[], options?: Options) => {
     volumeMultiplier: options.volumeMultiplier,
   });
   let { rangeFilterShortCond } = rangeFilterCondition(candles, {
+    rangeFilterSourceType: options.rangeFilterSourceType,
     rangeFilterMultiplier: options.rangeFilterMultiplier,
     rangeFilterPeriod: options.rangeFilterPeriod,
   });
@@ -585,6 +591,7 @@ export const isSellSignal = (candles: CandleData[], options?: Options) => {
     rsiShortCond &&
     maShortCond;
 
+  return shortCondition1;
   return (
     shortCondition1 || shortCondition2 || shortCondition3 || shortCondition4
   );

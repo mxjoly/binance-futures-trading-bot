@@ -111,6 +111,9 @@ export default function (
             min-width: 65px;
             border: solid 1px #BBB;
           }
+          #historic tr:nth-child(2n) {
+            background: #EEE;
+          }
           #historic tbody th {
             font-weight: 200;
           }
