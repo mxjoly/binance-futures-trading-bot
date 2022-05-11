@@ -151,7 +151,6 @@ const supportResistanceCondition = (
 
   let curClose = candles[candles.length - 1].close;
   let prevClose = candles[candles.length - 2].close;
-
   let srLongCond = curClose > sr[1].top;
   let srShortCond = curClose < sr[1].bottom;
   let srLongCross = prevClose < sr[0].top && curClose > sr[1].top;
@@ -212,6 +211,7 @@ const macdCondition = (
     slowLength,
     signalLength,
     sourceType,
+    signalMaType: 'SMA',
   }).slice(-1)[0];
 
   return {
@@ -481,7 +481,6 @@ export const isBuySignal = (candles: CandleData[], options?: Options) => {
     rsiLongCond &&
     maLongCond;
 
-  return longCondition1;
   return longCondition1 || longCondition2 || longCondition3 || longCondition4;
 };
 
@@ -591,7 +590,6 @@ export const isSellSignal = (candles: CandleData[], options?: Options) => {
     rsiShortCond &&
     maShortCond;
 
-  return shortCondition1;
   return (
     shortCondition1 || shortCondition2 || shortCondition3 || shortCondition4
   );

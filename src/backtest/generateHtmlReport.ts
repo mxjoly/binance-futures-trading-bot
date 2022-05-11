@@ -27,11 +27,15 @@ export default function (
     )
     .join('')}`;
 
+  let tradeNo = 0;
   let historicHtml = tradesHistoric
     .reverse()
-    .map(
-      (row) =>
-        '<tr>' +
+    .map((row) => {
+      return (
+        (row.action === 'OPEN' ? '<tr class="colored">' : '<tr>') +
+        `<th><b>${
+          row.action === 'OPEN' ? strategyReport.totalTrades - tradeNo++ : ''
+        }</b></th>` +
         `<th>${dayjs(row.date).format('YYYY-MM-DD HH:mm:ss')}</th>` +
         `<th>${row.symbol}</th>` +
         `<th>${row.side.toLowerCase()}</th>` +
@@ -42,7 +46,8 @@ export default function (
         `<th>${row.pnl ? decimalFloor(row.pnl, 2) : ' '}</th>` +
         `<th>${decimalFloor(row.balance, 2)}</th>` +
         '</tr>'
-    )
+      );
+    })
     .join('');
 
   let html = `
@@ -111,7 +116,7 @@ export default function (
             min-width: 65px;
             border: solid 1px #BBB;
           }
-          #historic tr:nth-child(2n) {
+          #historic .colored {
             background: #EEE;
           }
           #historic tbody th {
@@ -234,6 +239,7 @@ export default function (
         <table id="historic">
           <thead>
             <tr>
+              <th>#</th>
               <th>Date</th>
               <th>Symbol</th>
               <th>Side</th>

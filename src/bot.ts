@@ -665,6 +665,9 @@ export class Bot {
     });
   }
 
+  /**
+   * When a trade is closed send the result to the telegram channel
+   */
   private sendTradeResult(pair: string) {
     // Profit percent on the total wallet balance
     let result =

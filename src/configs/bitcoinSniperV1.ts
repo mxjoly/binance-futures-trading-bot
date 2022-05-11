@@ -12,7 +12,7 @@ export const hyperParameters = {
   volumeLength: { value: 24 },
   psarStep: { value: 0.2 },
   psarMax: { value: 0.1 },
-  rangeFilterSourceType: { value: 'close' },
+  rangeFilterSourceType: { value: 'open' },
   rangeFilterPeriod: { value: 8 },
   rangeFilterMultiplier: { value: 1.4 },
   macdFastLength: { value: 15 },
