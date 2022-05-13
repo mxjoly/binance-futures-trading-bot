@@ -155,7 +155,7 @@ const supportResistanceCondition = (
   let srShortCond = curClose < sr[1].bottom;
   let srLongCross = prevClose < sr[0].top && curClose > sr[1].top;
   let srShortCross = prevClose > sr[0].bottom && curClose < sr[1].bottom;
-  return { srLongCond, srShortCond, srLongCross, srShortCross };
+  return { srLongCond, srShortCond, srLongCross, srShortCross, sr: sr[1] };
 };
 
 const volumeCondition = (
@@ -386,13 +386,11 @@ export const isBuySignal = (candles: CandleData[], options?: Options) => {
     psarMax: options.psarMax,
     psarStep: options.psarStep,
   });
-  let { srLongCond, srLongCross, srShortCross } = supportResistanceCondition(
-    candles,
-    {
+  let { srLongCond, sr, srLongCross, srShortCross } =
+    supportResistanceCondition(candles, {
       leftBars: options.supportResistanceLeftBars,
       rightBars: options.supportResistanceRightBars,
-    }
-  );
+    });
   let volCond = volumeCondition(candles, {
     volumeLength: options.volumeLength,
     volumeMultiplier: options.volumeMultiplier,
@@ -495,13 +493,11 @@ export const isSellSignal = (candles: CandleData[], options?: Options) => {
     psarMax: options.psarMax,
     psarStep: options.psarStep,
   });
-  let { srShortCond, srLongCross, srShortCross } = supportResistanceCondition(
-    candles,
-    {
+  let { srShortCond, sr, srLongCross, srShortCross } =
+    supportResistanceCondition(candles, {
       leftBars: options.supportResistanceLeftBars,
       rightBars: options.supportResistanceRightBars,
-    }
-  );
+    });
   let volCond = volumeCondition(candles, {
     volumeLength: options.volumeLength,
     volumeMultiplier: options.volumeMultiplier,

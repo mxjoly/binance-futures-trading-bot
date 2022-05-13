@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import csv from 'csv-parser';
-import { Binance, CandleChartInterval } from 'binance-api-node';
 import dayjs from 'dayjs';
+import { Binance, CandleChartInterval } from 'binance-api-node';
+import { saveCandleDataFromAPI } from './saveCandleData';
 
 /**
  * Load the candle data on a symbol, on a specific time frames, and on a date range
@@ -17,9 +18,12 @@ export function loadCandlesFromCSV(
   startDate: string | number | Date,
   endDate: string | number | Date
 ) {
-  return new Promise<CandleData[]>((resolve) => {
+  return new Promise<CandleData[]>(async (resolve) => {
     let file = path.join(process.cwd(), 'data', symbol, `_${interval}.csv`);
     let candleData: CandleData[] = [];
+
+    // Fetch the candle data from api and store them locally
+    await saveCandleDataFromAPI(symbol, interval);
 
     fs.createReadStream(file)
       .pipe(csv({ separator: ',' }))

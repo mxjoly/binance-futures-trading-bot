@@ -14,7 +14,7 @@ let plugins: PluginFunc[] = pluginNames.map((plugin) =>
  * Initialize the plugins for dayjs
  * @see https://day.js.org/docs/en/plugin/loading-into-nodejs
  */
-export function initializePlugins() {
+export function initializeDayJsPlugins() {
   plugins.forEach((plugin) => dayjs.extend(plugin));
 }
 

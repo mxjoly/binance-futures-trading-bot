@@ -5,8 +5,8 @@
   "taker_fees_futures": 0.04,
   "maker_fees_futures": 0.02,
   "backtest": {
-    "start_date": "2019-09-08 00:00:00",
-    "end_date": "2022-03-15 00:00:00",
+    "start_date": "2020-01-01 00:00:00",
+    "end_date": "2022-05-10 00:00:00",
     "initial_capital": 10000,
     "save_db": false
   }

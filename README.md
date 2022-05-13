@@ -4,7 +4,7 @@
 
 ### Development
 
-Set your api keys to the environment variables for testnet in `.env`. Go to https://testnet.binancefuture.com/en/futures/BTCUSDT and https://testnet.binance.vision/ to get your keys. Then run the commands:
+Set your api keys to the environment variables for testnet in `.env` with `BINANCE_FUTURES_TESTNET_PUBLIC_KEY` and `BINANCE_FUTURES_TESTNET_PRIVATE_KEY`. Go to https://testnet.binancefuture.com/en/futures/BTCUSDT and https://testnet.binance.vision/ to get your keys. Then run the commands:
 
 ```bash
 npm run build:dev
@@ -28,19 +28,15 @@ You can create your own strategy for your bot. The file must be placed in `src/c
 
 You can backtest your own strategy by running the backtest mode. To do that, you need to:
 
-1. Download the data for your currencies at https://www.cryptodatadownload.com/data/binance/ and move the files to the folder `data`. Delete the first line of the file content and run the command `npm run data` to generate your historical data on multiple time frames (1m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h, 1d) that you want.
-2. When the data are ready, update the json file `config.json` as you want to prepare the backtest.
-3. Tap the commands `npm build:test` and `npm run test` to run the backtest.
-4. When the backtest ends, it generates a log file in the folder `logs` and an html report in `reports`. You can consulting these to evaluate the performance and profitability of your strategy.
-
-![demo](./demo/report-preview.png)
+1. Configure the properties for your backtest in `config.json`.
+2. Tap the commands `npm build:test` and `npm run test` to run the backtest.
+3. When the backtest ends, it generates a log file in the folder `logs` and an html report in `reports`. You can consulting these to evaluate the performance and profitability of your strategy.
 
 ## Todo
 
 - [ ] Calculation of the average buying price of an asset in spot
-- [ ] Add custom Telegram channel with the notifications of the robot when an action is executed
+- [x] Add custom Telegram channel with the notifications of the robot when an action is executed
 - [ ] Trade managements
-- [ ] Spot portfolio arbitrage in spot
 
 ## Documentation
 

@@ -1,4 +1,5 @@
-import { telegramBot, sendTelegramMessage } from './index';
+import { sendTelegramMessage } from './index';
+import { telegramBot } from '../init';
 
 const consoleLog = console.log;
 
