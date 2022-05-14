@@ -16,8 +16,6 @@ const defaultOptions: Options = {
 export function calculate(candles: CandleData[], options?: Options) {
   options = { ...defaultOptions, ...options };
   let values = getCandleSourceType(candles, options.sourceType);
-  let upward = new Array(values.length).fill(0);
-  let downward = new Array(values.length).fill(0);
 
   let avrng = new Array(options.period - 1).fill(0).concat(
     EMA.calculate({
@@ -31,7 +29,10 @@ export function calculate(candles: CandleData[], options?: Options) {
     .concat(EMA.calculate({ period: options.period * 2 - 1, values: avrng }))
     .map((v) => v * options.multiplier);
 
-  let filt = values;
+  values = values.slice(-smoothrng.length);
+  let filt = values.slice(-smoothrng.length);
+  let upward = new Array(smoothrng.length).fill(0);
+  let downward = new Array(smoothrng.length).fill(0);
 
   for (let i = 1; i < filt.length; i++) {
     filt[i] =
@@ -56,8 +57,8 @@ export function calculate(candles: CandleData[], options?: Options) {
         : downward[i - 1];
   }
 
-  upward = upward.slice(-values.length);
-  downward = downward.slice(-values.length);
+  upward = upward.slice(-filt.length);
+  downward = downward.slice(-filt.length);
 
   // Calculate the high band and low band
 
@@ -66,14 +67,16 @@ export function calculate(candles: CandleData[], options?: Options) {
     lowBand: number;
     upward: number;
     downward: number;
+    filt: number;
   }[] = [];
 
-  for (let i = options.period; i < values.length; i++) {
+  for (let i = options.period; i < filt.length; i++) {
     result.push({
       highBand: filt[i] + smoothrng[i],
       lowBand: filt[i] - smoothrng[i],
       upward: upward[i],
       downward: downward[i],
+      filt: filt[i],
     });
   }
 

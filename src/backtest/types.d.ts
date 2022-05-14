@@ -22,13 +22,15 @@ interface Position {
   unrealizedProfit: number;
 }
 
-interface OpenOrder {
+type OrderType = 'MARKET' | 'LIMIT' | 'STOP_MARKET' | 'TRAILING_STOP_MARKET';
+
+interface Order {
   id: string;
   pair: string;
   price: number;
-  quantity: number;
+  quantity?: number;
   side: 'BUY' | 'SELL';
-  type: 'MARKET' | 'LIMIT' | 'STOP' | 'TRAILING_STOP_MARKET';
+  type: OrderType;
   trailingStop?: {
     callbackRate: number; // % between 0-1
     activation: { changePercentage?: number; percentageToTP: number }; // % between 0-1
@@ -78,7 +80,7 @@ interface TradesHistoricRow {
   date: Date;
   symbol: string;
   side: 'BUY' | 'SELL';
-  type: 'MARKET' | 'LIMIT' | 'STOP' | 'TRAILING_STOP_MARKET';
+  type: OrderType;
   action: 'OPEN' | 'CLOSE';
   size: number;
   price: number;

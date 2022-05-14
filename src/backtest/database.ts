@@ -17,7 +17,7 @@ export const createDatabase = (strategyName: string) => {
 export const saveState = (
   date: string,
   wallet: Wallet,
-  openOrders: OpenOrder[]
+  openOrders: Order[]
 ) => {
   setWallet(date, wallet);
   setOpenOrders(date, openOrders);
@@ -47,29 +47,26 @@ export const getWallet = (date: string): Wallet | null => {
   }
 };
 
-export const setOpenOrders = (date: string, orders: OpenOrder[]) => {
+export const setOpenOrders = (date: string, orders: Order[]) => {
   db.push(`/${date}/open_orders`, orders);
 };
 
 const getOpenOrderIndex = (date: string, orderId: number) =>
   db.getIndex(`/${date}/open_orders`, orderId, 'orderId');
 
-export const addFuturesOpenOrder = (date: string, order: OpenOrder) => {
+export const addOpenOrder = (date: string, order: Order) => {
   if (db.exists(`/${date}/open_orders`)) db.push(`/${date}/open_orders`, []);
   db.push(`/${date}/open_orders[]`, order, false);
 };
 
-export const getOpenOrder = (
-  date: string,
-  orderId: number
-): OpenOrder | null => {
+export const getOpenOrder = (date: string, orderId: number): Order | null => {
   if (db.exists(`/${date}/open_orders`)) {
     const index = getOpenOrderIndex(date, orderId);
     return db.getData(`/${date}/open_orders[${index}]`);
   }
 };
 
-export const getOpenOrders = (date: string): OpenOrder[] | null => {
+export const getOpenOrders = (date: string): Order[] | null => {
   if (db.exists(`/${date}/open_orders`)) {
     return db.getData(`/${date}/open_orders`);
   }

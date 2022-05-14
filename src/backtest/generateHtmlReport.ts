@@ -266,7 +266,7 @@ export default function (
                 data: [${lineData.map((data) => `"${data}"`).join(',')}],
                 fill: false,
                 borderColor: '#007FFF',
-                tension: 0.01,
+                tension: 0.1,
               }
             ],
           };

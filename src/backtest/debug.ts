@@ -61,7 +61,7 @@ export function debugWallet(wallet: Wallet) {
   log(positionsString, chalk.grey);
 }
 
-export function debugOpenOrders(openOrders: OpenOrder[]) {
+export function debugOpenOrders(openOrders: Order[]) {
   if (openOrders.length > 0) {
     let ordersString = `orders: [ ${openOrders
       .map(

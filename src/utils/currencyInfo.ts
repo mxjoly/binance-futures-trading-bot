@@ -10,7 +10,9 @@ export function isValidQuantity(
   exchangeInfo: ExchangeInfo
 ) {
   const rules = getLotSizeQuantityRules(pair, exchangeInfo);
-  return quantity >= rules.minQty && quantity <= rules.maxQty;
+  return (
+    Math.abs(quantity) >= rules.minQty && Math.abs(quantity) <= rules.maxQty
+  );
 }
 
 /**

@@ -399,15 +399,13 @@ export class Bot {
           }
 
           if (stopLoss) {
-            // Stop loss order
             binanceClient
               .futuresOrder({
                 side: OrderSide.SELL,
-                type: OrderType.STOP,
+                type: OrderType.STOP_MARKET,
                 symbol: pair,
                 stopPrice: stopLoss,
-                price: stopLoss,
-                quantity: String(positionTotalSize),
+                closePosition: 'true',
               })
               .catch(error);
           }
@@ -573,15 +571,13 @@ export class Bot {
           }
 
           if (stopLoss) {
-            // Stop loss order
             binanceClient
               .futuresOrder({
                 side: OrderSide.BUY,
-                type: OrderType.STOP,
+                type: OrderType.STOP_MARKET,
                 symbol: pair,
                 stopPrice: stopLoss,
-                price: stopLoss,
-                quantity: String(positionTotalSize),
+                closePosition: 'true',
               })
               .catch(error);
           }
