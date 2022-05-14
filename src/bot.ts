@@ -8,7 +8,11 @@ import {
 import { decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient } from './init';
-import { loadCandlesMultiTimeFramesFromAPI } from './utils/loadCandleData';
+import {
+  loadCandlesFromAPI,
+  loadCandlesFromCSV,
+  loadCandlesMultiTimeFramesFromAPI,
+} from './utils/loadCandleData';
 import { Counter } from './tools/counter';
 import { calculateActivationPrice } from './utils/trailingStop';
 import { isOnTradingSession } from './utils/tradingSession';
@@ -19,6 +23,7 @@ import {
   getQuantityPrecision,
   isValidQuantity,
 } from './utils/currencyInfo';
+import { RangeBands, VWMA } from './indicators';
 
 // ====================================================================== //
 
@@ -92,6 +97,20 @@ export class Bot {
 
     // Get the exchange info
     this.exchangeInfo = await binanceClient.futuresExchangeInfo();
+
+    loadCandlesFromAPI(
+      'BTCUSDT',
+      CandleChartInterval.ONE_HOUR,
+      binanceClient
+    ).then((candles) => {
+      let res = VWMA.calculate(candles, {
+        period: 17,
+        sourceType: 'open',
+      });
+      console.log(res.slice(-20));
+    });
+
+    return;
 
     // Store account information to local
     this.lastDayBalance = Number(

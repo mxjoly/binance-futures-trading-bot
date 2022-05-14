@@ -21,9 +21,9 @@ export function calculate(candles: CandleData[], options?: Options) {
   let sma1 = SMA.calculate({ period: options.period, values });
   let sma2 = SMA.calculate({ period: options.period, values: volume });
 
-  let result: number[] = new Array(options.period);
-  for (let i = 0; i < options.period; i++) {
-    result[i] = sma1[1] / sma2[i];
+  let result: number[] = new Array(sma1.length);
+  for (let i = 0; i < sma1.length; i++) {
+    result[i] = sma1[i] / sma2[i];
   }
 
   return result;

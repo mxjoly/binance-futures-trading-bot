@@ -1,15 +1,13 @@
 import colors from 'ansi-colors';
-import {
-  CandleChartInterval,
-  ExchangeInfo,
-  OrderSide,
-  PositionSide,
-} from 'binance-api-node';
+import { CandleChartInterval, ExchangeInfo, OrderSide } from 'binance-api-node';
 import chalk from 'chalk';
 import cliProgress from 'cli-progress';
 import dayjs from 'dayjs';
-import safeRequire from 'safe-require';
-import { binanceClient, MAX_LOADED_CANDLE_LENGTH_API } from '../init';
+import {
+  binanceClient,
+  MAX_LOADED_CANDLE_LENGTH_API,
+  BotConfig,
+} from '../init';
 import { decimalCeil, decimalFloor } from '../utils/math';
 import { clone } from '../utils/object';
 import { loadCandlesMultiTimeFramesFromCSV } from '../utils/loadCandleData';
@@ -38,15 +36,6 @@ import {
 } from '../utils/timeFrame';
 
 // ====================================================================== //
-
-const BotConfig = safeRequire(`${process.cwd()}/config.json`);
-
-if (!BotConfig) {
-  console.error(
-    'Something is wrong. No json config file has been found at the root of the project.'
-  );
-  process.exit(1);
-}
 
 const BacktestConfig = BotConfig['backtest'];
 
@@ -1385,7 +1374,7 @@ export class BasicBackTestBot {
                 side,
                 type,
                 position.size === 0 ? 'CLOSE' : 'OPEN',
-                size,
+                quantity,
                 price,
                 pnl
               );

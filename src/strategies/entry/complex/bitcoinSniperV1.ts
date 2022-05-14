@@ -479,17 +479,6 @@ export const isBuySignal = (candles: CandleData[], options?: Options) => {
     rsiLongCond &&
     maLongCond;
 
-  // longCondition1 =
-  //   srLongCond && adxLongCond && psarLongCond && rangeFilterLongCond;
-
-  // console.log(new Date(candles[candles.length - 1].openTime));
-  // console.log(candles[candles.length - 1].close);
-  // console.log(sr);
-  // if (longCondition1) {
-  //   console.log('BUY');
-  // }
-
-  // return longCondition1;
   return longCondition1 || longCondition2 || longCondition3 || longCondition4;
 };
 
@@ -597,17 +586,6 @@ export const isSellSignal = (candles: CandleData[], options?: Options) => {
     rsiShortCond &&
     maShortCond;
 
-  // shortCondition1 =
-  //   srShortCond && adxShortCond && psarShortCond && rangeFilterShortCond;
-
-  // console.log(new Date(candles[candles.length - 1].openTime));
-  // console.log(candles[candles.length - 1].close);
-  // console.log(sr);
-  // if (shortCondition1) {
-  //   console.log('SELL');
-  // }
-
-  // return shortCondition1;
   return (
     shortCondition1 || shortCondition2 || shortCondition3 || shortCondition4
   );

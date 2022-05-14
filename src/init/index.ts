@@ -20,4 +20,4 @@ export const { AbstractStrategy, StrategyConfig, StrategyHyperParameters } =
   loadStrategyConfig(BotConfig['strategy_config_file_name']);
 
 // The maximum number of candles to be loaded from the the binance api
-export const MAX_LOADED_CANDLE_LENGTH_API = 499;
+export const MAX_LOADED_CANDLE_LENGTH_API = 500;
