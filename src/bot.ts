@@ -23,7 +23,6 @@ import {
   getQuantityPrecision,
   isValidQuantity,
 } from './utils/currencyInfo';
-import { RangeBands, VWMA } from './indicators';
 
 // ====================================================================== //
 
@@ -97,20 +96,6 @@ export class Bot {
 
     // Get the exchange info
     this.exchangeInfo = await binanceClient.futuresExchangeInfo();
-
-    loadCandlesFromAPI(
-      'BTCUSDT',
-      CandleChartInterval.ONE_HOUR,
-      binanceClient
-    ).then((candles) => {
-      let res = VWMA.calculate(candles, {
-        period: 17,
-        sourceType: 'open',
-      });
-      console.log(res.slice(-20));
-    });
-
-    return;
 
     // Store account information to local
     this.lastDayBalance = Number(
@@ -726,7 +711,7 @@ export class Bot {
         : '😭';
 
     let message =
-      `<b>RESULTATS DU ${this.currentDay}</b>` +
+      `<b>RÉSULTATS DU ${this.currentDay}</b>` +
       '\n' +
       `${performance > 0 ? `+${performance}%` : `${performance}%`} ${emoji}`;
 
