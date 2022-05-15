@@ -10,7 +10,6 @@ const resolveApp = (relativePath: string) =>
   path.resolve(appDirectory, relativePath);
 
 const server = nodemon({ script: `${resolveApp('build')}/index.js` });
-
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -19,7 +18,7 @@ app.get('/', (req: Request, res: Response) => {
 });
 
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
+  console.log(`Listening on port ${port}`);
 });
 
 server
