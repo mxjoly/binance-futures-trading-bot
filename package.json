@@ -5,7 +5,7 @@
   "scripts": {
     "start": "NODE_ENV=production nodemon ./build/server.js",
     "dev": "NODE_ENV=development nodemon ./build/server.js",
-    "build:prod": "NODE_ENV=production tsc",
+    "build": "NODE_ENV=production tsc",
     "build:dev": "NODE_ENV=development tsc",
     "build:test": "NODE_ENV=test tsc",
     "test": "NODE_ENV=test node ./build/backtest/index.js DEBUG=false",
