@@ -8,11 +8,7 @@ import {
 import { decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient } from './init';
-import {
-  loadCandlesFromAPI,
-  loadCandlesFromCSV,
-  loadCandlesMultiTimeFramesFromAPI,
-} from './utils/loadCandleData';
+import { loadCandlesMultiTimeFramesFromAPI } from './utils/loadCandleData';
 import { Counter } from './tools/counter';
 import { calculateActivationPrice } from './utils/trailingStop';
 import { isOnTradingSession } from './utils/tradingSession';

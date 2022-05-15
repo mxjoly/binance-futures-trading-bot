@@ -32,7 +32,7 @@ export default function (
     .reverse()
     .map((row) => {
       return (
-        (row.action === 'OPEN' ? '<tr class="colored">' : '<tr>') +
+        (row.action === 'CLOSE' ? '<tr class="colored">' : '<tr>') +
         `<th><b>${
           row.action === 'OPEN' ? strategyReport.totalTrades - tradeNo++ : ''
         }</b></th>` +
