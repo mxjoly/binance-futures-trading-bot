@@ -14,7 +14,7 @@ if (!CHAT_ID) {
 export function sendTelegramMessage(message: string) {
   return new Promise<TelegramBot.Message>((resolve, reject) => {
     telegramBot
-      .sendMessage(CHAT_ID, message)
+      .sendMessage(CHAT_ID, message, { parse_mode: 'HTML' })
       .then((messageInfo) => {
         if (process.env.NODE_ENV === 'test') {
           telegramBot.deleteMessage(

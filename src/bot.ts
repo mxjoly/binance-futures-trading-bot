@@ -445,9 +445,6 @@ export class Bot {
               takeProfits,
               stopLoss
             );
-            sendTelegramMessage(
-              `Long position open on ${pair} at ${currentPrice} with ${quantity}${asset} 😈`
-            );
           }
         })
         .catch(error);
@@ -617,9 +614,6 @@ export class Bot {
               takeProfits,
               stopLoss
             );
-            sendTelegramMessage(
-              `Short position open on ${pair} at ${currentPrice} with ${quantity}${asset} 😈`
-            );
           }
         })
         .catch(error);
@@ -639,7 +633,6 @@ export class Bot {
 
     if (this.hasOpenPosition[pair] && !hasOpenPosition) {
       this.hasOpenPosition[pair] = false;
-      this.sendTradeResult(pair);
       this.closeOpenOrders(pair);
       if (this.counters[pair]) this.counters[pair].reset();
     }
@@ -659,26 +652,6 @@ export class Bot {
         })
         .catch(reject);
     });
-  }
-
-  /**
-   * When a trade is closed send the result to the telegram channel
-   */
-  private sendTradeResult(pair: string) {
-    // Profit percent on the total wallet balance
-    let result =
-      ((Number(this.accountInfo.totalWalletBalance) - this.currentBalance) /
-        this.currentBalance) *
-      100;
-
-    log(
-      `Trade closed on ${pair}: ${result > 0 ? `+${result}% ` : `${result}%`}`
-    );
-    sendTelegramMessage(
-      `<b>Trade closed on ${pair}</b>\n${
-        result > 0 ? `+${result}% ` : `${result}%`
-      } ${result >= 0 ? '🟢' : '🔴'}`
-    );
   }
 
   /**
