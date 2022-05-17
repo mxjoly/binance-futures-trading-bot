@@ -10,7 +10,6 @@ import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient } from './init';
 import { loadCandlesMultiTimeFramesFromAPI } from './utils/loadCandleData';
 import { Counter } from './tools/counter';
-import { calculateActivationPrice } from './utils/trailingStop';
 import { isOnTradingSession } from './utils/tradingSession';
 import { sendTelegramMessage } from './telegram';
 import dayjs from 'dayjs';
@@ -171,7 +170,6 @@ export class Bot {
       riskManagement,
       tradingSessions,
       canOpenNewPositionToCloseLast,
-      trailingStopConfig,
       allowPyramiding,
       maxPyramidingAllocation,
       unidirectional,
@@ -351,33 +349,6 @@ export class Bot {
           quantity: String(quantity),
         })
         .then(() => {
-          // Cancel the previous orders to update them
-          if (currentOpenOrders.length > 0) {
-            this.closeOpenOrders(pair);
-          }
-
-          // Calculate the total size and the average entry price on the position updated
-          const positionTotalSize = positionSize + quantity;
-          const avgPrice =
-            (positionSize * positionEntryPrice + quantity * currentPrice) /
-            (positionSize + quantity);
-
-          // In pyramiding mode, update the take profits and stop loss
-          if (allowPyramiding && hasLongPosition) {
-            let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
-              exitStrategy
-                ? exitStrategy(
-                    avgPrice,
-                    candles,
-                    pricePrecision,
-                    OrderSide.BUY,
-                    this.exchangeInfo
-                  )
-                : { takeProfits: [], stopLoss: null };
-            takeProfits = updatedTakeProfits;
-            stopLoss = updatedStopLoss;
-          }
-
           if (takeProfits.length > 0) {
             // Create the take profit orders
             takeProfits.forEach(({ price, quantityPercentage }) => {
@@ -389,7 +360,7 @@ export class Bot {
                   price,
                   quantity: String(
                     decimalFloor(
-                      Number(positionTotalSize) * quantityPercentage,
+                      Number(positionSize) * quantityPercentage,
                       quantityPrecision
                     )
                   ),
@@ -402,50 +373,24 @@ export class Bot {
             binanceClient
               .futuresOrder({
                 side: OrderSide.SELL,
-                type: OrderType.STOP_MARKET,
+                type: OrderType.STOP,
                 symbol: pair,
                 stopPrice: stopLoss,
-                closePosition: 'true',
+                price: stopLoss,
+                quantity: String(positionSize),
               })
               .catch(error);
           }
 
-          if (trailingStopConfig) {
-            let activationPrice = calculateActivationPrice(
-              avgPrice,
-              pricePrecision,
-              OrderSide.SELL,
-              trailingStopConfig,
-              takeProfits
-            );
-
-            binanceClient
-              .futuresOrder({
-                side: OrderSide.SELL,
-                type: OrderType.TRAILING_STOP_MARKET,
-                symbol: pair,
-                quantity: String(positionTotalSize),
-                callbackRate: trailingStopConfig.callbackRate * 100,
-                activationPrice,
-              })
-              .catch(error);
-          }
-
-          if (hasLongPosition) {
-            log(
-              `Add ${quantity}${asset} to the long position on ${pair}. The average entry price is now ${avgPrice}${base} and the total size ${positionTotalSize}${asset}`
-            );
-          } else {
-            logBuySellExecutionOrder(
-              OrderSide.BUY,
-              asset,
-              base,
-              currentPrice,
-              quantity,
-              takeProfits,
-              stopLoss
-            );
-          }
+          logBuySellExecutionOrder(
+            OrderSide.BUY,
+            asset,
+            base,
+            currentPrice,
+            quantity,
+            takeProfits,
+            stopLoss
+          );
         })
         .catch(error);
     } else if (
@@ -520,33 +465,6 @@ export class Bot {
           quantity: String(quantity),
         })
         .then(() => {
-          // Cancel the previous orders to update them
-          if (currentOpenOrders.length > 0) {
-            this.closeOpenOrders(pair);
-          }
-
-          // Calculate the total size and the average entry price on the position updated
-          const positionTotalSize = positionSize + quantity;
-          const avgPrice =
-            (positionSize * positionEntryPrice + quantity * currentPrice) /
-            (positionSize + quantity);
-
-          // In pyramiding mode, update the take profits and stop loss
-          if (allowPyramiding && hasShortPosition) {
-            let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
-              exitStrategy
-                ? exitStrategy(
-                    avgPrice,
-                    candles,
-                    pricePrecision,
-                    OrderSide.BUY,
-                    this.exchangeInfo
-                  )
-                : { takeProfits: [], stopLoss: null };
-            takeProfits = updatedTakeProfits;
-            stopLoss = updatedStopLoss;
-          }
-
           if (takeProfits.length > 0) {
             // Create the take profit orders
             takeProfits.forEach(({ price, quantityPercentage }) => {
@@ -558,7 +476,7 @@ export class Bot {
                   price: price,
                   quantity: String(
                     decimalFloor(
-                      Number(positionTotalSize) * quantityPercentage,
+                      Number(positionSize) * quantityPercentage,
                       quantityPrecision
                     )
                   ),
@@ -571,50 +489,24 @@ export class Bot {
             binanceClient
               .futuresOrder({
                 side: OrderSide.BUY,
-                type: OrderType.STOP_MARKET,
+                type: OrderType.STOP,
                 symbol: pair,
                 stopPrice: stopLoss,
-                closePosition: 'true',
+                price: stopLoss,
+                quantity: String(positionSize),
               })
               .catch(error);
           }
 
-          if (trailingStopConfig) {
-            let activationPrice = calculateActivationPrice(
-              avgPrice,
-              pricePrecision,
-              OrderSide.BUY,
-              trailingStopConfig,
-              takeProfits
-            );
-
-            binanceClient
-              .futuresOrder({
-                side: OrderSide.BUY,
-                type: OrderType.TRAILING_STOP_MARKET,
-                symbol: pair,
-                quantity: String(positionTotalSize),
-                callbackRate: trailingStopConfig.callbackRate * 100,
-                activationPrice,
-              })
-              .catch(error);
-          }
-
-          if (hasShortPosition) {
-            log(
-              `Add ${quantity}${asset} to the short position on ${pair}. The average entry price is now ${avgPrice}${base} and the total size ${positionTotalSize}${asset}`
-            );
-          } else {
-            logBuySellExecutionOrder(
-              OrderSide.SELL,
-              asset,
-              base,
-              currentPrice,
-              quantity,
-              takeProfits,
-              stopLoss
-            );
-          }
+          logBuySellExecutionOrder(
+            OrderSide.SELL,
+            asset,
+            base,
+            currentPrice,
+            quantity,
+            takeProfits,
+            stopLoss
+          );
         })
         .catch(error);
     }

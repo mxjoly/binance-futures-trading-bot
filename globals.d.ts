@@ -9,7 +9,6 @@ interface StrategyConfig {
   indicatorIntervals: CandleChartInterval[]; // The intervals/time frames needed for the strategy
   leverage?: number;
   risk: number; // % of total balance to risk in a trade
-  trailingStopConfig?: TrailingStopConfig; // Configuration of a trailing stop
   allowPyramiding?: boolean; // Allow cumulative longs/shorts to average the entry price
   maxPyramidingAllocation?: number; // Max allocation for a position in pyramiding (between 0 and 1)
   unidirectional?: boolean; // When take the profit, close the position instead of opening new position in futures
@@ -53,14 +52,6 @@ type HyperParameter = {
 };
 
 type EntryStrategy = (candles: CandlesDataMultiTimeFrames) => boolean;
-
-type TrailingStopConfig = {
-  // Activation price of trailing stop calculated by :
-  // changePercentage: the price moves X% (0 to 1) in the positive
-  // percentageToTP: the price reach X% (0 to 1) of the nearest take profit
-  activation: { changePercentage?: number; percentageToTP?: number };
-  callbackRate: number; // Percentage between 0 and 1 - stop loss if the price increase/decrease of % from last candle
-};
 
 type TakeProfit = { price: number; quantityPercentage: number }; // quantityPercentage = 0.1 => 10%
 

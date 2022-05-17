@@ -22,20 +22,15 @@ interface Position {
   unrealizedProfit: number;
 }
 
-type OrderType = 'MARKET' | 'LIMIT' | 'STOP_MARKET' | 'TRAILING_STOP_MARKET';
+type OrderType = 'MARKET' | 'LIMIT' | 'STOP';
 
 interface Order {
   id: string;
   pair: string;
   price: number;
-  quantity?: number;
+  quantity: number;
   side: 'BUY' | 'SELL';
   type: OrderType;
-  trailingStop?: {
-    callbackRate: number; // % between 0-1
-    activation: { changePercentage?: number; percentageToTP: number }; // % between 0-1
-    status: 'PENDING' | 'ACTIVE';
-  };
 }
 
 /**

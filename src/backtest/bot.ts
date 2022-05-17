@@ -15,7 +15,6 @@ import { isOnTradingSession } from '../utils/tradingSession';
 import { createDatabase, saveState } from './database';
 import generateHtmlReport from './generateHtmlReport';
 import { Counter } from '../tools/counter';
-import { calculateActivationPrice } from '../utils/trailingStop';
 import {
   debugCandle,
   debugOpenOrders,
@@ -807,7 +806,6 @@ export class BasicBackTestBot {
       sellStrategy,
       tradingSessions,
       canOpenNewPositionToCloseLast,
-      trailingStopConfig,
       allowPyramiding,
       maxPyramidingAllocation,
       unidirectional,
@@ -998,27 +996,6 @@ export class BasicBackTestBot {
         date,
       });
 
-      // Cancel the previous orders to update them
-      if (currentOpenOrders.length > 0) {
-        this.closeOpenOrders(pair);
-      }
-
-      // In pyramiding mode, update the take profits and stop loss
-      if (allowPyramiding && hasLongPosition) {
-        let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
-          exitStrategy
-            ? exitStrategy(
-                position.entryPrice,
-                candles,
-                pricePrecision,
-                OrderSide.BUY,
-                exchangeInfo
-              )
-            : { takeProfits: [], stopLoss: null };
-        takeProfits = updatedTakeProfits;
-        stopLoss = updatedStopLoss;
-      }
-
       if (takeProfits.length > 0) {
         // Create the take profit orders
         takeProfits.forEach(({ price, quantityPercentage }) => {
@@ -1040,27 +1017,7 @@ export class BasicBackTestBot {
           price: stopLoss,
           quantity: -position.size,
           side: 'SELL',
-          type: 'STOP_MARKET',
-          date,
-        });
-      }
-
-      if (trailingStopConfig) {
-        let activationPrice = calculateActivationPrice(
-          position.entryPrice,
-          pricePrecision,
-          OrderSide.SELL,
-          trailingStopConfig,
-          takeProfits
-        );
-
-        this.order({
-          pair: asset + base,
-          price: activationPrice,
-          quantity: -position.size,
-          side: 'SELL',
-          type: 'TRAILING_STOP_MARKET',
-          trailingStopConfig,
+          type: 'STOP',
           date,
         });
       }
@@ -1134,27 +1091,6 @@ export class BasicBackTestBot {
         date,
       });
 
-      // Cancel the previous orders to update them
-      if (currentOpenOrders.length > 0) {
-        this.closeOpenOrders(pair);
-      }
-
-      // In pyramiding mode, update the take profits and stop loss
-      if (allowPyramiding && hasLongPosition) {
-        let { takeProfits: updatedTakeProfits, stopLoss: updatedStopLoss } =
-          exitStrategy
-            ? exitStrategy(
-                position.entryPrice,
-                candles,
-                pricePrecision,
-                OrderSide.BUY,
-                exchangeInfo
-              )
-            : { takeProfits: [], stopLoss: null };
-        takeProfits = updatedTakeProfits;
-        stopLoss = updatedStopLoss;
-      }
-
       if (takeProfits.length > 0) {
         // Create the take profit orders
         takeProfits.forEach(({ price, quantityPercentage }) => {
@@ -1176,27 +1112,7 @@ export class BasicBackTestBot {
           price: stopLoss,
           quantity: -position.size,
           side: 'BUY',
-          type: 'STOP_MARKET',
-          date,
-        });
-      }
-
-      if (trailingStopConfig) {
-        let activationPrice = calculateActivationPrice(
-          position.entryPrice,
-          pricePrecision,
-          OrderSide.BUY,
-          trailingStopConfig,
-          takeProfits
-        );
-
-        this.order({
-          pair: asset + base,
-          price: activationPrice,
-          quantity: -position.size,
-          side: 'BUY',
-          type: 'TRAILING_STOP_MARKET',
-          trailingStopConfig,
+          type: 'STOP',
           date,
         });
       }
@@ -1263,7 +1179,7 @@ export class BasicBackTestBot {
       orders
         .sort((order1, order2) => order2.price - order1.price) // sort orders from nearest price to furthest price
         .every((order) => {
-          const { id, price, quantity, type, trailingStop, side } = order;
+          const { id, price, quantity, type, side } = order;
 
           if (
             type === 'LIMIT' &&
@@ -1391,11 +1307,10 @@ export class BasicBackTestBot {
           }
 
           if (
-            type === 'STOP_MARKET' &&
+            type === 'STOP' &&
             lastCandle.high > price &&
             lastCandle.low < price
           ) {
-            let quantity = -position.size;
             const fees = Math.abs(quantity) * price * (TAKER_FEES / 100);
 
             // Update wallet
@@ -1448,71 +1363,6 @@ export class BasicBackTestBot {
             );
 
             this.closeOpenOrder(id);
-          }
-
-          // Trailing stops
-          if (type === 'TRAILING_STOP_MARKET') {
-            const fees = Math.abs(quantity) * price * (TAKER_FEES / 100);
-
-            let { status, callbackRate } = trailingStop;
-
-            if (
-              status === 'PENDING' &&
-              lastCandle.high > price &&
-              lastCandle.low < price
-            ) {
-              status = 'ACTIVE';
-            }
-            if (status === 'ACTIVE') {
-              let stopLossPrice =
-                side === 'BUY'
-                  ? lastCandle.open * (1 + callbackRate)
-                  : lastCandle.open * (1 - callbackRate);
-
-              // Trailing stop loss is activated
-              if (
-                (side === 'BUY' && lastCandle.high >= stopLossPrice) ||
-                (side === 'SELL' && lastCandle.low <= stopLossPrice)
-              ) {
-                let pnl = this.getPositionPNL(position, price);
-
-                wallet.availableBalance += position.margin + pnl - fees;
-                wallet.totalWalletBalance += pnl - fees;
-                position.size += quantity;
-                position.margin = Math.abs(position.size * price) / leverage;
-
-                this.updateProfitLossStrategyProperty(pnl);
-
-                if (side === 'BUY') {
-                  if (price <= entryPrice)
-                    this.strategyReport.shortWinningTrade++;
-                  if (price > entryPrice) this.strategyReport.shortLostTrade++;
-                } else {
-                  if (price >= entryPrice)
-                    this.strategyReport.longWinningTrade++;
-                  if (price > entryPrice) this.strategyReport.longLostTrade++;
-                }
-                this.strategyReport.totalFees += fees;
-
-                this.addToHistoric(
-                  date,
-                  pair,
-                  side,
-                  'TRAILING_STOP_MARKET',
-                  'CLOSE',
-                  quantity,
-                  price,
-                  pnl
-                );
-
-                log(
-                  `Trailing stop order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,
-                  chalk.magenta
-                );
-
-                this.closeOpenOrder(id);
-              }
-            }
           }
 
           // If an order close the position, do not continue to check the other orders.
@@ -1603,7 +1453,6 @@ export class BasicBackTestBot {
     quantity,
     side,
     type,
-    trailingStopConfig,
     date,
   }: {
     pair: string;
@@ -1611,7 +1460,6 @@ export class BasicBackTestBot {
     quantity: number;
     side: 'BUY' | 'SELL';
     type: OrderType;
-    trailingStopConfig?: TrailingStopConfig;
     date: Date;
   }) {
     const wallet = this.wallet;
@@ -1767,42 +1615,16 @@ export class BasicBackTestBot {
       }
     }
 
-    if (type === 'STOP_MARKET') {
+    if (type === 'STOP') {
       let order: Order = {
         id: Math.random().toString(16).slice(2),
         pair,
         type,
         side,
         price,
+        quantity,
       };
       this.openOrders.push(order);
-    }
-
-    if (type === 'TRAILING_STOP_MARKET' && trailingStopConfig) {
-      let canOrder = quantity <= Math.abs(position.size);
-      if (canOrder) {
-        let order: Order = {
-          id: Math.random().toString(16).slice(2),
-          pair,
-          type: 'TRAILING_STOP_MARKET',
-          side,
-          price, // activation price
-          quantity,
-          trailingStop: {
-            status: 'PENDING',
-            callbackRate: trailingStopConfig.callbackRate,
-            activation: {
-              changePercentage: trailingStopConfig.activation.changePercentage,
-              percentageToTP: trailingStopConfig.activation.changePercentage,
-            },
-          },
-        };
-        this.openOrders.push(order);
-      } else {
-        console.error(
-          `Trailing stop order for the pair ${pair} cannot be placed`
-        );
-      }
     }
   }
 }
