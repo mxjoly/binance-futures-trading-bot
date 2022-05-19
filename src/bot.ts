@@ -27,9 +27,6 @@ export class Bot {
   private accountInfo: FuturesAccountInfoResult;
   private hasOpenPosition: { [pair: string]: boolean };
 
-  // Cache the candle data
-  // private candles: CandlesDataMultiTimeFrames;
-
   // Counter to fix the max duration of each trade
   private counters: { [symbol: string]: Counter };
 
@@ -140,25 +137,25 @@ export class Bot {
                   (b) => b.asset === this.strategyConfigs[0].base
                 ).balance
               );
-
-              // Day change ?
-              let candleDay = dayjs(new Date(candle.closeTime)).format(
-                'DD/MM/YYYY'
-              );
-              if (candleDay !== this.currentDay) {
-                this.sendDailyResult();
-                this.currentDay = candleDay;
-              }
-
-              // Month change ?
-              let candleMonth = dayjs(new Date(candle.closeTime)).format(
-                'MM/YYYY'
-              );
-              if (candleMonth !== this.currentMonth) {
-                this.sendMonthResult();
-                this.currentMonth = candleMonth;
-              }
             });
+
+            // Day change ?
+            let candleDay = dayjs(new Date(candle.closeTime)).format(
+              'DD/MM/YYYY'
+            );
+            if (candleDay !== this.currentDay) {
+              this.sendDailyResult();
+              this.currentDay = candleDay;
+            }
+
+            // Month change ?
+            let candleMonth = dayjs(new Date(candle.closeTime)).format(
+              'MM/YYYY'
+            );
+            if (candleMonth !== this.currentMonth) {
+              this.sendMonthResult();
+              this.currentMonth = candleMonth;
+            }
           }
         }
       );
