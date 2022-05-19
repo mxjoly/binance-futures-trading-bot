@@ -1,6 +1,5 @@
 import {
   getQuantityPrecision,
-  getLotSizeQuantityRules,
   getMinOrderQuantity,
 } from '../utils/currencyInfo';
 import { decimalCeil } from '../utils/math';

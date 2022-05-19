@@ -13,11 +13,7 @@ import { Counter } from './tools/counter';
 import { isOnTradingSession } from './utils/tradingSession';
 import { sendTelegramMessage } from './telegram';
 import dayjs from 'dayjs';
-import {
-  getPricePrecision,
-  getQuantityPrecision,
-  isValidQuantity,
-} from './utils/currencyInfo';
+import { getPricePrecision, getQuantityPrecision } from './utils/currencyInfo';
 
 // ====================================================================== //
 
@@ -35,7 +31,9 @@ export class Bot {
   private counters: { [symbol: string]: Counter };
 
   private currentDay: string;
+  private currentMonth: string;
   private lastDayBalance: number;
+  private lastMonthBalance: number;
   private currentBalance: number; // temp balance
 
   constructor(tradeConfigs: StrategyConfig[]) {
@@ -43,6 +41,7 @@ export class Bot {
     this.counters = {};
     this.hasOpenPosition = {};
     this.currentDay = dayjs(Date.now()).format('DD/MM/YYYY');
+    this.currentMonth = dayjs(Date.now()).format('MM/YYYY');
   }
 
   /**
@@ -93,12 +92,13 @@ export class Bot {
     this.exchangeInfo = await binanceClient.futuresExchangeInfo();
 
     // Store account information to local
-    this.lastDayBalance = Number(
+    this.currentBalance = Number(
       (await binanceClient.futuresAccountBalance()).find(
-        (b) => b.asset === 'USDT'
+        (b) => b.asset === this.strategyConfigs[0].base
       ).balance
     );
-    this.currentBalance = this.lastDayBalance;
+    this.lastMonthBalance = this.currentBalance;
+    this.lastDayBalance = this.currentBalance;
 
     // Main
     this.strategyConfigs.forEach((strategyConfig) => {
@@ -108,10 +108,10 @@ export class Bot {
       binanceClient.ws.futuresCandles(
         pair,
         strategyConfig.loopInterval,
-        async (candle) => {
+        (candle) => {
           if (candle.isFinal) {
-            // Check if a previous trade has been closed
-            this.syncOpenPosition(pair);
+            // If a position has been closed, cancel the open orders
+            this.manageOpenOrders(pair);
 
             // Load the candle data for each the time frames that will be use on the strategy
             loadCandlesMultiTimeFramesFromAPI(
@@ -123,25 +123,38 @@ export class Bot {
                 ])
               ),
               binanceClient
-            ).then((candlesMultiTimeFrames) => {
-              this.trade(
+            ).then(async (candlesMultiTimeFrames) => {
+              await this.trade(
                 strategyConfig,
                 Number(candle.close),
                 candlesMultiTimeFrames
-              ).then(() => {
-                // Check if a previous trade has been closed
-                this.syncOpenPosition(pair);
-              });
-            });
-          }
+              );
 
-          // Day change
-          let candleDate = dayjs(new Date(candle.closeTime)).format(
-            'DD/MM/YYYY'
-          );
-          if (candleDate !== this.currentDay) {
-            this.sendDailyResults();
-            this.currentDay = candleDate;
+              // Update the current balance
+              this.currentBalance = Number(
+                (await binanceClient.futuresAccountBalance()).find(
+                  (b) => b.asset === this.strategyConfigs[0].base
+                ).balance
+              );
+
+              // Day change ?
+              let candleDay = dayjs(new Date(candle.closeTime)).format(
+                'DD/MM/YYYY'
+              );
+              if (candleDay !== this.currentDay) {
+                this.sendDailyResult();
+                this.currentDay = candleDay;
+              }
+
+              // Month change ?
+              let candleMonth = dayjs(new Date(candle.closeTime)).format(
+                'MM/YYYY'
+              );
+              if (candleMonth !== this.currentMonth) {
+                this.sendMonthResult();
+                this.currentMonth = candleMonth;
+              }
+            });
           }
         }
       );
@@ -301,6 +314,11 @@ export class Bot {
       // Do not add to the current position if the allocation is over the max allocation
       if (allowPyramiding && hasLongPosition && !canAddToPosition) return;
 
+      // Close the open orders of the last trade
+      if (hasShortPosition && currentOpenOrders.length > 0) {
+        await this.closeOpenOrders(pair);
+      }
+
       // Calculate TP and SL
       let { takeProfits, stopLoss } = exitStrategy
         ? exitStrategy(
@@ -325,28 +343,14 @@ export class Bot {
         exchangeInfo: this.exchangeInfo,
       });
 
-      // Quantity to add to close the previous position
-      let previousPositionQuantity = hasShortPosition ? positionSize : 0;
-
-      // To close the previous short position
-      if (
-        isValidQuantity(
-          quantity + previousPositionQuantity,
-          pair,
-          this.exchangeInfo
-        )
-      ) {
-        quantity += previousPositionQuantity;
-      } else {
-        throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
-      }
-
       binanceClient
         .futuresOrder({
           side: OrderSide.BUY,
           type: OrderType.MARKET,
           symbol: pair,
-          quantity: String(quantity),
+          quantity: String(
+            hasShortPosition ? quantity - positionSize : quantity
+          ),
         })
         .then(() => {
           if (takeProfits.length > 0) {
@@ -360,7 +364,7 @@ export class Bot {
                   price,
                   quantity: String(
                     decimalFloor(
-                      Number(positionSize) * quantityPercentage,
+                      quantity * quantityPercentage,
                       quantityPrecision
                     )
                   ),
@@ -370,16 +374,28 @@ export class Bot {
           }
 
           if (stopLoss) {
-            binanceClient
-              .futuresOrder({
-                side: OrderSide.SELL,
-                type: OrderType.STOP,
-                symbol: pair,
-                stopPrice: stopLoss,
-                price: stopLoss,
-                quantity: String(positionSize),
-              })
-              .catch(error);
+            if (takeProfits.length > 1) {
+              binanceClient
+                .futuresOrder({
+                  side: OrderSide.SELL,
+                  type: OrderType.STOP_MARKET,
+                  symbol: pair,
+                  stopPrice: stopLoss,
+                  closePosition: 'true',
+                })
+                .catch(error);
+            } else {
+              binanceClient
+                .futuresOrder({
+                  side: OrderSide.SELL,
+                  type: OrderType.STOP,
+                  symbol: pair,
+                  stopPrice: stopLoss,
+                  price: stopLoss,
+                  quantity: String(quantity),
+                })
+                .catch(error);
+            }
           }
 
           logBuySellExecutionOrder(
@@ -417,6 +433,11 @@ export class Bot {
       // Do not add to the current position if the allocation is over the max allocation
       if (allowPyramiding && hasShortPosition && !canAddToPosition) return;
 
+      // Close the open orders of the last trade
+      if (hasLongPosition && currentOpenOrders.length > 0) {
+        await this.closeOpenOrders(pair);
+      }
+
       // Calculate TP and SL
       let { takeProfits, stopLoss } = exitStrategy
         ? exitStrategy(
@@ -441,28 +462,14 @@ export class Bot {
         exchangeInfo: this.exchangeInfo,
       });
 
-      // Quantity to add to close the previous position
-      let previousPositionQuantity = hasLongPosition ? positionSize : 0;
-
-      // To close the previous long position
-      if (
-        isValidQuantity(
-          quantity + previousPositionQuantity,
-          pair,
-          this.exchangeInfo
-        )
-      ) {
-        quantity += previousPositionQuantity;
-      } else {
-        throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
-      }
-
       binanceClient
         .futuresOrder({
           side: OrderSide.SELL,
           type: OrderType.MARKET,
           symbol: pair,
-          quantity: String(quantity),
+          quantity: String(
+            hasLongPosition ? quantity - positionSize : quantity
+          ),
         })
         .then(() => {
           if (takeProfits.length > 0) {
@@ -476,7 +483,7 @@ export class Bot {
                   price: price,
                   quantity: String(
                     decimalFloor(
-                      Number(positionSize) * quantityPercentage,
+                      quantity * quantityPercentage,
                       quantityPrecision
                     )
                   ),
@@ -486,16 +493,28 @@ export class Bot {
           }
 
           if (stopLoss) {
-            binanceClient
-              .futuresOrder({
-                side: OrderSide.BUY,
-                type: OrderType.STOP,
-                symbol: pair,
-                stopPrice: stopLoss,
-                price: stopLoss,
-                quantity: String(positionSize),
-              })
-              .catch(error);
+            if (takeProfits.length > 1) {
+              binanceClient
+                .futuresOrder({
+                  side: OrderSide.BUY,
+                  type: OrderType.STOP_MARKET,
+                  symbol: pair,
+                  stopPrice: stopLoss,
+                  closePosition: 'true',
+                })
+                .catch(error);
+            } else {
+              binanceClient
+                .futuresOrder({
+                  side: OrderSide.BUY,
+                  type: OrderType.STOP,
+                  symbol: pair,
+                  stopPrice: stopLoss,
+                  price: stopLoss,
+                  quantity: String(quantity),
+                })
+                .catch(error);
+            }
           }
 
           logBuySellExecutionOrder(
@@ -516,7 +535,7 @@ export class Bot {
    * Check if a position has been closed
    * @param pair
    */
-  private async syncOpenPosition(pair: string) {
+  private async manageOpenOrders(pair: string) {
     this.accountInfo = await binanceClient.futuresAccountInfo();
     const position = this.accountInfo.positions.find(
       (position) => position.symbol === pair
@@ -549,10 +568,27 @@ export class Bot {
   /**
    * Send the results of the day to the telegram channel
    */
-  private sendDailyResults() {
-    // Send message for the performance of the day
+  private sendDailyResult() {
     let performance = decimalFloor(
       ((this.currentBalance - this.lastDayBalance) / this.lastDayBalance) * 100,
+      2
+    );
+
+    let emoji = performance >= 0 ? '🟢' : '🔴';
+    let message = `Day result: ${
+      performance > 0 ? `<b>+${performance}%</b>` : `${performance}%`
+    } ${emoji}`;
+
+    sendTelegramMessage(message);
+  }
+
+  /**
+   * Send the results of the month to the telegram channel
+   */
+  private sendMonthResult() {
+    let performance = decimalFloor(
+      ((this.currentBalance - this.lastMonthBalance) / this.lastMonthBalance) *
+        100,
       2
     );
 
@@ -572,7 +608,7 @@ export class Bot {
         : '😭';
 
     let message =
-      `<b>RÉSULTATS DU ${this.currentDay}</b>` +
+      `<b>MONTH RESULT - ${this.currentMonth}</b>` +
       '\n' +
       `${performance > 0 ? `+${performance}%` : `${performance}%`} ${emoji}`;
 

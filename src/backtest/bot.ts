@@ -8,13 +8,14 @@ import {
   MAX_LOADED_CANDLE_LENGTH_API,
   BotConfig,
 } from '../init';
-import { decimalCeil, decimalFloor } from '../utils/math';
+import { decimalCeil, decimalFloor, decimalRound } from '../utils/math';
 import { clone } from '../utils/object';
 import { loadCandlesMultiTimeFramesFromCSV } from '../utils/loadCandleData';
 import { isOnTradingSession } from '../utils/tradingSession';
 import { createDatabase, saveState } from './database';
 import generateHtmlReport from './generateHtmlReport';
 import { Counter } from '../tools/counter';
+import { getPricePrecision, getQuantityPrecision } from '../utils/currencyInfo';
 import {
   debugCandle,
   debugOpenOrders,
@@ -22,11 +23,6 @@ import {
   log,
   printDateBanner,
 } from './debug';
-import {
-  getPricePrecision,
-  getQuantityPrecision,
-  isValidQuantity,
-} from '../utils/currencyInfo';
 import {
   compareTimeFrame,
   dateMatchTimeFrame,
@@ -376,11 +372,12 @@ export class BasicBackTestBot {
 
           debugCandle(currentCandle);
 
-          // Check the current trades/positions
+          // Check the current positions
           this.checkPositionMargin(
             pair,
             currentPrice,
-            new Date(currentCandle.openTime)
+            new Date(currentCandle.openTime),
+            exchangeInfo
           ); // If the position margin reach 0, close the position (liquidation)
           this.checkOpenOrders(asset, base, currentCandle);
 
@@ -893,6 +890,7 @@ export class BasicBackTestBot {
           side: hasLongPosition ? 'SELL' : 'BUY',
           type: 'MARKET',
           date,
+          quantityPrecision,
         });
         this.counters[pair].reset();
         this.closeOpenOrders(pair);
@@ -939,6 +937,7 @@ export class BasicBackTestBot {
           side: 'BUY',
           type: 'MARKET',
           date,
+          quantityPrecision,
         });
         this.closeOpenOrders(pair);
         return;
@@ -949,6 +948,11 @@ export class BasicBackTestBot {
 
       // Do not add to the current position if the allocation is over the max allocation
       if (allowPyramiding && hasLongPosition && !canAddToPosition) return;
+
+      // Close the open orders of the last trade
+      if (hasShortPosition && currentOpenOrders.length > 0) {
+        this.closeOpenOrders(pair);
+      }
 
       // Calculate TP and SL
       let { takeProfits, stopLoss } =
@@ -975,51 +979,56 @@ export class BasicBackTestBot {
         exchangeInfo,
       });
 
-      // Quantity to add to close the previous position
-      let previousPositionQuantity = hasShortPosition ? -position.size : 0;
-
-      // To close the previous short position
-      if (
-        isValidQuantity(quantity + previousPositionQuantity, pair, exchangeInfo)
-      ) {
-        quantity += previousPositionQuantity;
-      } else {
-        throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
-      }
+      // Fix size issue
+      position.size = decimalRound(position.size, quantityPrecision);
+      quantity = decimalRound(quantity, quantityPrecision);
 
       this.order({
         pair,
         price: currentPrice,
-        quantity,
+        quantity: hasShortPosition ? quantity - position.size : quantity,
         side: 'BUY',
         type: 'MARKET',
         date,
+        quantityPrecision,
       });
 
       if (takeProfits.length > 0) {
-        // Create the take profit orders
         takeProfits.forEach(({ price, quantityPercentage }) => {
           this.order({
             pair,
             price,
-            quantity: -position.size * quantityPercentage,
+            quantity: -quantity * quantityPercentage,
             side: 'SELL',
             type: 'LIMIT',
             date,
+            quantityPrecision,
           });
         });
       }
 
       if (stopLoss) {
-        // Limit order as SL
-        this.order({
-          pair,
-          price: stopLoss,
-          quantity: -position.size,
-          side: 'SELL',
-          type: 'STOP',
-          date,
-        });
+        if (takeProfits.length > 1) {
+          this.order({
+            pair,
+            price: stopLoss,
+            quantity: -quantity,
+            side: 'SELL',
+            type: 'STOP_MARKET',
+            date,
+            quantityPrecision,
+          });
+        } else {
+          this.order({
+            pair,
+            price: stopLoss,
+            quantity: -quantity,
+            side: 'SELL',
+            type: 'STOP',
+            date,
+            quantityPrecision,
+          });
+        }
       }
     } else if (
       (isTradingSessionActive || position.size !== 0) &&
@@ -1035,6 +1044,7 @@ export class BasicBackTestBot {
           side: 'SELL',
           type: 'MARKET',
           date,
+          quantityPrecision,
         });
         this.closeOpenOrders(pair);
         return;
@@ -1045,6 +1055,11 @@ export class BasicBackTestBot {
 
       // Do not add to the current position if the allocation is over the max allocation
       if (allowPyramiding && hasShortPosition && !canAddToPosition) return;
+
+      // Close the open orders of the last trade
+      if (hasLongPosition && currentOpenOrders.length > 0) {
+        this.closeOpenOrders(pair);
+      }
 
       // Calculate TP and SL
       let { takeProfits, stopLoss } = exitStrategy
@@ -1070,51 +1085,56 @@ export class BasicBackTestBot {
         exchangeInfo,
       });
 
-      // Quantity to add to close the previous position
-      let previousPositionQuantity = hasLongPosition ? -position.size : 0;
-
-      // To close the previous long position
-      if (
-        isValidQuantity(quantity + previousPositionQuantity, pair, exchangeInfo)
-      ) {
-        quantity += previousPositionQuantity;
-      } else {
-        throw new Error(`Invalid quantity order for ${pair}: ${quantity}`);
-      }
+      // Fix size issue
+      position.size = decimalRound(position.size, quantityPrecision);
+      quantity = decimalRound(quantity, quantityPrecision);
 
       this.order({
         pair,
         price: currentPrice,
-        quantity,
+        quantity: hasLongPosition ? quantity - position.size : quantity,
         side: 'SELL',
         type: 'MARKET',
         date,
+        quantityPrecision,
       });
 
       if (takeProfits.length > 0) {
-        // Create the take profit orders
         takeProfits.forEach(({ price, quantityPercentage }) => {
           this.order({
             pair,
             price,
-            quantity: -position.size * quantityPercentage,
+            quantity: -quantity * quantityPercentage,
             side: 'BUY',
             type: 'LIMIT',
             date,
+            quantityPrecision,
           });
         });
       }
 
       if (stopLoss) {
-        // Limit order as SL
-        this.order({
-          pair,
-          price: stopLoss,
-          quantity: -position.size,
-          side: 'BUY',
-          type: 'STOP',
-          date,
-        });
+        if (takeProfits.length > 1) {
+          this.order({
+            pair,
+            price: stopLoss,
+            quantity: -quantity,
+            side: 'BUY',
+            type: 'STOP_MARKET',
+            date,
+            quantityPrecision,
+          });
+        } else {
+          this.order({
+            pair,
+            price: stopLoss,
+            quantity: -quantity,
+            side: 'BUY',
+            type: 'STOP',
+            date,
+            quantityPrecision,
+          });
+        }
       }
     }
   }
@@ -1123,10 +1143,18 @@ export class BasicBackTestBot {
    * Check if the margin is enough to maintain the position. If not, the position is liquidated
    * @param pair
    * @param currentPrice The current price in the main loop
+   * @param date
+   * @param exchangeInfo
    */
-  private checkPositionMargin(pair: string, currentPrice: number, date: Date) {
+  private checkPositionMargin(
+    pair: string,
+    currentPrice: number,
+    date: Date,
+    exchangeInfo: ExchangeInfo
+  ) {
     const position = this.wallet.positions.find((pos) => pos.pair === pair);
     const { margin, unrealizedProfit, size, positionSide } = position;
+    const quantityPrecision = getQuantityPrecision(pair, exchangeInfo);
 
     if (size !== 0 && margin + unrealizedProfit <= 0) {
       log(`The position on ${pair} has reached the liquidation price.`);
@@ -1137,6 +1165,7 @@ export class BasicBackTestBot {
         side: positionSide === 'LONG' ? 'SELL' : 'BUY',
         type: 'MARKET',
         date,
+        quantityPrecision,
       });
 
       this.closeOpenOrders(pair);
@@ -1307,11 +1336,14 @@ export class BasicBackTestBot {
           }
 
           if (
-            type === 'STOP' &&
+            (type === 'STOP' || type === 'STOP_MARKET') &&
             lastCandle.high > price &&
             lastCandle.low < price
           ) {
-            const fees = Math.abs(quantity) * price * (TAKER_FEES / 100);
+            const fees =
+              type === 'STOP'
+                ? Math.abs(quantity) * price * (MAKER_FEES / 100)
+                : Math.abs(quantity) * price * (TAKER_FEES / 100);
 
             // Update wallet
             let pnl = this.getPositionPNL(position, price);
@@ -1358,11 +1390,11 @@ export class BasicBackTestBot {
             log(
               `${
                 side === 'BUY' ? 'Buy' : 'Sell'
-              } limit order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,
+              } stop order #${id} has been activated for ${quantity}${asset} at ${price}. Fees: ${fees}`,
               chalk.magenta
             );
 
-            this.closeOpenOrder(id);
+            this.closeOpenOrders(pair);
           }
 
           // If an order close the position, do not continue to check the other orders.
@@ -1454,6 +1486,7 @@ export class BasicBackTestBot {
     side,
     type,
     date,
+    quantityPrecision,
   }: {
     pair: string;
     price: number;
@@ -1461,6 +1494,7 @@ export class BasicBackTestBot {
     side: 'BUY' | 'SELL';
     type: OrderType;
     date: Date;
+    quantityPrecision: number;
   }) {
     const wallet = this.wallet;
     const positions = wallet.positions;
@@ -1487,6 +1521,9 @@ export class BasicBackTestBot {
           position.margin += baseCost;
           position.size += quantity;
           position.entryPrice = avgEntryPrice;
+
+          // Fix issue
+          position.size = decimalRound(position.size, quantityPrecision);
 
           wallet.availableBalance -= baseCost + fees;
           wallet.totalWalletBalance -= fees;
@@ -1532,6 +1569,9 @@ export class BasicBackTestBot {
         // Update position
         position.size += quantity;
         position.margin = Math.abs(position.size * price) / leverage;
+
+        // Fix issue
+        position.size = decimalRound(position.size, quantityPrecision);
 
         // The position has been closed
         if (position.size === 0) {
@@ -1615,7 +1655,7 @@ export class BasicBackTestBot {
       }
     }
 
-    if (type === 'STOP') {
+    if (type === 'STOP' || type === 'STOP_MARKET') {
       let order: Order = {
         id: Math.random().toString(16).slice(2),
         pair,

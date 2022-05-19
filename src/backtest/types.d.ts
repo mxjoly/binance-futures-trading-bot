@@ -22,7 +22,7 @@ interface Position {
   unrealizedProfit: number;
 }
 
-type OrderType = 'MARKET' | 'LIMIT' | 'STOP';
+type OrderType = 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_MARKET';
 
 interface Order {
   id: string;

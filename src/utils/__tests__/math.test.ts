@@ -1,4 +1,11 @@
-import { average, decimalCeil, decimalFloor, normalize, random } from '../math';
+import {
+  average,
+  decimalCeil,
+  decimalFloor,
+  decimalRound,
+  normalize,
+  random,
+} from '../math';
 
 describe('Math', () => {
   it('average', () => {
@@ -12,6 +19,11 @@ describe('Math', () => {
   });
 
   it('decimalFloor', () => {
+    let n = decimalFloor(10.123, 2);
+    expect(n).toBe(10.12);
+  });
+
+  it('decimalRound', () => {
     let n = decimalFloor(10.123, 2);
     expect(n).toBe(10.12);
   });

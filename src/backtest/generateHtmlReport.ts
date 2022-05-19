@@ -41,7 +41,7 @@ export default function (
         `<th>${row.side.toLowerCase()}</th>` +
         `<th>${row.type.toLowerCase()}</th>` +
         `<th>${row.action.toLowerCase()}</th>` +
-        `<th>${decimalFloor(row.size, 3)}</th>` +
+        `<th>${row.size}</th>` +
         `<th>${row.price}</th>` +
         `<th>${row.pnl ? decimalFloor(row.pnl, 2) : ' '}</th>` +
         `<th>${decimalFloor(row.balance, 2)}</th>` +
