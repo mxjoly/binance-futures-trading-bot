@@ -56,13 +56,13 @@ export function loadCandlesFromCSV(
  * @param symbol
  * @param interval
  * @param binanceClient
- * @param onlyFinalCandle
+ * @param removeLastCandle
  */
 export function loadCandlesFromAPI(
   symbol: string,
   interval: CandleChartInterval,
   binanceClient: Binance,
-  onlyFinalCandle = true
+  removeLastCandle = true
 ) {
   return new Promise<CandleData[]>((resolve, reject) => {
     binanceClient
@@ -70,7 +70,7 @@ export function loadCandlesFromAPI(
       .then((candles) => {
         resolve(
           candles
-            .slice(0, onlyFinalCandle ? -1 : candles.length)
+            .slice(0, removeLastCandle ? -1 : candles.length)
             .map((candle) => ({
               symbol,
               interval,
@@ -132,11 +132,13 @@ export async function loadCandlesMultiTimeFramesFromCSV(
  * @param symbol
  * @param timeFrames
  * @param binanceClient
+ * @param removeLastCandle
  */
 export async function loadCandlesMultiTimeFramesFromAPI(
   symbol: string,
   timeFrames: CandleChartInterval[],
-  binanceClient: Binance
+  binanceClient: Binance,
+  removeLastCandle?: boolean
 ): Promise<CandlesDataMultiTimeFrames> {
   let loadTimeFrames: Promise<{
     timeFrame: CandleChartInterval;
@@ -147,7 +149,7 @@ export async function loadCandlesMultiTimeFramesFromAPI(
     loadTimeFrames.push(
       new Promise<{ timeFrame: CandleChartInterval; candles: CandleData[] }>(
         (resolve, reject) => {
-          loadCandlesFromAPI(symbol, timeFrame, binanceClient, true)
+          loadCandlesFromAPI(symbol, timeFrame, binanceClient, removeLastCandle)
             .then((candles) => {
               resolve({ timeFrame, candles });
             })

@@ -27,9 +27,13 @@ export class Bot {
   private accountInfo: FuturesAccountInfoResult;
   private hasOpenPosition: { [pair: string]: boolean };
 
+  // Cache the candle data
+  // private candles: CandlesDataMultiTimeFrames;
+
   // Counter to fix the max duration of each trade
   private counters: { [symbol: string]: Counter };
 
+  // Time
   private currentDay: string;
   private currentMonth: string;
   private lastDayBalance: number;
