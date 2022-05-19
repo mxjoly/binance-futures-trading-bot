@@ -1518,6 +1518,9 @@ export class BasicBackTestBot {
             (price * Math.abs(quantity) + entryPrice * Math.abs(size)) /
             (Math.abs(quantity) + Math.abs(size));
 
+          // Fix issue
+          quantity = decimalRound(quantity, quantityPrecision);
+
           position.margin += baseCost;
           position.size += quantity;
           position.entryPrice = avgEntryPrice;
@@ -1565,6 +1568,9 @@ export class BasicBackTestBot {
         wallet.totalWalletBalance += pnl - fees;
 
         this.updateProfitLossStrategyProperty(pnl);
+
+        // Fix issue
+        quantity = decimalRound(quantity, quantityPrecision);
 
         // Update position
         position.size += quantity;

@@ -1,5 +1,4 @@
 import { SMA } from 'technicalindicators';
-import { Cache } from '../../tools/cache';
 
 interface Options {
   atrLength?: number;
@@ -8,8 +7,6 @@ interface Options {
 const defaultOptions: Options = {
   atrLength: 14,
 };
-
-let cache = new Cache();
 
 export function calculate(candles: CandleData[], options?: Options) {
   options = { ...defaultOptions, ...options };
