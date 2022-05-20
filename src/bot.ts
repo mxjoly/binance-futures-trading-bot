@@ -8,12 +8,16 @@ import {
 import { decimalFloor } from './utils/math';
 import { log, error, logBuySellExecutionOrder } from './utils/log';
 import { binanceClient } from './init';
-import { loadCandlesMultiTimeFramesFromAPI } from './utils/loadCandleData';
+import {
+  loadCandlesFromAPI,
+  loadCandlesMultiTimeFramesFromAPI,
+} from './utils/loadCandleData';
 import { Counter } from './tools/counter';
 import { isOnTradingSession } from './utils/tradingSession';
 import { sendTelegramMessage } from './telegram';
 import dayjs from 'dayjs';
 import { getPricePrecision, getQuantityPrecision } from './utils/currencyInfo';
+import { ADX } from './indicators';
 
 // ====================================================================== //
 

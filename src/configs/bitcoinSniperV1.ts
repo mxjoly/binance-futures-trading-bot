@@ -4,13 +4,13 @@ import { Complex } from '../strategies/entry';
 import { getPositionSizeByRisk } from '../strategies/riskManagement';
 
 const hyperParameters_BTCBUSD = {
-  adxType: 'CLASSIC',
+  adxType: { value: 'CLASSIC' },
   adxLength: { value: 33 },
-  adxThreshold: { value: 12 },
+  adxThreshold: { value: 10 },
   supportResistanceLeftBars: { value: 6 },
   supportResistanceRightBars: { value: 8 },
   volumeMultiplier: { value: 1.4 },
-  volumeLength: { value: 24 },
+  volumeLength: { value: 26 },
   psarStep: { value: 0.2 },
   psarMax: { value: 0.1 },
   rangeFilterSourceType: { value: 'open' },
@@ -49,7 +49,7 @@ const hyperParameters_BTCBUSD = {
 };
 
 const hyperParameters_BTCUSDT = {
-  adxType: 'MASANAKAMURA',
+  adxType: { value: 'MASANAKAMURA' },
   adxLength: { value: 33 },
   adxThreshold: { value: 12 },
   supportResistanceLeftBars: { value: 7 },

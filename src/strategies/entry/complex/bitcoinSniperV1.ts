@@ -15,6 +15,7 @@ import {
   BollingerBands,
   VWMA,
   EMA,
+  ADX,
 } from '../../../indicators';
 
 interface Options {
@@ -115,13 +116,24 @@ const adxCondition = (
     adxThreshold = defaultOptions.adxThreshold,
   }
 ) => {
-  let { DIM, DIP, adx } = AdxMasanaKamura.calculate(candles, {
-    atrLength: adxLength,
-  }).slice(-1)[0];
+  if (adxType === 'CLASSIC') {
+    let { minus, plus, adx } = ADX.calculate(candles, {
+      period: adxLength,
+    }).slice(-1)[0];
 
-  let adxLongCond = DIP > DIM && adx > adxThreshold;
-  let adxShortCond = DIP < DIM && adx > adxThreshold;
-  return { adxLongCond, adxShortCond };
+    let adxLongCond = plus > minus && adx > adxThreshold;
+    let adxShortCond = plus < minus && adx > adxThreshold;
+    return { adxLongCond, adxShortCond };
+  }
+  if (adxType === 'MASANAKAMURA') {
+    let { DIM, DIP, adx } = AdxMasanaKamura.calculate(candles, {
+      atrLength: adxLength,
+    }).slice(-1)[0];
+
+    let adxLongCond = DIP > DIM && adx > adxThreshold;
+    let adxShortCond = DIP < DIM && adx > adxThreshold;
+    return { adxLongCond, adxShortCond };
+  }
 };
 
 const psarCondition = (
