@@ -18,6 +18,7 @@ import {
 } from '../../../indicators';
 
 interface Options {
+  adxType?: 'CLASSIC' | 'MASANAKAMURA';
   adxLength?: number;
   adxThreshold?: number;
   supportResistanceLeftBars?: number;
@@ -62,6 +63,7 @@ interface Options {
 }
 
 const defaultOptions: Options = {
+  adxType: 'MASANAKAMURA',
   adxLength: 33,
   adxThreshold: 12,
   supportResistanceLeftBars: 7,
@@ -108,6 +110,7 @@ const defaultOptions: Options = {
 const adxCondition = (
   candles: CandleData[],
   {
+    adxType = defaultOptions.adxType,
     adxLength = defaultOptions.adxLength,
     adxThreshold = defaultOptions.adxThreshold,
   }
@@ -379,6 +382,7 @@ export const isBuySignal = (candles: CandleData[], options?: Options) => {
   options = { ...defaultOptions, ...options };
 
   let { adxLongCond } = adxCondition(candles, {
+    adxType: options.adxType,
     adxLength: options.adxLength,
     adxThreshold: options.adxThreshold,
   });
@@ -486,6 +490,7 @@ export const isSellSignal = (candles: CandleData[], options?: Options) => {
   options = { ...defaultOptions, ...options };
 
   let { adxShortCond } = adxCondition(candles, {
+    adxType: options.adxType,
     adxLength: options.adxLength,
     adxThreshold: options.adxThreshold,
   });

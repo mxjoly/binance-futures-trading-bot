@@ -23,3 +23,4 @@ export * as ADX from './trend/adx';
 export * as ATR from './volatility/atr';
 export * as BollingerBands from './volatility/bollingerBands';
 export * as VWMA from './volume/vwma';
+export * as Cloud from './trend/cloud';

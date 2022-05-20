@@ -13,14 +13,18 @@ export function calculate(candles: CandleData[], options?: Options) {
   options = { ...defaultOptions, ...options };
   let values = getCandleSourceType(candles, options.sourceType);
 
-  let hilbertTransformation = new Array(values.length - 6);
-  for (let i = 6; i < values.length; i++) {
-    hilbertTransformation[i - 6] =
-      0.0962 * values[i] +
-      0.5769 * values[i - 2] -
-      0.5769 * values[i - 4] -
-      0.0962 * values[i - 6];
+  function hilbertTransformation(i: number) {
+    if (i >= 6) {
+      return (
+        0.0962 * values[i] +
+        0.5769 * values[i - 2] -
+        0.5769 * values[i - 4] -
+        0.0962 * values[i - 6]
+      );
+    }
   }
 
-  
+  function computeComponent(i: number, mesaPeriodMult: number) {
+    return hilbertTransformation(i) * mesaPeriodMult;
+  }
 }
