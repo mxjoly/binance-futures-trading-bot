@@ -5,7 +5,7 @@ import {
   getMinOrderQuantity,
   getPricePrecision,
   getQuantityPrecision,
-  getTickSizePrecision,
+  getTickSize,
   isValidQuantity,
 } from '../currencyInfo';
 
@@ -39,8 +39,8 @@ describe('Currency Info', () => {
   });
 
   it('getTickSizePrecision', () => {
-    let precision = getTickSizePrecision('BTCUSDT', exchangeInfo);
-    expect(precision).toBe(1);
+    let precision = getTickSize('BTCUSDT', exchangeInfo);
+    expect(precision).toBe(0.1);
   });
 
   it('getQuantityPrecision', () => {

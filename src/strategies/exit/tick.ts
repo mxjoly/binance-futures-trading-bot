@@ -1,5 +1,5 @@
 import { ExchangeInfo, OrderSide } from 'binance-api-node';
-import { getTickSizePrecision } from '../../utils/currencyInfo';
+import { getTickSize } from '../../utils/currencyInfo';
 import { decimalCeil, decimalFloor } from '../../utils/math';
 
 interface Options {
@@ -15,7 +15,7 @@ const strategy = (
   exchangeInfo: ExchangeInfo,
   options: Options
 ) => {
-  let tickSize = getTickSizePrecision(candles[0].symbol, exchangeInfo);
+  let tickSize = getTickSize(candles[0].symbol, exchangeInfo);
 
   let takeProfits = tickSize
     ? options.profitTargets
