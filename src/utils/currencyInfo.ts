@@ -65,7 +65,22 @@ export function getQuantityPrecision(pair: string, exchangeInfo: ExchangeInfo) {
  * Get the maximal number of decimals for a pair quantity
  */
 export function getPricePrecision(pair: string, exchangeInfo: ExchangeInfo) {
+  return getTickSizePrecision(pair, exchangeInfo);
+  // return symbol.pricePrecision as number;
+}
+
+/**
+ * Get the tick size for a symbol
+ */
+export function getTickSizePrecision(pair: string, exchangeInfo: ExchangeInfo) {
   const symbol = exchangeInfo.symbols.find((symbol) => symbol.symbol === pair);
+  const filter = symbol.filters.find((f) => f.filterType === 'PRICE_FILTER');
   // @ts-ignore
-  return symbol.pricePrecision as number;
+  const tickSize = Number(filter.tickSize); // remove 0 at the right of decimals
+
+  if (tickSize.toString().split('.').length > 0) {
+    return tickSize.toString().split('.')[1].length;
+  } else {
+    return 0;
+  }
 }

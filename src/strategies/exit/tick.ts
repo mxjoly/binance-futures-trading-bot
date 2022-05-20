@@ -1,4 +1,5 @@
 import { ExchangeInfo, OrderSide } from 'binance-api-node';
+import { getTickSizePrecision } from '../../utils/currencyInfo';
 import { decimalCeil, decimalFloor } from '../../utils/math';
 
 interface Options {
@@ -14,10 +15,7 @@ const strategy = (
   exchangeInfo: ExchangeInfo,
   options: Options
 ) => {
-  let tickSize = exchangeInfo.symbols
-    .filter((f) => f.symbol === candles[0].symbol)[0]
-    // @ts-ignore
-    .filters.filter((f) => f.filterType === 'PRICE_FILTER')[0].tickSize;
+  let tickSize = getTickSizePrecision(candles[0].symbol, exchangeInfo);
 
   let takeProfits = tickSize
     ? options.profitTargets
@@ -28,7 +26,7 @@ const strategy = (
         .map(({ deltaPercentage, quantityPercentage }) => {
           if (deltaPercentage) {
             let tpTicks =
-              (price * (1 + deltaPercentage) - price) / Number(tickSize) / 10;
+              (price * (1 + deltaPercentage) - price) / tickSize / 10;
             return {
               price:
                 side === OrderSide.BUY
@@ -40,8 +38,7 @@ const strategy = (
         })
     : [];
 
-  let slTicks =
-    (price * (1 + options.lossTolerance) - price) / Number(tickSize) / 10;
+  let slTicks = (price * (1 + options.lossTolerance) - price) / tickSize / 10;
 
   let stopLoss = options.lossTolerance
     ? side === OrderSide.BUY
