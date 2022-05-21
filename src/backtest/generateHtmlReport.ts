@@ -56,6 +56,8 @@ export default function (
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.1/dist/chartjs-plugin-zoom.min.js"></script>
         <title>Strategy Report</title>
         <style type="text/css">
           html,
@@ -282,6 +284,14 @@ export default function (
                   text: 'Evolution of the wallet balance',
                   font: {
                     size: 32
+                  }
+                },
+                zoom: {
+                  zoom: {
+                    wheel: {
+                      enabled: true,
+                    },
+                    mode: 'x',
                   }
                 }
               }
