@@ -576,7 +576,7 @@ export class Bot {
     );
 
     let emoji = performance >= 0 ? '🟢' : '🔴';
-    let message = `Day result: ${
+    let message = `Day result of ${this.currentDay}: ${
       performance > 0 ? `<b>+${performance}%</b>` : `${performance}%`
     } ${emoji}`;
 
