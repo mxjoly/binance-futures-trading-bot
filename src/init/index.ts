@@ -7,11 +7,13 @@ import { initLogger } from './initLogger';
 import { initJSonConfig } from './initJsonConfig';
 import { loadStrategyConfig } from './initStrategy';
 import { initBinanceClient } from './initClient';
+import { initCommandArguments } from './initCommandArgument';
 
 initJSonConfig();
 
 initializeDayJsPlugins();
 
+export const commandArguments = initCommandArguments();
 export const logger = initLogger();
 export const telegramBot = initTelegramBot();
 export const BotConfig = initJSonConfig();

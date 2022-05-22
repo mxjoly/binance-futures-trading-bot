@@ -7,6 +7,7 @@ import {
   binanceClient,
   MAX_LOADED_CANDLE_LENGTH_API,
   BotConfig,
+  commandArguments,
 } from '../init';
 import { decimalCeil, decimalFloor, decimalRound } from '../utils/math';
 import { clone } from '../utils/object';
@@ -50,11 +51,7 @@ const bar = new cliProgress.SingleBar(
 const SAVE_HISTORY = BacktestConfig['save_db'];
 
 // Debug mode with console.log
-export const DEBUG = process.argv[2]
-  ? process.argv[2].split('=')[1] === 'true'
-    ? true
-    : false
-  : false;
+export const DEBUG = commandArguments.debug === 'true' ? true : false;
 
 // Exchange fee info
 const TAKER_FEES = BotConfig['taker_fees_futures']; // %

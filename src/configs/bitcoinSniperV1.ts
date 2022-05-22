@@ -101,7 +101,7 @@ export const config: AbstractStrategyConfig = (parameters) => [
     base: 'USDT',
     loopInterval: CandleChartInterval.ONE_HOUR,
     indicatorIntervals: [CandleChartInterval.ONE_HOUR],
-    risk: 0.055,
+    risk: 0.1,
     leverage: 10,
     unidirectional: false,
     canOpenNewPositionToCloseLast: true,
