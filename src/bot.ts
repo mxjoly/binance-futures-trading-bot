@@ -110,10 +110,10 @@ export class Bot {
         pair,
         strategyConfig.loopInterval,
         (candle) => {
-          if (candle.isFinal) {
-            // If a position has been closed, cancel the open orders
-            this.manageOpenOrders(pair);
+          // If a position has been closed, cancel the open orders
+          this.manageOpenOrders(pair);
 
+          if (candle.isFinal) {
             // Load the candle data for each the time frames that will be use on the strategy
             loadCandlesMultiTimeFramesFromAPI(
               pair,
