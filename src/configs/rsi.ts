@@ -1,13 +1,11 @@
 import { CandleChartInterval } from 'binance-api-node';
-import { atrExitStrategy } from '../strategies/exit';
+import { highLowExitStrategy } from '../strategies/exit';
 import { Basics } from '../strategies/entry';
 import { getPositionSizeByRisk } from '../strategies/riskManagement';
 
 export const hyperParameters = {
-  takeProfitAtrRatio: { value: 2 },
-  stopLossAtrRatio: { value: 2 },
-  atrPeriod: { value: 10 },
-  atrMultiplier: { value: 2 },
+  takeProfitRatio: { value: 3 },
+  lookBack: { value: 14 },
   rsiPeriod: { value: 14 },
   rsiOversold: { value: 30 },
   rsiOverbought: { value: 70 },
@@ -22,17 +20,16 @@ export const config: AbstractStrategyConfig = (parameters) => [
     risk: 0.01,
     leverage: 10,
     exitStrategy: (price, candles, pricePrecision, side, exchangeInfo) =>
-      atrExitStrategy(
+      highLowExitStrategy(
         price,
         candles[CandleChartInterval.ONE_HOUR],
         pricePrecision,
         side,
         exchangeInfo,
         {
-          takeProfitAtrRatio: parameters.takeProfitAtrRatio.value,
-          stopLossAtrRatio: parameters.stopLossAtrRatio.value,
-          atrPeriod: parameters.atrPeriod.value,
-          atrMultiplier: parameters.atrMultiplier.value,
+          takeProfitRatio: 2,
+          lookBack: 14,
+          side,
         }
       ),
     buyStrategy: (candles) =>

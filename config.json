@@ -1,7 +1,7 @@
 {
   "mode": "futures",
-  "strategy_config_file_name": "bitcoinSniperV1",
-  "strategy_name": "bitcoinSniperV1",
+  "strategy_config_file_name": "rsi",
+  "strategy_name": "rsi",
   "taker_fees_futures": 0.04,
   "maker_fees_futures": 0.02,
   "backtest": {
