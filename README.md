@@ -1,3 +1,7 @@
+![GitHub package.json version](https://img.shields.io/github/package-json/v/mxjoly/binance-trading-bot)
+![styled with prettier](https://img.shields.io/badge/styled_with-prettier-ff69b4.svg)
+![GitHub](https://img.shields.io/github/license/mxjoly/binance-trading-bot)
+
 # 🤖 Binance trading bot
 
 ## Features
