@@ -3,10 +3,10 @@
 ## Features
 
 - 🔨 Build your own strategy
-- ✅ Can use multiple strategy at same time with different coins
+- ✅ Can use multiple strategies at same time with different coins
 - ⚙️ Configure the conditions to open / close a position
-- 🎛 Multiple indicator to use for your strategies (moving averages, bollinger bands, rsi, macd, adx, ...)
-- 🕰 Trading session to allow the bot to trade
+- 🎛 Multiple indicators to use for your strategies (moving averages, bollinger bands, rsi, macd, adx, ...)
+- 🕰 Trading sessions
 - ⏱ Limit the duration of the trades
 - ✅ Multiple time frames can be used in a single strategy
 - ✅ Money management
