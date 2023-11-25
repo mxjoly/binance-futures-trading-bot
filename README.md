@@ -20,6 +20,26 @@
 
 ## Setup the environment
 
+## Install npm and dependecies
+### Linux
+```bash
+sudo rm -rf node_modules package-lock.json && npm install
+```
+### Windows
+remove directory node_modules and remove file package-lock.json
+```bash
+npm install
+```
+
+If crazy error, try:
+Note: remove directory node_modules and remove file package-lock.json
+
+```bash
+npm install @tensorflow/tfjs-node --ignore-scripts unit-tests --save
+npm install nodemon -g
+npm install -g win-node-env
+```
+
 ### Development
 
 Set your api keys to the environment variables for testnet in `.env` with `BINANCE_FUTURES_TESTNET_PUBLIC_KEY` and `BINANCE_FUTURES_TESTNET_PRIVATE_KEY`. Go to https://testnet.binancefuture.com/en/futures/BTCUSDT and https://testnet.binance.vision/ to get your keys. Then run the commands:
